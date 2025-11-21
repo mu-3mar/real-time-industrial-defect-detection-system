@@ -1,0 +1,26 @@
+# === Ignore raw datasets (do NOT upload data) ===
+# specific fine-tuning data folders
+fine-tuning/fine-tuning-YOLO/data/
+fine-tuning/fine-tuning-seg/data/
+
+# any other data folders
+data/
+datasets/
+
+# === Keep models and runs (we WILL upload .pt, .onnx, runs) ===
+
+# === Env, caches, editors ===
+venv/
+env/
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+.vscode/
+.idea/
+
+# === Large archives & secrets ===
+*.tar
+*.zip
+.env
+secrets.json
