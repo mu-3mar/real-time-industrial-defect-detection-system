@@ -33,6 +33,7 @@ __pycache__/
 
 .vscode/
 .idea/
+.history/
 
 # === Large archives & secrets ===
 *.tar
