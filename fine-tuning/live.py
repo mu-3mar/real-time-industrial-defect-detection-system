@@ -241,4 +241,4 @@ if __name__ == "__main__":
     elif choice == "2":
         run_side_by_side_models(camera_index=0)
     else:
-        print("❌ Invalid choice")
+        print("❌ Invalid choice  ") 
