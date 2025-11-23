@@ -6,8 +6,23 @@ fine-tuning/fine-tuning-seg/data/
 # any other data folders
 data/
 datasets/
+img-tst/
 
-# === Keep models and runs (we WILL upload .pt, .onnx, runs) ===
+# === Ignore runs by default, except specific files ===
+**/runs/**
+
+# Keep only specific run files
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector_int8.onnx
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector.onnx
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best.pt
+
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector_int8.onnx
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector.onnx
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best.pt
+
+!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.pt
+!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.onnx
+!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.pt
 
 # === Env, caches, editors ===
 venv/

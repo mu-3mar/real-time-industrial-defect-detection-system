@@ -120,13 +120,13 @@ def run_side_by_side_models(camera_index=0):
     
     # Load both quantized models
     models = {
-        "Segmentation": YOLO("/home/muhammad-ammar/AI/SCM_8s/fine-tuning-seg/output/best_int8.onnx", task="segment"),
-        "Detection": YOLO("/home/muhammad-ammar/AI/SCM_8s/fine-tuning/output/best_int8.onnx", task="detect")
+        "Segmentation": YOLO("fine-tuning/fine-tuning-seg/output/best_int8.onnx", task="segment"),
+        "Detection": YOLO("fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best_int8.onnx", task="detect")
     }
     
     thresholds = {
-        "Segmentation": {0: 0.4, 1: 0.9},
-        "Detection": {0: 0.95, 1: 0.95}
+        "Segmentation": {0: 0.6, 1: 0.9},
+        "Detection": {0: 0.8, 1: 0.8}
     }
     
     # Open camera
