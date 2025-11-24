@@ -45,11 +45,10 @@ def init_database():
             first_frame INTEGER,
             last_frame INTEGER,
             frames_seen INTEGER,
-            timestamp TEXT
+            timestamp TEXT,
+            snapshot_path TEXT
         )
     """)
-    conn.commit()
-    conn.close()
 
 
 def compute_final_status_for_db(info):
@@ -90,7 +89,7 @@ def compute_final_status_for_db(info):
     return "ok"
 
 
-def save_or_update_product(product_id, session_id, info, final_status):
+def save_or_update_product(product_id, session_id, info, final_status, snapshot_path=None):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
@@ -105,7 +104,8 @@ def save_or_update_product(product_id, session_id, info, final_status):
                 first_frame=?,
                 last_frame=?,
                 frames_seen=?,
-                timestamp=?
+                timestamp=?,
+                snapshot_path=?
             WHERE product_id=?
         """, (
             final_status,
@@ -114,14 +114,15 @@ def save_or_update_product(product_id, session_id, info, final_status):
             info.get("last_seen"),
             info.get("frames_seen", 0),
             datetime.now().isoformat(),
+            snapshot_path,
             product_id
         ))
     else:
         cur.execute("""
             INSERT INTO products (
                 product_id, session_id, final_status, max_defects, 
-                first_frame, last_frame, frames_seen, timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                first_frame, last_frame, frames_seen, timestamp, snapshot_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             product_id,
             session_id,
@@ -130,7 +131,8 @@ def save_or_update_product(product_id, session_id, info, final_status):
             info.get("first_seen"),
             info.get("last_seen"),
             info.get("frames_seen", 0),
-            datetime.now().isoformat()
+            datetime.now().isoformat(),
+            snapshot_path
         ))
 
     conn.commit()
@@ -200,13 +202,14 @@ def save_defect_snapshot(product_id, info, final_status):
     """
     Save exactly ONE annotated image per product_id (only for defect).
     Uses snapshot_frame + snapshot_box + snapshot_defect_boxes.
+    Returns the snapshot file path.
     """
     frame = info.get("snapshot_frame", None)
     box = info.get("snapshot_box", None)
     defect_boxes = info.get("snapshot_defect_boxes", [])
 
     if frame is None or box is None:
-        return  # nothing to save
+        return None  # nothing to save
 
     out_dir = Path(SNAPSHOT_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -225,6 +228,7 @@ def save_defect_snapshot(product_id, info, final_status):
 
     out_path = out_dir / f"{product_id}.jpg"
     cv2.imwrite(str(out_path), img)
+    return str(out_path)
 
 # ======================================================
 #                  PROCESS FRAME
@@ -243,9 +247,10 @@ def process_frame(frame, carton_model, defect_model, frame_index):
         for qr, info in list(tracks.items()):
             if frame_index - info["last_seen"] > MAX_DISAPPEAR:
                 final_status = compute_final_status_for_db(info)
-                save_or_update_product(qr, session_id, info, final_status)
+                snapshot_path = None
                 if final_status == "defect":
-                    save_defect_snapshot(qr, info, final_status)
+                    snapshot_path = save_defect_snapshot(qr, info, final_status)
+                save_or_update_product(qr, session_id, info, final_status, snapshot_path)
                 del tracks[qr]
         return annotated
 
@@ -338,9 +343,10 @@ def process_frame(frame, carton_model, defect_model, frame_index):
     for qr, info in list(tracks.items()):
         if frame_index - info["last_seen"] > MAX_DISAPPEAR:
             final_status = compute_final_status_for_db(info)
-            save_or_update_product(qr, session_id, info, final_status)
+            snapshot_path = None
             if final_status == "defect":
-                save_defect_snapshot(qr, info, final_status)
+                snapshot_path = save_defect_snapshot(qr, info, final_status)
+            save_or_update_product(qr, session_id, info, final_status, snapshot_path)
             del tracks[qr]
 
     return annotated
@@ -374,9 +380,10 @@ def main(args):
     # ======= FINAL FLUSH: save all remaining tracks even if not disappeared =======
     for qr, info in list(tracks.items()):
         final_status = compute_final_status_for_db(info)
-        save_or_update_product(qr, session_id, info, final_status)
+        snapshot_path = None
         if final_status == "defect":
-            save_defect_snapshot(qr, info, final_status)
+            snapshot_path = save_defect_snapshot(qr, info, final_status)
+        save_or_update_product(qr, session_id, info, final_status, snapshot_path)
         del tracks[qr]
 
     cap.release()
