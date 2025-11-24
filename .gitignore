@@ -7,7 +7,7 @@ fine-tuning/fine-tuning-seg/data/
 data/
 datasets/
 img-tst/
-
+flow/outputs/
 # === Ignore runs by default, except specific files ===
 **/runs/**
 
