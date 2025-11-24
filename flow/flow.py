@@ -17,7 +17,7 @@ DEFAULT_DEFECT_MODEL = "fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/d
 DEFAULT_CAMERA_INDEX = 0
 
 CARTON_CONF = 0.5
-DEFECT_CONF = 0.8
+DEFECT_CONF = 0.25
 
 MAX_DISAPPEAR = 12
 EXPAND_RATIO = 0.1     # small expand
