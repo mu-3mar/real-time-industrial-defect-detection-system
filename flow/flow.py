@@ -1,18 +1,24 @@
 import cv2
-import sqlite3
 import uuid
 import argparse
 import numpy as np
 from datetime import datetime
 from pathlib import Path
 from ultralytics import YOLO
+import requests
 
 # ======================================================
 #                   CONFIGURATION
 # ======================================================
 
-DEFAULT_CARTON_MODEL = "fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector_int8.onnx"
-DEFAULT_DEFECT_MODEL = "fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector_int8.onnx"
+DEFAULT_CARTON_MODEL = (
+    "fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/"
+    "best_box_detector_int8.onnx"
+)
+DEFAULT_DEFECT_MODEL = (
+    "fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/"
+    "best_defect_detector_int8.onnx"
+)
 
 DEFAULT_CAMERA_INDEX = 0
 
@@ -20,38 +26,21 @@ CARTON_CONF = 0.5
 DEFECT_CONF = 0.25
 
 MAX_DISAPPEAR = 12
-EXPAND_RATIO = 0.1     # small expand
+EXPAND_RATIO = 0.1  # small expand
 
-DB_PATH = "flow/outputs/products.db"
-SNAPSHOT_DIR = "flow/outputs/defect_snapshots"
+# --- API CONFIG ---
+API_URL = "https://chainly.azurewebsites.net/api/ProductionLines/sessions"
+PRODUCTION_LINE_ID = 1
+COMPANY_ID = 90
 
 qr_detector = cv2.QRCodeDetector()
 session_id = str(uuid.uuid4())
 
 # ======================================================
-#                   DATABASE SETUP
+#                 FINAL STATUS LOGIC
 # ======================================================
 
-def init_database():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS products (
-            product_id TEXT PRIMARY KEY,
-            session_id TEXT,
-            final_status TEXT,
-            max_defects INTEGER,
-            first_frame INTEGER,
-            last_frame INTEGER,
-            frames_seen INTEGER,
-            timestamp TEXT,
-            snapshot_path TEXT
-        )
-    """)
-
-
-def compute_final_status_for_db(info):
+def compute_final_status_for_db(info: dict) -> str:
     """
     Lightweight but more robust than:
       - first defect = defect
@@ -88,55 +77,41 @@ def compute_final_status_for_db(info):
     # Small noise: treat as ok
     return "ok"
 
+# ======================================================
+#                  SEND TO EXTERNAL API
+# ======================================================
 
-def save_or_update_product(product_id, session_id, info, final_status, snapshot_path=None):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+def send_product_to_api(product_id: str, session_id: str, info: dict, final_status: str):
+    """
+    Send product info to external API instead of saving to DB.
+    Fields to send:
 
-    cur.execute("SELECT product_id FROM products WHERE product_id = ?", (product_id,))
-    exists = cur.fetchone()
+        product_id
+        session_id
+        status          (note: NOT 'final_status' key)
+        max_defects
+        timestamp
+        productionline_id (always 1)
+        companyId         (always 90)
+    """
+    payload = {
+        "product_id": product_id,
+        "session_id": session_id,
+        "status": final_status,
+        "max_defects": int(info.get("max_defects", 0)),
+        "timestamp": datetime.now().isoformat(),
+        "productionline_id": PRODUCTION_LINE_ID,
+        "companyId": COMPANY_ID,
+    }
 
-    if exists:
-        cur.execute("""
-            UPDATE products SET 
-                final_status=?,
-                max_defects=?,
-                first_frame=?,
-                last_frame=?,
-                frames_seen=?,
-                timestamp=?,
-                snapshot_path=?
-            WHERE product_id=?
-        """, (
-            final_status,
-            info.get("max_defects", 0),
-            info.get("first_seen"),
-            info.get("last_seen"),
-            info.get("frames_seen", 0),
-            datetime.now().isoformat(),
-            snapshot_path,
-            product_id
-        ))
-    else:
-        cur.execute("""
-            INSERT INTO products (
-                product_id, session_id, final_status, max_defects, 
-                first_frame, last_frame, frames_seen, timestamp, snapshot_path
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            product_id,
-            session_id,
-            final_status,
-            info.get("max_defects", 0),
-            info.get("first_seen"),
-            info.get("last_seen"),
-            info.get("frames_seen", 0),
-            datetime.now().isoformat(),
-            snapshot_path
-        ))
-
-    conn.commit()
-    conn.close()
+    try:
+        response = requests.post(API_URL, json=payload, timeout=5)
+        if response.status_code in (200, 201):
+            print(f"[API] OK for product {product_id} -> {final_status}")
+        else:
+            print(f"[API] Error {response.status_code} for {product_id}: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"[API] Connection error for {product_id}: {e}")
 
 # ======================================================
 #                  QR-BASED TRACKING
@@ -150,85 +125,52 @@ tracks = {}
 #   "frames_seen": int,
 #   "defect_frames": int,
 #   "max_defects": int,
-#   "snapshot_frame": np.ndarray or None,
-#   "snapshot_box": (x1,y1,x2,y2) or None,
-#   "snapshot_defect_boxes": list of (x1,y1,x2,y2),
-#   "snapshot_defect_count": int   # best defect_count seen in snapshot frame
 # }
 
-def clamp(v,a,b):
-    return max(a,min(b,v))
+def clamp(v, a, b):
+    return max(a, min(b, v))
 
 def expand_box(box, img_w, img_h, expand_ratio=EXPAND_RATIO):
-    x1,y1,x2,y2 = map(int, box)
-    bw = max(1, x2-x1)
-    bh = max(1, y2-y1)
+    x1, y1, x2, y2 = map(int, box)
+    bw = max(1, x2 - x1)
+    bh = max(1, y2 - y1)
 
     pad_x = int(bw * expand_ratio)
     pad_y = int(bh * expand_ratio)
 
-    ex1 = clamp(x1-pad_x, 0, img_w-1)
-    ey1 = clamp(y1-pad_y, 0, img_h-1)
-    ex2 = clamp(x2+pad_x, 0, img_w-1)
-    ey2 = clamp(y2+pad_y, 0, img_h-1)
+    ex1 = clamp(x1 - pad_x, 0, img_w - 1)
+    ey1 = clamp(y1 - pad_y, 0, img_h - 1)
+    ex2 = clamp(x2 + pad_x, 0, img_w - 1)
+    ey2 = clamp(y2 + pad_y, 0, img_h - 1)
 
-    return ex1,ey1,ex2,ey2
+    return ex1, ey1, ex2, ey2
 
 
 def draw_box(img, box, color, label):
-    x1,y1,x2,y2 = map(int, box)
-    cv2.rectangle(img, (x1,y1), (x2,y2), color, 2)
-    cv2.putText(img, label, (x1, max(10,y1-8)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+    x1, y1, x2, y2 = map(int, box)
+    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+    cv2.putText(
+        img,
+        label,
+        (x1, max(10, y1 - 8)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        color,
+        2,
+    )
 
 def highlight_box(img, box, alpha=0.35):
-    x1,y1,x2,y2 = map(int, box)
+    x1, y1, x2, y2 = map(int, box)
     overlay = img.copy()
-    cv2.rectangle(overlay, (x1,y1), (x2,y2), (0,0,255), -1)
-    cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 0, 255), -1)
+    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
 
 def read_qr(crop):
     try:
         data, pts, _ = qr_detector.detectAndDecode(crop)
         return data.strip() if data and data.strip() else None
-    except:
+    except Exception:
         return None
-
-# ======================================================
-#              SNAPSHOT SAVE (DEFECT ONLY)
-# ======================================================
-
-def save_defect_snapshot(product_id, info, final_status):
-    """
-    Save exactly ONE annotated image per product_id (only for defect).
-    Uses snapshot_frame + snapshot_box + snapshot_defect_boxes.
-    Returns the snapshot file path.
-    """
-    frame = info.get("snapshot_frame", None)
-    box = info.get("snapshot_box", None)
-    defect_boxes = info.get("snapshot_defect_boxes", [])
-
-    if frame is None or box is None:
-        return None  # nothing to save
-
-    out_dir = Path(SNAPSHOT_DIR)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    img = frame.copy()
-
-    # carton box
-    color = (0,0,255) if final_status == "defect" else (0,255,0)
-    label = f"{product_id} {final_status}"
-    draw_box(img, box, color, label)
-
-    # defect boxes (only if defect)
-    if final_status == "defect":
-        for db in defect_boxes:
-            highlight_box(img, db)
-
-    out_path = out_dir / f"{product_id}.jpg"
-    cv2.imwrite(str(out_path), img)
-    return str(out_path)
 
 # ======================================================
 #                  PROCESS FRAME
@@ -240,17 +182,15 @@ def process_frame(frame, carton_model, defect_model, frame_index):
     h, w = frame.shape[:2]
     annotated = frame.copy()
 
+    # Detect cartons
     res_carton = carton_model(frame, conf=CARTON_CONF, verbose=False)[0]
 
+    # If no cartons: check disappeared products
     if len(res_carton.boxes) == 0:
-        # check disappeared products
         for qr, info in list(tracks.items()):
             if frame_index - info["last_seen"] > MAX_DISAPPEAR:
                 final_status = compute_final_status_for_db(info)
-                snapshot_path = None
-                if final_status == "defect":
-                    snapshot_path = save_defect_snapshot(qr, info, final_status)
-                save_or_update_product(qr, session_id, info, final_status, snapshot_path)
+                send_product_to_api(qr, session_id, info, final_status)
                 del tracks[qr]
         return annotated
 
@@ -291,26 +231,23 @@ def process_frame(frame, carton_model, defect_model, frame_index):
         # ------------------ QR ------------------
         qr = read_qr(crop)
         if qr is None:
-            # No QR: no DB, no snapshot (you can draw if you want)
+            # No QR: no API (no product_id), no tracking
+            # (You can draw generic box if you want)
             continue
 
         # ------------------ TRACK UPDATE ------------------
         if qr not in tracks:
             tracks[qr] = {
-                "box": np.array([x1,y1,x2,y2], dtype=float),
+                "box": np.array([x1, y1, x2, y2], dtype=float),
                 "first_seen": frame_index,
                 "last_seen": frame_index,
                 "frames_seen": 1,
                 "defect_frames": 1 if status_now == "defect" else 0,
                 "max_defects": defect_count,
-                "snapshot_frame": frame.copy() if defect_count > 0 else None,
-                "snapshot_box": (x1,y1,x2,y2) if defect_count > 0 else None,
-                "snapshot_defect_boxes": defect_boxes_global[:] if defect_count > 0 else [],
-                "snapshot_defect_count": defect_count if defect_count > 0 else 0
             }
         else:
             info = tracks[qr]
-            info["box"] = np.array([x1,y1,x2,y2], dtype=float)
+            info["box"] = np.array([x1, y1, x2, y2], dtype=float)
             info["last_seen"] = frame_index
             info["frames_seen"] += 1
 
@@ -319,34 +256,26 @@ def process_frame(frame, carton_model, defect_model, frame_index):
             if defect_count > info.get("max_defects", 0):
                 info["max_defects"] = defect_count
 
-            # update snapshot only if this frame has more defects than previous snapshot
-            if defect_count > 0 and defect_count > info.get("snapshot_defect_count", 0):
-                info["snapshot_frame"] = frame.copy()
-                info["snapshot_box"] = (x1,y1,x2,y2)
-                info["snapshot_defect_boxes"] = defect_boxes_global[:]
-                info["snapshot_defect_count"] = defect_count
-
-        # ------------------ DISPLAY (OPTIONAL, SIMPLE) ------------------
+        # ------------------ DISPLAY (ANNOTATION) ------------------
         info = tracks[qr]
         final_display = compute_final_status_for_db(info)
-        color = (0,0,255) if final_display == "defect" else (0,255,0)
+        color = (0, 0, 255) if final_display == "defect" else (0, 255, 0)
         draw_box(annotated, info["box"], color, f"{qr} {final_display}")
 
         if final_display == "defect":
-            for (gx1,gy1,gx2,gy2) in defect_boxes_global:
-                gx1 = max(0, min(gx1, w-1)); gy1 = max(0, min(gy1, h-1))
-                gx2 = max(0, min(gx2, w-1)); gy2 = max(0, min(gy2, h-1))
+            for (gx1, gy1, gx2, gy2) in defect_boxes_global:
+                gx1 = max(0, min(gx1, w - 1))
+                gy1 = max(0, min(gy1, h - 1))
+                gx2 = max(0, min(gx2, w - 1))
+                gy2 = max(0, min(gy2, h - 1))
                 if gx2 > gx1 and gy2 > gy1:
-                    highlight_box(annotated, (gx1,gy1,gx2,gy2))
+                    highlight_box(annotated, (gx1, gy1, gx2, gy2))
 
     # ------------------ HANDLE DISAPPEAR ------------------
     for qr, info in list(tracks.items()):
         if frame_index - info["last_seen"] > MAX_DISAPPEAR:
             final_status = compute_final_status_for_db(info)
-            snapshot_path = None
-            if final_status == "defect":
-                snapshot_path = save_defect_snapshot(qr, info, final_status)
-            save_or_update_product(qr, session_id, info, final_status, snapshot_path)
+            send_product_to_api(qr, session_id, info, final_status)
             del tracks[qr]
 
     return annotated
@@ -356,34 +285,31 @@ def process_frame(frame, carton_model, defect_model, frame_index):
 # ======================================================
 
 def main(args):
-    init_database()
-
     carton_model = YOLO(args.carton_model)
     defect_model = YOLO(args.defect_model)
 
     cap = cv2.VideoCapture(args.cam)
     frame_idx = 0
 
+    print("[INFO] Session ID:", session_id)
     print("[INFO] Press Q to exit.")
+
     while True:
-        ret,frame = cap.read()
+        ret, frame = cap.read()
         if not ret:
             break
 
         frame_idx += 1
         annotated = process_frame(frame, carton_model, defect_model, frame_idx)
 
-        cv2.imshow("Realtime QR Two-Stage (Lite + DB-focused)", annotated)
-        if cv2.waitKey(1)&0xFF == ord('q'):
+        cv2.imshow("Realtime QR Two-Stage (API Mode)", annotated)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
-    # ======= FINAL FLUSH: save all remaining tracks even if not disappeared =======
+    # ======= FINAL FLUSH: send all remaining tracks even if not disappeared =======
     for qr, info in list(tracks.items()):
         final_status = compute_final_status_for_db(info)
-        snapshot_path = None
-        if final_status == "defect":
-            snapshot_path = save_defect_snapshot(qr, info, final_status)
-        save_or_update_product(qr, session_id, info, final_status, snapshot_path)
+        send_product_to_api(qr, session_id, info, final_status)
         del tracks[qr]
 
     cap.release()
