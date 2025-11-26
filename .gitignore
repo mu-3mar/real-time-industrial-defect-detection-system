@@ -40,32 +40,18 @@ venv/
 secrets.json
 
 # ========================
-# IGNORE ALL RUNS
+# IGNORE ALL RUNS EXCEPT MODEL FILES
 # ========================
 
 **/runs/**
 
-# ========================
-# ALLOW ONLY MODEL FILES YOU WANT
-# ========================
-
-# ==== BOX YOLO ALLOWED FILES ====
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best.pt
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector.onnx
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector_int8.onnx
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_saved_model/best_float16.tflite
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_saved_model/best_float32.tflite
-
-# ==== DEFECT YOLO ALLOWED FILES ====
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best.pt
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector.onnx
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector_int8.onnx
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_saved_model/best_float16.tflite
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_saved_model/best_float32.tflite
-
+# Allow only model files inside runs
+!**/runs/**/*.pt
+!**/runs/**/*.onnx
+!**/runs/**/*.tflite
 
 # ========================
-# BLOCK ANY PRETRAINED YOLO MODELS
+# BLOCK ANY PRETRAINED YOLO MODELS OUTSIDE RUNS
 # ========================
 
 fine-tuning/combine-fine-tuning/box-YOLO/yolov8n.pt
