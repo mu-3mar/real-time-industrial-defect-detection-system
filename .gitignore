@@ -1,44 +1,74 @@
-# === Ignore raw datasets (do NOT upload data) ===
-# specific fine-tuning data folders
-fine-tuning/fine-tuning-YOLO/data/
-fine-tuning/fine-tuning-seg/data/
+# ========================
+# GLOBAL IGNORE RULES
+# ========================
 
-# any other data folders
+# Ignore all datasets
 data/
+**/data/
 datasets/
-img-tst/
-flow/outputs/
-# === Ignore runs by default, except specific files ===
-**/runs/**
+**/datasets/
 
-# Keep only specific run files
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector_int8.onnx
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector.onnx
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best.pt
+# Ignore any images / visualizations
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.webp
 
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector_int8.onnx
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector.onnx
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best.pt
-
-!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.pt
-!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.onnx
-!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.pt
-
-# === Env, caches, editors ===
-venv/
-env/
+# Ignore notebook checkpoints, pycache
 __pycache__/
-.ipynb_checkpoints/
 *.pyc
+.ipynb_checkpoints/
 
+# Ignore environments
+env/
+venv/
+
+# Ignore editor folders
 .vscode/
 .idea/
 .history/
 
-# === Large archives & secrets ===
-*.tar
+# Ignore archives
 *.zip
+*.tar
+*.gz
+
+# Ignore secrets
 .env
 secrets.json
 
+# ========================
+# IGNORE ALL RUNS
+# ========================
 
+**/runs/**
+
+# ========================
+# ALLOW ONLY MODEL FILES YOU WANT
+# ========================
+
+# ==== BOX YOLO ALLOWED FILES ====
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best.pt
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector.onnx
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector_int8.onnx
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_saved_model/best_float16.tflite
+!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_saved_model/best_float32.tflite
+
+# ==== DEFECT YOLO ALLOWED FILES ====
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best.pt
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector.onnx
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector_int8.onnx
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_saved_model/best_float16.tflite
+!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_saved_model/best_float32.tflite
+
+
+# ========================
+# BLOCK ANY PRETRAINED YOLO MODELS
+# ========================
+
+fine-tuning/combine-fine-tuning/box-YOLO/yolov8n.pt
+fine-tuning/combine-fine-tuning/box-YOLO/yolo11n.pt
+fine-tuning/combine-fine-tuning/defect-YOLO/yolov8n.pt
+fine-tuning/combine-fine-tuning/defect-YOLO/yolo11n.pt
