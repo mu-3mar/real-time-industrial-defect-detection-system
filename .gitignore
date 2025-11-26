@@ -50,3 +50,5 @@ venv/
 .env
 secrets.json
 
+# Ignore base model weights
+*.pt
