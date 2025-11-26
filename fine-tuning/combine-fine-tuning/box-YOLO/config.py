@@ -18,7 +18,7 @@ DATA_YAML = ROOT / "data" / "data.yaml"
 BASE_MODEL = "yolov8n.pt"             # path or model name
 
 # Training hyperparams
-EPOCHS = 50
+EPOCHS = 100
 BATCH_SIZE = 16
 IMG_SIZE = 640
 DEVICE = "0"   # "cpu" or GPU id like "0"

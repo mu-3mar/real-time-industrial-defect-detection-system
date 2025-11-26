@@ -1,4 +1,4 @@
-# train.py -- clean-first / resume-in-place policy (no retrain folders)
+# train.py -- keep only last.pt & best.pt, resume from last.pt
 # ========== WORKING DIRECTORY GUARD ==========
 import os
 from pathlib import Path
@@ -53,14 +53,37 @@ def _remove_run_dir(run_dir: Path):
         shutil.rmtree(run_dir)
 
 
+def _prune_epoch_files(weights_dir: Path):
+    """
+    Remove epochN.pt files but keep last.pt and best.pt.
+    This ensures resume uses last.pt only and prevents many epoch files stacking.
+    """
+    if not weights_dir.exists():
+        return
+    for f in weights_dir.glob("epoch*.pt"):
+        try:
+            f.unlink()
+        except Exception as e:
+            logger.debug("Could not delete %s: %s", f, e)
+    # also remove any other files that look like 'yolov8n_epoch_123.pt' etc but not last/best
+    for f in weights_dir.glob("*epoch*.pt"):
+        name = f.name.lower()
+        if "last" in name or "best" in name:
+            continue
+        try:
+            f.unlink()
+        except Exception:
+            pass
+
+
 def train(desired_total_epochs: Optional[int] = None,
           resume_if_exists: bool = True,
           force_clean: bool = False) -> None:
     """
-    Policy:
-      - force_clean=True : delete runs/train/NAME entirely before training (clean-first).
-      - resume_if_exists=True : attempt resume from checkpoints in runs/train/NAME.
-      - If resume fails, do a fresh run on the SAME NAME (delete old run and start fresh).
+    - Keep only last.pt & best.pt in weights/.
+    - Before resume: prune epoch*.pt so resume will use last.pt cleanly.
+    - After training: prune epoch files, leaving only last.pt & best.pt.
+    - If resume fails: delete old run and start fresh on the SAME run name.
     """
 
     # default epochs
@@ -71,13 +94,14 @@ def train(desired_total_epochs: Optional[int] = None,
     ensure_dirs(PROJECT)
 
     run_dir = PROJECT / NAME
+    weights_dir = run_dir / "weights"
 
     # if user asked to clean, remove the existing run dir entirely
     if force_clean:
         _remove_run_dir(run_dir)
 
     # ensure run dir exists (ultralytics will create as needed)
-    ensure_dirs(run_dir, run_dir / "weights")
+    ensure_dirs(run_dir, weights_dir)
 
     # inspect current run weights for resume info
     last_epoch = 0
@@ -103,10 +127,15 @@ def train(desired_total_epochs: Optional[int] = None,
         device=DEVICE,
         project=str(PROJECT),
         name=NAME,
-        exist_ok=True,   # allow writing into same folder
+        exist_ok=True,
         save=True,
-        save_period=1,   # save every epoch (helps resume)
+        save_period=1,   # save every epoch (helps resume and produces last.pt)
     )
+
+    # PREP: prune epoch files so resume reads only last.pt & best.pt
+    if weights_dir.exists():
+        logger.info("Pruning epoch files before attempting resume (keep last.pt & best.pt).")
+        _prune_epoch_files(weights_dir)
 
     # If we have partial work and resume is allowed => attempt resume
     if resume_if_exists and last_epoch > 0 and not force_clean:
@@ -114,8 +143,11 @@ def train(desired_total_epochs: Optional[int] = None,
         try:
             model.train(resume=True, **train_args)
             logger.info("Resume training call finished (check logs for progress).")
-            # copy raw metrics into run/metrics/
-            copy_raw_metrics_to_run(get_latest_run(str(PROJECT)))
+            # After training prune epoch files and copy metrics
+            run_dir_post = get_latest_run(str(PROJECT))
+            if run_dir_post:
+                _prune_epoch_files(run_dir_post / "weights")
+                copy_raw_metrics_to_run(run_dir_post)
             return
         except AssertionError as e:
             logger.warning("Resume AssertionError: %s", e)
@@ -127,14 +159,18 @@ def train(desired_total_epochs: Optional[int] = None,
     # Fallback: start fresh on the SAME run name (delete old run folder to avoid retrain folder)
     if run_dir.exists():
         _remove_run_dir(run_dir)
-    ensure_dirs(run_dir, run_dir / "weights")
+    ensure_dirs(run_dir, weights_dir)
 
     logger.info("Starting fresh training on SAME run name '%s' (epochs=%s).", NAME, desired_total_epochs)
     model.train(**train_args)
 
-    # after training copy raw metrics
-    copy_raw_metrics_to_run(get_latest_run(str(PROJECT)))
-    logger.info("Training finished for run '%s'.", NAME)
+    # After training prune epoch files and copy raw metrics
+    run_dir_post = get_latest_run(str(PROJECT))
+    if run_dir_post:
+        _prune_epoch_files(run_dir_post / "weights")
+        copy_raw_metrics_to_run(run_dir_post)
+    logger.info("Training finished for run '%s'. Remaining weights: %s", NAME,
+                [p.name for p in (run_dir_post / "weights").glob("*") if p.exists()] if run_dir_post else "none")
 
 
 if __name__ == "__main__":
