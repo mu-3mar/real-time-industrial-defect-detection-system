@@ -8,6 +8,11 @@ data/
 datasets/
 **/datasets/
 
+# Ignore all logs and outputs
+logs/
+outputs/
+runs/
+
 # Ignore any images / visualizations
 *.jpg
 *.jpeg
@@ -52,3 +57,11 @@ secrets.json
 
 # Ignore base model weights
 *.pt
+*.onnx
+*.tflite
+*.npy
+*.h5
+*.pb
+*.index
+*.data-00000-of-00001
+
