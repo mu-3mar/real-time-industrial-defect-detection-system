@@ -15,7 +15,18 @@ datasets/
 *.bmp
 *.gif
 *.webp
-
+*.yaml
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.csv
+*.tsv
+*.json
+*.parquet
+*.pdf
+*.svg
+*.eps
 # Ignore notebook checkpoints, pycache
 __pycache__/
 *.pyc
@@ -39,22 +50,3 @@ venv/
 .env
 secrets.json
 
-# ========================
-# IGNORE ALL RUNS EXCEPT MODEL FILES
-# ========================
-
-**/runs/**
-
-# Allow only model files inside runs
-!**/runs/**/*.pt
-!**/runs/**/*.onnx
-!**/runs/**/*.tflite
-
-# ========================
-# BLOCK ANY PRETRAINED YOLO MODELS OUTSIDE RUNS
-# ========================
-
-fine-tuning/combine-fine-tuning/box-YOLO/yolov8n.pt
-fine-tuning/combine-fine-tuning/box-YOLO/yolo11n.pt
-fine-tuning/combine-fine-tuning/defect-YOLO/yolov8n.pt
-fine-tuning/combine-fine-tuning/defect-YOLO/yolo11n.pt
