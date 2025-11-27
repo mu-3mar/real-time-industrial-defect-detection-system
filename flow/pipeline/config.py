@@ -10,12 +10,11 @@ class Config:
         "best_box_detector_int8.onnx"
     )
     DEFECT_MODEL: str = (
-        "fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/"
+        "fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/detect_defects/weights/"
         "best_defect_detector_int8.onnx"
     )
-
     # camera
-    CAMERA_INDEX: int = 0
+    CAMERA_INDEX: int = 1
 
     # thresholds
     CARTON_CONF: float = 0.5
