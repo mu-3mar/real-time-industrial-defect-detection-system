@@ -1,20 +1,16 @@
-# pipeline/detector.py
 from ultralytics import YOLO
 import numpy as np
 from typing import Tuple
 
+
 class Detector:
+    """YOLO model wrapper for inference on frames."""
+
     def __init__(self, model_path: str):
-        # YOLO accepts .onnx and .pt - we use the provided path
         self.model = YOLO(str(model_path))
 
     def infer(self, frame: np.ndarray, conf: float):
-        """
-        Returns: (boxes, scores, classes)
-        boxes: numpy array Nx4 with xyxy
-        scores: numpy array N
-        classes: numpy array N
-        """
+        """Infer objects on frame. Returns: (boxes, scores, classes)"""
         res = self.model(frame, conf=conf, verbose=False)[0]
         if not hasattr(res, "boxes") or len(res.boxes) == 0:
             return np.array([]), np.array([]), np.array([])

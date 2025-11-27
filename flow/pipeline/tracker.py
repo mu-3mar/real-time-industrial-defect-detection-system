@@ -1,16 +1,14 @@
-# pipeline/tracker.py
 from typing import Dict
 import numpy as np
 from .config import cfg
 from .api_client import send_product_to_api
 from .helpers import compute_final_status_for_db
 
-# in-memory QR-keyed tracks
 tracks: Dict[str, Dict] = {}
-# track fields:
-# "box", "first_seen", "last_seen", "frames_seen", "defect_frames", "max_defects"
+
 
 def create_new_track(qr: str, box: tuple, frame_index: int, status_now: str, defect_count: int):
+    """Create new track for QR code."""
     tracks[qr] = {
         "box": np.array(box, dtype=float),
         "first_seen": frame_index,
@@ -20,7 +18,9 @@ def create_new_track(qr: str, box: tuple, frame_index: int, status_now: str, def
         "max_defects": defect_count,
     }
 
+
 def update_track(qr: str, box: tuple, frame_index: int, status_now: str, defect_count: int):
+    """Update existing track."""
     info = tracks[qr]
     info["box"] = np.array(box, dtype=float)
     info["last_seen"] = frame_index
@@ -30,21 +30,18 @@ def update_track(qr: str, box: tuple, frame_index: int, status_now: str, defect_
     if defect_count > info.get("max_defects", 0):
         info["max_defects"] = defect_count
 
+
 def finalize_disappeared(frame_index: int):
-    """
-    For any track not seen for > MAX_DISAPPEAR frames -> compute final status and send to API,
-    then delete the track.
-    """
+    """Finalize and send tracks not seen for MAX_DISAPPEAR frames."""
     for qr, info in list(tracks.items()):
         if frame_index - info["last_seen"] > cfg.MAX_DISAPPEAR:
             final_status = compute_final_status_for_db(info)
             send_product_to_api(qr, info, final_status)
             del tracks[qr]
 
+
 def finalize_all_and_send():
-    """
-    Send all remaining tracks (used at program exit).
-    """
+    """Send all remaining tracks at program exit."""
     for qr, info in list(tracks.items()):
         final_status = compute_final_status_for_db(info)
         send_product_to_api(qr, info, final_status)

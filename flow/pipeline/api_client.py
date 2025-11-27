@@ -1,15 +1,11 @@
-# pipeline/api_client.py
 import requests
 from datetime import datetime
 from typing import Dict
 from .config import cfg
 
+
 def send_product_to_api(product_id: str, info: Dict, final_status: str) -> bool:
-    """
-    Send product info to the external API.
-    Fields sent:
-        product_id, session_id, status, max_defects, timestamp, productionline_id, companyId
-    """
+    """Send product detection result to backend API."""
     payload = {
         "product_id": product_id,
         "session_id": cfg.SESSION_ID,

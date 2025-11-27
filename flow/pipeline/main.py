@@ -1,4 +1,3 @@
-# pipeline/main.py
 import cv2
 import argparse
 from .config import cfg
@@ -7,14 +6,13 @@ from .utils import expand_box, read_qr, draw_box, highlight_box
 from .tracker import create_new_track, update_track, finalize_disappeared, finalize_all_and_send, tracks
 from .helpers import compute_final_status_for_db
 
+
 def process_frame(frame, carton_detector: Detector, defect_detector: Detector, frame_index: int):
+    """Process single frame: detect cartons, detect defects, track, and visualize."""
     h, w = frame.shape[:2]
     annotated = frame.copy()
 
-    # carton detection
     boxes, scores, classes = carton_detector.infer(frame, conf=cfg.CARTON_CONF)
-
-    # if no boxes: check disappeared tracks
     if boxes.size == 0:
         finalize_disappeared(frame_index)
         return annotated
@@ -29,7 +27,6 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
         if crop.size == 0:
             continue
 
-        # defect detection on crop
         dboxes, dscores, dclasses = defect_detector.infer(crop, conf=cfg.DEFECT_CONF)
         defect_count = 0
         defect_boxes_global = []
@@ -47,13 +44,10 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
 
         status_now = "defect" if defect_count > 0 else "ok"
 
-        # QR read
         qr = read_qr(crop)
         if qr is None:
-            # skip tracking/API if no QR
             continue
 
-        # update or create track
         if qr not in tracks:
             create_new_track(qr, (x1, y1, x2, y2), frame_index, status_now, defect_count)
         else:
@@ -65,9 +59,11 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
         draw_box(annotated, info["box"], color, f"{qr} {final_display}")
 
         if final_display == "defect":
-            for (gx1, gy1, gx2, gy2) in defect_boxes_global:
-                gx1 = max(0, min(gx1, w - 1)); gy1 = max(0, min(gy1, h - 1))
-                gx2 = max(0, min(gx2, w - 1)); gy2 = max(0, min(gy2, h - 1))
+            for gx1, gy1, gx2, gy2 in defect_boxes_global:
+                gx1 = max(0, min(gx1, w - 1))
+                gy1 = max(0, min(gy1, h - 1))
+                gx2 = max(0, min(gx2, w - 1))
+                gy2 = max(0, min(gy2, h - 1))
                 if gx2 > gx1 and gy2 > gy1:
                     highlight_box(annotated, (gx1, gy1, gx2, gy2))
 
@@ -75,6 +71,7 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
     return annotated
 
 def main():
+    """Run real-time QC pipeline with video capture."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--carton-model", default=cfg.CARTON_MODEL)
     parser.add_argument("--defect-model", default=cfg.DEFECT_MODEL)
@@ -98,11 +95,10 @@ def main():
         frame_idx += 1
         annotated = process_frame(frame, carton_detector, defect_detector, frame_idx)
 
-        cv2.imshow("Realtime QR Two-Stage (modular)", annotated)
+        cv2.imshow("QC Pipeline", annotated)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
-    # final flush if any tracks left
     finalize_all_and_send()
     cap.release()
     cv2.destroyAllWindows()
