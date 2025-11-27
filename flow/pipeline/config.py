@@ -13,11 +13,11 @@ class Config:
         "fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/detect_defects/weights/"
         "best_defect_detector_int8.onnx"
     )
-    CAMERA_INDEX: int = 1
+    CAMERA_INDEX: int = 0
     CARTON_CONF: float = 0.5
     DEFECT_CONF: float = 0.25
     MAX_DISAPPEAR: int = 12
-    EXPAND_RATIO: float = 0.1
+    EXPAND_RATIO: float = 0.05
     API_URL: str = "https://chainly.azurewebsites.net/api/ProductionLines/sessions"
     PRODUCTION_LINE_ID: int = 1
     COMPANY_ID: int = 90
