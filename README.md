@@ -119,9 +119,11 @@ Output annotated frame + API updates
 ```
 
 #### **config.py** - Pipeline Configuration
+
 Central configuration for the inference pipeline.
 
 **Key Parameters:**
+
 ```python
 CARTON_MODEL = "path/to/best_box_detector_int8.onnx"
 DEFECT_MODEL = "path/to/best_defect_detector_int8.onnx"
@@ -140,6 +142,7 @@ SESSION_ID = uuid.uuid4().hex  # Unique session identifier
 Encapsulates YOLO model inference.
 
 **Class: `Detector`**
+
 ```python
 class Detector:
     def __init__(self, model_path: str)
@@ -150,20 +153,24 @@ class Detector:
 ```
 
 #### **tracker.py** - Multi-Object Tracking
+
 Maintains tracking state across frames using QR code associations.
 
 **Key Functions:**
+
 - `create_new_track()` - Initializes tracking for a new QR code
 - `update_track()` - Updates existing track with new frame data
 - `finalize_disappeared()` - Handles disappeared tracks
 - `finalize_all_and_send()` - Sends final status to API
 
 #### **helpers.py** - Utility Functions
+
 ```python
 compute_final_status_for_db(track_info) -> "ok" | "defect"
 ```
 
 #### **utils.py** - Image Processing
+
 ```python
 expand_box(box, w, h, ratio) -> expanded_box
 read_qr(frame) -> qr_code_string
@@ -172,11 +179,13 @@ highlight_box(frame, box)
 ```
 
 #### **api_client.py** - Backend API Integration
+
 Handles communication with backend API for data logging.
 
 ## Installation
 
 ### Prerequisites
+
 - Python 3.8+
 - CUDA 11.8+ (for GPU support)
 - OpenCV
@@ -185,17 +194,20 @@ Handles communication with backend API for data logging.
 ### Setup Steps
 
 1. **Clone the repository:**
+
 ```bash
 git clone <repository-url>
 cd QC-SCM
 ```
 
 2. **Install dependencies:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 3. **Verify installation:**
+
 ```bash
 python -c "import torch; import cv2; import ultralytics; print('✓ All dependencies installed')"
 ```
@@ -203,6 +215,7 @@ python -c "import torch; import cv2; import ultralytics; print('✓ All dependen
 ## Configuration
 
 ### Step 1: Update Model Paths
+
 Edit `flow/pipeline/config.py` with your trained model paths:
 
 ```python
@@ -211,17 +224,20 @@ DEFECT_MODEL = "path/to/your/best_defect_detector_int8.onnx"
 ```
 
 ### Step 2: Configure Detection Thresholds
+
 ```python
 CARTON_CONF = 0.5  # Lower = more detections, higher = more confidence
 DEFECT_CONF = 0.25  # Defect detection confidence threshold
 ```
 
 ### Step 3: Set Camera Index
+
 ```python
 CAMERA_INDEX = 1  # Change to 0, 1, 2, etc. based on your setup
 ```
 
 ### Step 4: Configure API Connection
+
 ```python
 API_URL = "your-backend-api-url"
 PRODUCTION_LINE_ID = 1
@@ -229,6 +245,7 @@ COMPANY_ID = 90
 ```
 
 ### Step 5: Adjust Tracking Parameters
+
 ```python
 MAX_DISAPPEAR = 12  # Frames before track disappears
 EXPAND_RATIO = 0.1  # Region expansion for context
@@ -239,11 +256,13 @@ EXPAND_RATIO = 0.1  # Region expansion for context
 ### Running the Real-Time Pipeline
 
 **Basic usage (uses default config):**
+
 ```bash
 python -m flow.pipeline.main
 ```
 
 **With custom models:**
+
 ```bash
 python -m flow.pipeline.main \
     --carton-model path/to/carton_model.onnx \
@@ -252,6 +271,7 @@ python -m flow.pipeline.main \
 ```
 
 **Command Line Arguments:**
+
 - `--carton-model` - Path to carton detection model (default: from config)
 - `--defect-model` - Path to defect detection model (default: from config)
 - `--cam` - Camera index (default: from config)
@@ -262,18 +282,21 @@ Press `Q` to gracefully stop the pipeline.
 ### Training Models
 
 **Train box detector:**
+
 ```bash
 cd fine-tuning/combine-fine-tuning/box-YOLO
 python train.py
 ```
 
 **Train defect detector:**
+
 ```bash
 cd fine-tuning/combine-fine-tuning/defect-YOLO
 python train.py
 ```
 
 **Run full pipeline (train → export → quantize):**
+
 ```bash
 cd fine-tuning/combine-fine-tuning/box-YOLO
 python run_all.py
@@ -336,10 +359,12 @@ QC-SCM/
 9. **API Logging**: Send results to backend
 
 ### Confidence Thresholds
+
 - **CARTON_CONF = 0.5**: Detects main cartons with moderate confidence
 - **DEFECT_CONF = 0.25**: Lower threshold for sensitive defect detection
 
 ### Tracking Strategy
+
 - Uses QR codes as unique identifiers
 - Maintains track state across frames
 - Removes tracks after `MAX_DISAPPEAR` frames of no detection
@@ -348,6 +373,7 @@ QC-SCM/
 ### Output Format
 
 The system outputs:
+
 - **Annotated video frames** with bounding boxes and labels
 - **Status indicators**: Green (OK), Red (Defect)
 - **API POST requests** with:
@@ -360,6 +386,7 @@ The system outputs:
 ## Model Export & Quantization
 
 ### Export to ONNX
+
 ```bash
 cd fine-tuning/combine-fine-tuning/box-YOLO
 python export_onnx.py
@@ -367,6 +394,7 @@ python export_onnx.py
 ```
 
 ### INT8 Quantization
+
 ```bash
 python quantize_onnx.py
 # Generates: best_box_detector_int8.onnx
@@ -374,6 +402,7 @@ python quantize_onnx.py
 ```
 
 ### Export to TensorFlow Lite
+
 ```bash
 python export_tflite.py
 # Generates: best_box_detector.tflite
@@ -381,6 +410,7 @@ python export_tflite.py
 ```
 
 ### Model Sizes (Approximate)
+
 - **PyTorch (.pt)**: 11 MB
 - **ONNX (.onnx)**: 11 MB
 - **ONNX INT8 (.onnx)**: 3 MB ⭐ Recommended for production
@@ -389,6 +419,7 @@ python export_tflite.py
 ## Dependencies
 
 Key packages (see `requirements.txt`):
+
 - `torch==2.7.1+cu118` - Deep learning framework
 - `ultralytics==8.3.229` - YOLO implementation
 - `opencv-python==4.12.0` - Computer vision
