@@ -1,42 +1,67 @@
-# === Ignore raw datasets (do NOT upload data) ===
-# specific fine-tuning data folders
-fine-tuning/fine-tuning-YOLO/data/
-fine-tuning/fine-tuning-seg/data/
+# ========================
+# GLOBAL IGNORE RULES
+# ========================
 
-# any other data folders
+# Ignore all datasets
 data/
+**/data/
 datasets/
-img-tst/
-flow/outputs/
-# === Ignore runs by default, except specific files ===
-**/runs/**
+**/datasets/
 
-# Keep only specific run files
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector_int8.onnx
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best_box_detector.onnx
-!fine-tuning/combine-fine-tuning/box-YOLO/runs/train/detect_boxs/weights/best.pt
+# Ignore all logs and outputs
+logs/
+outputs/
+runs/
 
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector_int8.onnx
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best_defect_detector.onnx
-!fine-tuning/combine-fine-tuning/defect-YOLO/runs/train/defect/weights/best.pt
-
-!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.pt
-!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.onnx
-!fine-tuning/fine-tuning-YOlO-old/runs/train/train/weights/best.pt
-
-# === Env, caches, editors ===
-venv/
-env/
+# Ignore any images / visualizations
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.webp
+*.yaml
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.csv
+*.tsv
+*.json
+*.parquet
+*.pdf
+*.svg
+*.eps
+# Ignore notebook checkpoints, pycache
 __pycache__/
-.ipynb_checkpoints/
 *.pyc
+.ipynb_checkpoints/
 
+# Ignore environments
+env/
+venv/
+
+# Ignore editor folders
 .vscode/
 .idea/
 .history/
 
-# === Large archives & secrets ===
-*.tar
+# Ignore archives
 *.zip
+*.tar
+*.gz
+
+# Ignore secrets
 .env
 secrets.json
+
+# Ignore base model weights
+*.pt
+*.onnx
+*.tflite
+*.npy
+*.h5
+*.pb
+*.index
+*.data-00000-of-00001
+
