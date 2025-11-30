@@ -14,8 +14,8 @@ class Config:
         "best_defect_detector_int8.onnx"
     )
     CAMERA_INDEX: int = 0
-    CARTON_CONF: float = 0.5
-    DEFECT_CONF: float = 0.25
+    CARTON_CONF: float = 0.85
+    DEFECT_CONF: float = 0.3
     MAX_DISAPPEAR: int = 12
     EXPAND_RATIO: float = 0.05
     API_URL: str = "https://chainly.azurewebsites.net/api/ProductionLines/sessions"

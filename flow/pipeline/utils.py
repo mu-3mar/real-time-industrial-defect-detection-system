@@ -46,3 +46,52 @@ def read_qr(crop: np.ndarray) -> str | None:
         return data.strip() if data and data.strip() else None
     except Exception:
         return None
+
+
+def highlight_defect_circle(img: np.ndarray, box: Tuple[int, int, int, int], limit_box: Tuple[int, int, int, int] = None, alpha: float = 0.4) -> None:
+    """Highlight region with a red circle overlay, clipped to limit_box."""
+    x1, y1, x2, y2 = map(int, box)
+    cx = (x1 + x2) // 2
+    cy = (y1 + y2) // 2
+    w = x2 - x1
+    h = y2 - y1
+    radius = max(w, h) // 2
+
+    # Define the clipping area
+    lx1, ly1, lx2, ly2 = map(int, limit_box) if limit_box else (0, 0, img.shape[1], img.shape[0])
+    lx1 = max(0, lx1)
+    ly1 = max(0, ly1)
+    lx2 = min(img.shape[1], lx2)
+    ly2 = min(img.shape[0], ly2)
+
+    if lx2 <= lx1 or ly2 <= ly1:
+        return
+
+    # Create masks
+    # 1. Circle mask
+    circle_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.circle(circle_mask, (cx, cy), radius, 255, -1)
+
+    # 2. Limit mask (rectangle)
+    rect_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.rectangle(rect_mask, (lx1, ly1), (lx2, ly2), 255, -1)
+
+    # 3. Intersection
+    combined_mask = cv2.bitwise_and(circle_mask, rect_mask)
+
+    # Apply Red Overlay
+    indices = np.where(combined_mask > 0)
+    if len(indices[0]) > 0:
+        roi = img[indices]
+        red = np.array([0, 0, 255], dtype=np.float32)
+        blended = roi.astype(np.float32) * (1 - alpha) + red * alpha
+        img[indices] = blended.astype(np.uint8)
+
+    # Draw Outline (clipped)
+    outline_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.circle(outline_mask, (cx, cy), radius, 255, 2)
+    combined_outline_mask = cv2.bitwise_and(outline_mask, rect_mask)
+    
+    outline_indices = np.where(combined_outline_mask > 0)
+    if len(outline_indices[0]) > 0:
+        img[outline_indices] = (255, 255, 255)

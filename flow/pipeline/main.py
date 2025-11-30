@@ -2,7 +2,7 @@ import cv2
 import argparse
 from .config import cfg
 from .detector import Detector
-from .utils import expand_box, read_qr, draw_box, highlight_box
+from .utils import expand_box, read_qr, draw_box, highlight_box, highlight_defect_circle
 from .tracker import create_new_track, update_track, finalize_disappeared, finalize_all_and_send, tracks
 from .helpers import compute_final_status_for_db
 
@@ -46,6 +46,19 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
 
         qr = read_qr(crop)
         if qr is None:
+            # Visualize "No QR" case without tracking/API
+            status_display = "defect" if defect_count > 0 else "ok"
+            color = (0, 0, 255) if status_display == "defect" else (0, 255, 0)
+            draw_box(annotated, (x1, y1, x2, y2), color, "No QR")
+
+            if status_display == "defect":
+                for gx1, gy1, gx2, gy2 in defect_boxes_global:
+                    gx1 = max(0, min(gx1, w - 1))
+                    gy1 = max(0, min(gy1, h - 1))
+                    gx2 = max(0, min(gx2, w - 1))
+                    gy2 = max(0, min(gy2, h - 1))
+                    if gx2 > gx1 and gy2 > gy1:
+                        highlight_defect_circle(annotated, (gx1, gy1, gx2, gy2), limit_box=(x1, y1, x2, y2))
             continue
 
         if qr not in tracks:
@@ -65,7 +78,7 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
                 gx2 = max(0, min(gx2, w - 1))
                 gy2 = max(0, min(gy2, h - 1))
                 if gx2 > gx1 and gy2 > gy1:
-                    highlight_box(annotated, (gx1, gy1, gx2, gy2))
+                    highlight_defect_circle(annotated, (gx1, gy1, gx2, gy2), limit_box=(x1, y1, x2, y2))
 
     finalize_disappeared(frame_index)
     return annotated
