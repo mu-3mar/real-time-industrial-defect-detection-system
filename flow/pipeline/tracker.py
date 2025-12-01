@@ -20,9 +20,16 @@ def create_new_track(qr: str, box: tuple, frame_index: int, status_now: str, def
 
 
 def update_track(qr: str, box: tuple, frame_index: int, status_now: str, defect_count: int):
-    """Update existing track."""
+    """Update existing track with smoothing."""
     info = tracks[qr]
-    info["box"] = np.array(box, dtype=float)
+    
+    # Exponential Moving Average for box smoothing
+    current_box = np.array(box, dtype=float)
+    prev_box = info["box"]
+    alpha = cfg.SMOOTHING_ALPHA
+    smoothed_box = prev_box * (1 - alpha) + current_box * alpha
+    info["box"] = smoothed_box
+    
     info["last_seen"] = frame_index
     info["frames_seen"] += 1
     if status_now == "defect":

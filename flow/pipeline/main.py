@@ -78,7 +78,9 @@ def process_frame(frame, carton_detector: Detector, defect_detector: Detector, f
                 gx2 = max(0, min(gx2, w - 1))
                 gy2 = max(0, min(gy2, h - 1))
                 if gx2 > gx1 and gy2 > gy1:
-                    highlight_defect_circle(annotated, (gx1, gy1, gx2, gy2), limit_box=(x1, y1, x2, y2))
+                    # Use smoothed box (info["box"]) for clipping to reduce jitter
+                    sx1, sy1, sx2, sy2 = map(int, info["box"])
+                    highlight_defect_circle(annotated, (gx1, gy1, gx2, gy2), limit_box=(sx1, sy1, sx2, sy2))
 
     finalize_disappeared(frame_index)
     return annotated

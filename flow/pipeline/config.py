@@ -15,7 +15,8 @@ class Config:
     )
     CAMERA_INDEX: int = 0
     CARTON_CONF: float = 0.85
-    DEFECT_CONF: float = 0.3
+    DEFECT_CONF: float = 0.6
+    SMOOTHING_ALPHA: float = 0.1
     MAX_DISAPPEAR: int = 12
     EXPAND_RATIO: float = 0.05
     API_URL: str = "https://chainly.azurewebsites.net/api/ProductionLines/sessions"
