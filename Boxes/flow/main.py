@@ -1,5 +1,6 @@
 import cv2
 import yaml
+import time
 from pathlib import Path
 from datetime import datetime
 from collections import deque, defaultdict
@@ -19,13 +20,16 @@ ROI_CENTER_OFFSET = 420
 LEFT_X = INFO_WIDTH + ROI_CENTER_OFFSET - ROI_WIDTH // 2
 RIGHT_X = INFO_WIDTH + ROI_CENTER_OFFSET + ROI_WIDTH // 2
 
-WINDOW_NAME = "Bottle Inspection System"
+WINDOW_NAME = "Box Inspection System"
 
 # ================== STABILITY ==================
 MIN_FRAMES = 3          # frames to consider "entered"
 MAX_MISSED = 5          # frames to consider "exited"
 VOTE_WINDOW = 7         # temporal smoothing window
 VOTE_THRESHOLD = 4      # >= => DEFECT
+
+# Optimization
+SKIP_DEFECT_FRAMES = 2  # Run defect detector every 3rd frame (0, 3, 6...)
 
 # ================== VIDEO ==================
 cap = cv2.VideoCapture(str_cfg["source"])
@@ -49,6 +53,7 @@ defect_detector = YOLODetector(
 
 # ================== STATE ==================
 box_histories = defaultdict(lambda: deque(maxlen=VOTE_WINDOW))
+last_defect_results = {} # Cache for optimization: box_id -> bool
 
 frames_inside = 0
 missed_frames = 0
@@ -60,6 +65,12 @@ total_count = 0
 defect_count = 0
 ok_count = 0
 
+# Performance
+frame_count = 0
+start_time = time.time()
+last_time = time.time()
+fps = 0
+
 # ================== WINDOW ==================
 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
@@ -68,6 +79,16 @@ while True:
     ret, frame = cap.read()
     if not ret:
         break
+    
+    frame_count += 1
+    
+    # FPS Calculation
+    if frame_count % 10 == 0:
+        current_time = time.time()
+        elapsed = current_time - last_time
+        if elapsed > 0:
+            fps = 10 / elapsed
+        last_time = current_time
 
     h, w, _ = frame.shape
 
@@ -96,17 +117,29 @@ while True:
                 x1 + (LEFT_X - INFO_WIDTH):x2 + (LEFT_X - INFO_WIDTH)
             ]
 
+            # ---------- DEFECT DETECTION (OPTIMIZED) ----------
+            box_id = (x1 // 20, y1 // 20)  # spatially stable ID
+            
             hole_detected = False
-            if crop.size > 0:
-                d_res = defect_detector.detect(crop)
-                if d_res.boxes is not None:
-                    for cls in d_res.boxes.cls.cpu().numpy():
-                        if int(cls) == 0:  # Hole ONLY
-                            hole_detected = True
-                            break
+            
+            # Determine if we should run defect detection
+            # Run if: 1. New box (not in cache) OR 2. Interval met
+            should_run = (box_id not in last_defect_results) or (frame_count % (SKIP_DEFECT_FRAMES + 1) == 0)
+            
+            if should_run:
+                if crop.size > 0:
+                    d_res = defect_detector.detect(crop)
+                    if d_res.boxes is not None:
+                        for cls in d_res.boxes.cls.cpu().numpy():
+                            if int(cls) == 0:  # Hole ONLY
+                                hole_detected = True
+                                break
+                last_defect_results[box_id] = hole_detected
+            else:
+                # Use cached result
+                hole_detected = last_defect_results.get(box_id, False)
 
             # ---------- TEMPORAL VOTING ----------
-            box_id = (x1 // 20, y1 // 20)  # spatially stable ID
             box_histories[box_id].append(hole_detected)
 
             votes = sum(box_histories[box_id])
@@ -146,12 +179,16 @@ while True:
                 defect_count += 1
             else:
                 ok_count += 1
+            
+            # Log output every ~ second (per box exit technically, but close enough for logic)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Box Processed: {final_decision} | Total: {total_count} (D:{defect_count} OK:{ok_count})")
 
             # reset state
             inside = False
             frames_inside = 0
             final_decision = None
             box_histories.clear()
+            last_defect_results.clear() # Clear cache on exit (simplified)
 
     # ================== ROI LINES ==================
     cv2.line(canvas, (LEFT_X, 0), (LEFT_X, h), (0, 0, 0), 2)
@@ -180,6 +217,13 @@ while True:
                 0.8,
                 (0, 0, 0),
                 2)
+    
+    # FPS
+    py += 50
+    cv2.line(canvas, (px, py), (INFO_WIDTH - 30, py), (180, 180, 180), 1)
+    py += 30
+    cv2.putText(canvas, f"FPS: {fps:.1f}", (px, py),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
 
     # ================== SHOW ==================
     cv2.imshow(WINDOW_NAME, canvas)
