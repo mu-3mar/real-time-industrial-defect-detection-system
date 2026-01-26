@@ -1,4 +1,16 @@
 import cv2
+import os
+
+# Suppress Logs
+os.environ["QT_LOGGING_RULES"] = "*.warning=false"
+os.environ["ORT_LOGGING_LEVEL"] = "3"
+
+try:
+    import onnxruntime as ort
+    ort.set_default_logger_severity(3)
+except ImportError:
+    pass
+
 import yaml
 import time
 from pathlib import Path

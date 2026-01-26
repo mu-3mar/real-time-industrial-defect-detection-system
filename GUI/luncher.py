@@ -1,4 +1,10 @@
 import sys
+import os
+
+# Suppress Logs
+os.environ["QT_LOGGING_RULES"] = "*.warning=false"
+os.environ["ORT_LOGGING_LEVEL"] = "3"
+
 import subprocess
 from pathlib import Path
 from PySide6.QtWidgets import (
