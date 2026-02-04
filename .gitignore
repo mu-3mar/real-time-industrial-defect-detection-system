@@ -58,3 +58,4 @@ secrets.json
 *.h5
 *.pb
 *.index
+*.data-00000-of-00001
