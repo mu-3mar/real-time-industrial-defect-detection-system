@@ -1,0 +1,4 @@
+model_path: Boxes/flow/models/best_box_detector_int8.onnx
+conf_thres: 0.85
+iou_thres: 0.5
+device: 0

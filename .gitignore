@@ -1,6 +1,8 @@
 # ========================
 # GLOBAL IGNORE RULES
 # ========================
+# Ignore bottles 
+Bottles/
 
 # Ignore all datasets
 data/
@@ -11,21 +13,17 @@ datasets/
 # Ignore all logs and outputs
 logs/
 outputs/
-runs/
+
 
 # Ignore any images / visualizations
-*.jpg
 *.jpeg
-*.png
 *.bmp
 *.gif
 *.webp
-*.yaml
 *.mp4
 *.avi
 *.mov
 *.mkv
-*.csv
 *.tsv
 *.json
 *.parquet
