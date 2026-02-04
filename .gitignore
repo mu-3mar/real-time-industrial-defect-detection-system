@@ -55,7 +55,7 @@ secrets.json
 # Ignore base model weights
 *.tflite
 *.npy
-*.h5
+*.h4
 *.pb
 *.index
 *.data-00000-of-00001
