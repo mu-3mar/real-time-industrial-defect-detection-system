@@ -16,7 +16,7 @@ A high-performance, AI-driven quality inspection system for production lines usi
 
 ---
 
-## � Overview
+##  Overview
 
 This system provides automated quality control for box inspection on production lines. It uses a two-stage detection approach:
 
