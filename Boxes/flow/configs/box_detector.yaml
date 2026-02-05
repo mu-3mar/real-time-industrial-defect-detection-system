@@ -1,4 +1,4 @@
-model_path: Boxes/flow/models/best_box_detector_int8.onnx
-conf_thres: 0.85
-iou_thres: 0.5
+model_path: Boxes/trainig/box-YOLO/models/exported/best.pt
+conf_thres: 0.75
+iou_thres: 0.6
 device: 0

@@ -17,19 +17,58 @@ class Visualizer:
         cv2.line(canvas, (self.roi_right, 0), (self.roi_right, h), (0, 0, 0), 2)
 
     def draw_box(self, canvas, box, label, color):
-        """Draws a bounding box and label."""
+        """Draws a bounding box (corners only) and label."""
         x1, y1, x2, y2 = map(int, box)
-        # Shift x coordinates because we are drawing on the full canvas (Info + Frame)
-        # The detection passed in is physically on the ROI, but we map it to canvas if needed.
-        # Actually, in the original code, x1 is relative to the ROI? 
-        # No, in original: `x1, y1, x2, y2 = map(int, box)` comes from `box_detector.detect(roi)`.
-        # So x1 is 0-indexed relative to ROI.
         
         abs_x1 = x1 + self.roi_left
         abs_x2 = x2 + self.roi_left
         
-        cv2.rectangle(canvas, (abs_x1, y1), (abs_x2, y2), color, 2)
+        # Draw Fancy Corners
+        line_len = min(abs_x2 - abs_x1, y2 - y1) // 4
+        thickness = 2
+        
+        # Top-Left
+        cv2.line(canvas, (abs_x1, y1), (abs_x1 + line_len, y1), color, thickness)
+        cv2.line(canvas, (abs_x1, y1), (abs_x1, y1 + line_len), color, thickness)
+        
+        # Top-Right
+        cv2.line(canvas, (abs_x2, y1), (abs_x2 - line_len, y1), color, thickness)
+        cv2.line(canvas, (abs_x2, y1), (abs_x2, y1 + line_len), color, thickness)
+        
+        # Bottom-Left
+        cv2.line(canvas, (abs_x1, y2), (abs_x1 + line_len, y2), color, thickness)
+        cv2.line(canvas, (abs_x1, y2), (abs_x1, y2 - line_len), color, thickness)
+        
+        # Bottom-Right
+        cv2.line(canvas, (abs_x2, y2), (abs_x2 - line_len, y2), color, thickness)
+        cv2.line(canvas, (abs_x2, y2), (abs_x2, y2 - line_len), color, thickness)
+
         cv2.putText(canvas, label, (abs_x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+    def draw_defects(self, canvas, box_origin, defects):
+        """Draws specific defect areas."""
+        box_x1, box_y1 = box_origin
+        
+        # box_x1 is relative to ROI, so we add ROI offset
+        base_x = box_x1 + self.roi_left
+        base_y = box_y1
+        
+        for d_box in defects:
+            dx1, dy1, dx2, dy2 = map(int, d_box)
+            
+            abs_dx1 = base_x + dx1
+            abs_dy1 = base_y + dy1
+            abs_dx2 = base_x + dx2
+            abs_dy2 = base_y + dy2
+            
+            # Semi-transparent red fill for defect
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (abs_dx1, abs_dy1), (abs_dx2, abs_dy2), (0, 0, 255), -1)
+            alpha = 0.5
+            cv2.addWeighted(overlay, alpha, canvas, 1 - alpha, 0, canvas)
+            
+            # Solid border
+            cv2.rectangle(canvas, (abs_dx1, abs_dy1), (abs_dx2, abs_dy2), (0, 0, 255), 1)
 
     def draw_stats(self, canvas, state, fps):
         """Draws the side panel stats."""

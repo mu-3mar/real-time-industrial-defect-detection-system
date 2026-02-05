@@ -1,5 +1,6 @@
 import cv2
 import time
+from datetime import datetime
 import numpy as np
 from core.state import AppState
 from core.stream import CamStream
@@ -104,7 +105,7 @@ class Pipeline:
                         # Optimization & Logic
                         box_id = (x1 // 20, y1 // 20) # Simple spatial ID
                         
-                        is_defect = self.check_defect(crop, box_id)
+                        is_defect, defect_boxes = self.check_defect(crop, box_id)
                         
                         # Update State
                         self.state.update_history(box_id, is_defect)
@@ -115,6 +116,11 @@ class Pipeline:
                         # Draw
                         # We pass the box relative to ROI, Visualizer adds offset
                         self.visualizer.draw_box(canvas, box, label, color)
+                        
+                        # Draw Specific Defects
+                        if defect_boxes:
+                            # Pass box origin (x1, y1) to help offset defect coords
+                            self.visualizer.draw_defects(canvas, (x1, y1), defect_boxes)
 
                 # --- State Update (Entry/Exit) ---
                 just_exited = self.state.process_entry_exit(detected)
@@ -132,26 +138,40 @@ class Pipeline:
     def check_defect(self, crop, box_id):
         """
         Determines if a crop has a defect. 
+        Returns (is_defect_bool, list_of_defect_boxes).
         Uses caching and frame skipping optimization.
         """
         # Determine if we should run defect detection
         should_run = (box_id not in self.state.last_defect_results) or (self.frame_count % (self.SKIP_DEFECT_FRAMES + 1) == 0)
         
         hole_detected = False
+        defect_boxes = []
         
         if should_run:
             if crop.size > 0:
                 d_res = self.defect_detector.detect(crop)
                 if d_res.boxes is not None:
-                    for cls in d_res.boxes.cls.cpu().numpy():
-                        if int(cls) == 0:  # Assumes 0 is Hole
+                    # Filter for defect class (assuming 0 is Hole/Defect)
+                    # We might want to pass all defects found
+                    defects = d_res.boxes.data.cpu().numpy() # x1, y1, x2, y2, conf, cls
+                    for d in defects:
+                        cls = int(d[5])
+                        if cls == 0:
                             hole_detected = True
-                            break
-            self.state.last_defect_results[box_id] = hole_detected
+                            defect_boxes.append(d[:4])
+                            
+            self.state.last_defect_results[box_id] = (hole_detected, defect_boxes)
         else:
-            hole_detected = self.state.last_defect_results.get(box_id, False)
+            # Retrieve from cache
+            result = self.state.last_defect_results.get(box_id, (False, []))
+            # Handle backward compatibility if cache was old structure (unlikely in runtime but safe)
+            if isinstance(result, tuple):
+                hole_detected, defect_boxes = result
+            else:
+                hole_detected = result
+                defect_boxes = []
             
-        return hole_detected
+        return hole_detected, defect_boxes
 
     def update_fps(self):
         if self.frame_count % 10 == 0:
