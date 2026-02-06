@@ -1,7 +1,7 @@
 import os
 import yaml
+import uvicorn
 from pathlib import Path
-from core.pipeline import Pipeline
 
 # Suppress Logs
 os.environ["QT_LOGGING_RULES"] = "*.warning=false"
@@ -13,35 +13,33 @@ try:
 except ImportError:
     pass
 
-def load_config(path):
-    if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
-    with open(path) as f:
-        return yaml.safe_load(f)
-
 def main():
+    """Launch FastAPI server."""
     BASE = Path(__file__).resolve().parent
     
-    try:
-        box_cfg = load_config(BASE / "configs/box_detector.yaml")
-        defect_cfg = load_config(BASE / "configs/defect_detector.yaml")
-        str_cfg = load_config(BASE / "configs/stream.yaml")
-        
-        # Inject constants that were previously hardcoded if missing from yaml
-        if "stability" not in defect_cfg:
-            defect_cfg["stability"] = {
-                "min_frames": 3,
-                "max_missed": 5,
-                "vote_window": 7,
-                "vote_threshold": 4
-            }
-            
-        app = Pipeline(box_cfg, defect_cfg, str_cfg)
-        app.run()
-        
-    except Exception as e:
-        print(f"Error starting application: {e}")
-        raise e
+    # Load API server config
+    config_path = BASE / "configs/api_server.yaml"
+    if config_path.exists():
+        with open(config_path) as f:
+            api_cfg = yaml.safe_load(f)
+    else:
+        # Default config
+        api_cfg = {
+            "host": "0.0.0.0",
+            "port": 8000,
+            "log_level": "info"
+        }
+    
+    print(f"Starting QC-SCM Detection Service on {api_cfg['host']}:{api_cfg['port']}")
+    
+    # Run uvicorn server
+    uvicorn.run(
+        "api_server:app",
+        host=api_cfg["host"],
+        port=api_cfg["port"],
+        log_level=api_cfg["log_level"],
+        reload=False
+    )
 
 if __name__ == "__main__":
     main()

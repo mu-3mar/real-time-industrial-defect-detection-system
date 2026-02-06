@@ -40,9 +40,10 @@ class AppState:
     def process_entry_exit(self, detected):
         """
         Updates internal state based on whether a box was detected this frame.
-        Returns True if a box JUST exited and was counted.
+        Returns (just_exited: bool, final_decision: str or None)
         """
         just_exited = False
+        decision = None
 
         if detected:
             self.frames_inside += 1
@@ -52,11 +53,12 @@ class AppState:
         else:
             self.missed_frames += 1
             if self.missed_frames > self.max_missed and self.inside:
-                # Box Exited
+                # Box Exited - capture decision BEFORE reset
+                decision = self.final_decision
                 self.frame_exit()
                 just_exited = True
         
-        return just_exited
+        return just_exited, decision
 
     def frame_exit(self):
         """Handle exit logic: increment counters, reset state."""

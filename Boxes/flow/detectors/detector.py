@@ -2,8 +2,17 @@ from ultralytics import YOLO
 import logging
 
 class Detector:
-    def __init__(self, model_path, conf, iou, device):
-        self.model = YOLO(model_path, task='detect')
+    def __init__(self, model, conf, iou, device):
+        """
+        Initialize detector with pre-loaded model.
+        
+        Args:
+            model: Pre-loaded YOLO model instance
+            conf: Confidence threshold
+            iou: IoU threshold
+            device: Device to run inference on
+        """
+        self.model = model
         self.conf = conf
         self.iou = iou
         self.device = device

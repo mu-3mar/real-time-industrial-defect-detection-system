@@ -69,7 +69,10 @@ dependencies = [
     "typing_extensions==4.15.0",
     "ultralytics==8.4.7",
     "ultralytics-thop==2.0.18",
-    "urllib3==2.6.3"
+    "urllib3==2.6.3",
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.6"
 ]
 
 [build-system]

@@ -2,14 +2,37 @@ import cv2
 import time
 from datetime import datetime
 import numpy as np
+import threading
+from typing import Optional, Callable
 from core.state import AppState
 from core.stream import CamStream
+from core.model_loader import ModelLoader
 from detectors.detector import Detector
 from utils.visualizer import Visualizer
 from utils.geometry import Geometry
 
 class Pipeline:
-    def __init__(self, box_cfg, defect_cfg, stream_cfg):
+    def __init__(
+        self, 
+        box_cfg, 
+        defect_cfg, 
+        stream_cfg,
+        headless: bool = False,
+        on_result_callback: Optional[Callable[[bool], None]] = None
+    ):
+        """
+        Initialize detection pipeline.
+        
+        Args:
+            box_cfg: Box detector configuration
+            defect_cfg: Defect detector configuration
+            stream_cfg: Stream configuration
+            headless: If True, skip all GUI operations
+            on_result_callback: Optional callback invoked when box exits with decision
+        """
+        self.headless = headless
+        self.on_result_callback = on_result_callback
+        
         # 1. Setup Stream
         self.stream = CamStream(
             stream_cfg["source"], 
@@ -17,16 +40,18 @@ class Pipeline:
             stream_cfg["height"]
         )
         
-        # 2. Setup Detectors
+        # 2. Setup Detectors with pre-loaded models
+        model_loader = ModelLoader.get_instance()
+        
         self.box_detector = Detector(
-            box_cfg["model_path"],
+            model_loader.get_box_model(),
             box_cfg["conf_thres"],
             box_cfg["iou_thres"],
             box_cfg["device"]
         )
         
         self.defect_detector = Detector(
-            defect_cfg["model_path"],
+            model_loader.get_defect_model(),
             defect_cfg["conf_thres"],
             defect_cfg["iou_thres"],
             defect_cfg["device"]
@@ -35,20 +60,29 @@ class Pipeline:
         # 3. Setup State
         self.state = AppState(defect_cfg.get("stability", {}))
         
-        # 4. Setup Visualizer
-        # Constants from original code
-        INFO_WIDTH = 300
-        ROI_WIDTH = 400
-        ROI_CENTER_OFFSET = 420
-        self.LEFT_X = INFO_WIDTH + ROI_CENTER_OFFSET - ROI_WIDTH // 2
-        self.RIGHT_X = INFO_WIDTH + ROI_CENTER_OFFSET + ROI_WIDTH // 2
-        
-        self.visualizer = Visualizer(
-            stream_cfg["width"], 
-            stream_cfg["height"], 
-            INFO_WIDTH, 
-            ROI_WIDTH
-        )
+        # 4. Setup Visualizer (only if not headless)
+        if not self.headless:
+            # Constants from original code
+            INFO_WIDTH = 300
+            ROI_WIDTH = 400
+            ROI_CENTER_OFFSET = 420
+            self.LEFT_X = INFO_WIDTH + ROI_CENTER_OFFSET - ROI_WIDTH // 2
+            self.RIGHT_X = INFO_WIDTH + ROI_CENTER_OFFSET + ROI_WIDTH // 2
+            
+            self.visualizer = Visualizer(
+                stream_cfg["width"], 
+                stream_cfg["height"], 
+                INFO_WIDTH, 
+                ROI_WIDTH
+            )
+        else:
+            # Headless mode - still need ROI boundaries
+            INFO_WIDTH = 300
+            ROI_WIDTH = 400
+            ROI_CENTER_OFFSET = 420
+            self.LEFT_X = INFO_WIDTH + ROI_CENTER_OFFSET - ROI_WIDTH // 2
+            self.RIGHT_X = INFO_WIDTH + ROI_CENTER_OFFSET + ROI_WIDTH // 2
+            self.visualizer = None
         
         # Optimization
         self.SKIP_DEFECT_FRAMES = 2
@@ -58,11 +92,22 @@ class Pipeline:
         self.last_time = time.time()
         self.fps = 0
 
-    def run(self):
-        cv2.namedWindow("Box Inspection System", cv2.WINDOW_NORMAL)
+    def run(self, stop_event: Optional[threading.Event] = None):
+        """
+        Run detection pipeline.
+        
+        Args:
+            stop_event: Optional threading event to signal stop (for headless mode)
+        """
+        if not self.headless:
+            cv2.namedWindow("Box Inspection System", cv2.WINDOW_NORMAL)
         
         try:
             while True:
+                # Check stop signal (for headless mode)
+                if stop_event and stop_event.is_set():
+                    break
+                
                 ret, frame = self.stream.read()
                 if not ret:
                     break
@@ -72,17 +117,22 @@ class Pipeline:
                 
                 h, w = frame.shape[:2]
                 
-                # Canvas Setup
-                canvas = cv2.copyMakeBorder(
-                    frame, 0, 0, self.visualizer.info_width, 0,
-                    cv2.BORDER_CONSTANT, value=(235, 235, 235)
-                )
-                
-                self.visualizer.draw_layout(canvas)
-                self.visualizer.draw_stats(canvas, self.state, self.fps)
+                # Canvas Setup (only if not headless)
+                if not self.headless:
+                    canvas = cv2.copyMakeBorder(
+                        frame, 0, 0, self.visualizer.info_width, 0,
+                        cv2.BORDER_CONSTANT, value=(235, 235, 235)
+                    )
+                    
+                    self.visualizer.draw_layout(canvas)
+                    self.visualizer.draw_stats(canvas, self.state, self.fps)
+                    
+                    roi_offset = self.visualizer.info_width
+                else:
+                    roi_offset = 0
                 
                 # ROI Processing
-                roi = frame[:, self.LEFT_X - self.visualizer.info_width : self.RIGHT_X - self.visualizer.info_width]
+                roi = frame[:, self.LEFT_X - roi_offset : self.RIGHT_X - roi_offset]
                 
                 # --- STAGE 1: Box Detection ---
                 box_result = self.box_detector.detect(roi)
@@ -95,10 +145,10 @@ class Pipeline:
                         # --- STAGE 2: Defect Detection ---
                         # Crop from original frame
                         # Note: box is relative to ROI. 
-                        # x1 relative to ROI -> x1 + (LEFT_X - INFO_WIDTH) relative to frame
+                        # x1 relative to ROI -> x1 + (LEFT_X - roi_offset) relative to frame
                         x1, y1, x2, y2 = map(int, box)
-                        frame_x1 = x1 + (self.LEFT_X - self.visualizer.info_width)
-                        frame_x2 = x2 + (self.LEFT_X - self.visualizer.info_width)
+                        frame_x1 = x1 + (self.LEFT_X - roi_offset)
+                        frame_x2 = x2 + (self.LEFT_X - roi_offset)
                         
                         crop = frame[y1:y2, frame_x1:frame_x2]
                         
@@ -113,27 +163,35 @@ class Pipeline:
                         # Get Status for UI
                         label, color, final_code = self.state.get_status(box_id)
                         
-                        # Draw
-                        # We pass the box relative to ROI, Visualizer adds offset
-                        self.visualizer.draw_box(canvas, box, label, color)
-                        
-                        # Draw Specific Defects
-                        if defect_boxes:
-                            # Pass box origin (x1, y1) to help offset defect coords
-                            self.visualizer.draw_defects(canvas, (x1, y1), defect_boxes)
+                        # Draw (only if not headless)
+                        if not self.headless:
+                            # We pass the box relative to ROI, Visualizer adds offset
+                            self.visualizer.draw_box(canvas, box, label, color)
+                            
+                            # Draw Specific Defects
+                            if defect_boxes:
+                                # Pass box origin (x1, y1) to help offset defect coords
+                                self.visualizer.draw_defects(canvas, (x1, y1), defect_boxes)
 
                 # --- State Update (Entry/Exit) ---
-                just_exited = self.state.process_entry_exit(detected)
+                just_exited, final_decision = self.state.process_entry_exit(detected)
                 if just_exited:
-                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Box Processed: {self.state.final_decision} | Total: {self.state.total_count}")
+                    # Use the captured decision (before reset)
+                    is_defect = final_decision == "DEFECT"
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Box Processed: {final_decision} | Total: {self.state.total_count}")
+                    
+                    # Invoke callback if provided
+                    if self.on_result_callback:
+                        self.on_result_callback(is_defect)
 
-                cv2.imshow("Box Inspection System", canvas)
-                if cv2.waitKey(1) & 0xFF == 27:
-                    break
+                # Display (only if not headless)
+                if not self.headless:
+                    cv2.imshow("Box Inspection System", canvas)
+                    if cv2.waitKey(1) & 0xFF == 27:
+                        break
 
         finally:
-            self.stream.release()
-            cv2.destroyAllWindows()
+            self.cleanup()
 
     def check_defect(self, crop, box_id):
         """
@@ -180,3 +238,9 @@ class Pipeline:
             if elapsed > 0:
                 self.fps = 10 / elapsed
             self.last_time = current_time
+    
+    def cleanup(self):
+        """Release resources."""
+        self.stream.release()
+        if not self.headless:
+            cv2.destroyAllWindows()

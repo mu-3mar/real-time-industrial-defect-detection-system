@@ -1,0 +1,4 @@
+base_url: "https://0243-156-197-189-2.ngrok-free.app"
+result_endpoint: "/report"
+timeout: 5
+max_retries: 3
