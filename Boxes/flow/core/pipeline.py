@@ -1,5 +1,6 @@
 import cv2
 import time
+import logging
 from datetime import datetime
 import numpy as np
 import threading
@@ -11,6 +12,8 @@ from core.model_loader import ModelLoader
 from detectors.detector import Detector
 from utils.visualizer import Visualizer
 from utils.geometry import box_iou, smooth_bbox
+
+logger = logging.getLogger(__name__)
 
 # Layout constants (shared by GUI and viewer canvas)
 INFO_WIDTH = 300
@@ -97,6 +100,11 @@ class Pipeline:
         self.frame_count = 0
         self.last_time = time.time()
         self.fps = 0
+        
+        # Detection loop monitoring
+        self._last_frame_log_count = 0
+        self._last_detection_log_time = time.time()
+        self._detection_log_interval = 10  # Log detection status every 10 frames
 
     def run(self, stop_event: Optional[threading.Event] = None):
         """
@@ -109,15 +117,26 @@ class Pipeline:
         if not self.headless:
             cv2.namedWindow("Box Inspection System", cv2.WINDOW_NORMAL)
 
+        logger.info("Pipeline started (headless=%s, produce_viewer_canvas=%s)", 
+                   self.headless, self.produce_viewer_canvas)
+
         try:
             while True:
                 if stop_event and stop_event.is_set():
+                    logger.info("Stop event received, exiting pipeline loop")
                     break
 
                 ret, frame = self.stream.read()
                 if not ret:
+                    logger.error("Failed to read frame from stream")
                     break
 
+                # Advance recent lost track age to ensure recovery window expires
+                try:
+                    self.state.tick_recent_lost_track()
+                except Exception:
+                    # Defensive: do not let state tick errors stop pipeline
+                    logger.debug("tick_recent_lost_track() encountered an error", exc_info=False)
                 self.frame_count += 1
                 self.update_fps()
                 h, w = frame.shape[:2]
@@ -187,11 +206,18 @@ class Pipeline:
                 if just_exited:
                     self._current_track = None
                     is_defect = final_decision == "DEFECT"
+                    timestamp = datetime.now().strftime('%H:%M:%S')
                     print(
-                        f"[{datetime.now().strftime('%H:%M:%S')}] Box Processed: {final_decision} | Total: {self.state.total_count}"
+                        f"[{timestamp}] Box Processed: {final_decision} | Total: {self.state.total_count}"
                     )
+                    logger.info("Box exited: decision=%s, total=%d, defect=%d, ok=%d",
+                               final_decision, self.state.total_count, 
+                               self.state.defect_count, self.state.ok_count)
                     if self.on_result_callback:
                         self.on_result_callback(is_defect)
+                
+                # Log detection status periodically
+                self._log_detection_status(detected, is_defect if detected and matched_box is not None else None)
 
                 if self.produce_viewer_canvas and self.viewer_canvas_ref is not None:
                     self.viewer_canvas_ref["canvas"] = canvas.copy()
@@ -199,14 +225,19 @@ class Pipeline:
                 if not self.headless:
                     cv2.imshow("Box Inspection System", canvas)
                     if cv2.waitKey(1) & 0xFF == 27:
+                        logger.info("ESC pressed, exiting pipeline")
                         break
 
+        except Exception as e:
+            logger.error("Pipeline error: %s", e, exc_info=True)
         finally:
             self.cleanup()
+            logger.info("Pipeline cleanup complete. Total frames: %d", self.frame_count)
 
     def _match_track(self, boxes_roi: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
         """
         Match current track to detections by IoU; update smoothed bbox.
+        Includes track grace period and recovery from brief loss (e.g., camera jitter).
         Returns (matched_bbox_in_roi_or_None, detected: bool).
         """
         if boxes_roi is None or len(boxes_roi) == 0:
@@ -225,15 +256,35 @@ class Pipeline:
                 self._current_track = smooth_bbox(
                     self._current_track, matched, self.bbox_smooth_alpha
                 )
+                logger.debug("Track matched (IoU=%.3f)", best_iou)
                 return self._current_track.copy(), True
+            
+            # No match with current track; store it for potential recovery
+            logger.debug("Track lost, storing for recovery attempt")
+            self.state.set_recent_lost_track(tuple(self._current_track))
+            self._current_track = None
             return None, False
 
-        # No current track: start one with largest box (most likely the one to track)
-        areas = (boxes_roi[:, 2] - boxes_roi[:, 0]) * (boxes_roi[:, 3] - boxes_roi[:, 1])
-        best_idx = int(np.argmax(areas))
-        new_box = boxes_roi[best_idx].astype(np.float64)
-        self._current_track = smooth_bbox(None, new_box, self.bbox_smooth_alpha)
-        return self._current_track.copy(), True
+        # No current track: check for recent track recovery first
+        if boxes_roi is not None and len(boxes_roi) > 0:
+            # Try to recover with largest box (most likely the one to track)
+            areas = (boxes_roi[:, 2] - boxes_roi[:, 0]) * (boxes_roi[:, 3] - boxes_roi[:, 1])
+            best_idx = int(np.argmax(areas))
+            new_box = boxes_roi[best_idx]
+            
+            # Check if this matches recently lost track (e.g., from camera jitter)
+            if self.state.try_recover_recent_track(tuple(new_box)):
+                # Recovered! Restart tracking with recovered box
+                self._current_track = smooth_bbox(None, new_box.astype(np.float64), self.bbox_smooth_alpha)
+                return self._current_track.copy(), True
+            
+            # No recovery; start new track
+            new_box_float = new_box.astype(np.float64)
+            self._current_track = smooth_bbox(None, new_box_float, self.bbox_smooth_alpha)
+            logger.debug("New track started")
+            return self._current_track.copy(), True
+        
+        return None, False
 
     def _check_defect_track(self, crop: np.ndarray) -> Tuple[bool, List]:
         """
@@ -265,9 +316,31 @@ class Pipeline:
                 self.fps = 10 / elapsed
             self.last_time = current_time
     
+    def _log_detection_status(self, detected: bool, is_defect: Optional[bool] = None) -> None:
+        """
+        Log detection status periodically to monitor pipeline health.
+        Helps identify when detection or inference has stalled.
+        """
+        current_time = time.time()
+        if current_time - self._last_detection_log_time >= self._detection_log_interval:
+            frames_since_last_log = self.frame_count - self._last_frame_log_count
+            logger.info(
+                "Pipeline status: frame=%d, fps=%.1f, detected=%s, "
+                "track_inside=%s, defect_status=%s, frames_in_window=%d",
+                self.frame_count,
+                self.fps,
+                detected,
+                self.state.inside,
+                is_defect if is_defect is not None else "unknown",
+                frames_since_last_log,
+            )
+            self._last_detection_log_time = current_time
+            self._last_frame_log_count = self.frame_count
+    
     def cleanup(self):
         """Release resources."""
         self.stream.release()
         # Only destroy pipeline's own window; viewer thread has its own
         if not self.headless:
             cv2.destroyAllWindows()
+        logger.info("Pipeline resources cleaned up")

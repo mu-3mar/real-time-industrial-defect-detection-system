@@ -1,12 +1,16 @@
 """
 Single-track state: one box in the ROI at a time, with smooth defect voting,
 defect lock (once defective, stays red), and accumulated defect annotations.
+Includes track grace period and recovery from small camera movements.
 """
 
 from collections import deque
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+import logging
 
 from utils.geometry import box_iou
+
+logger = logging.getLogger(__name__)
 
 
 class AppState:
@@ -15,6 +19,8 @@ class AppState:
     - Defect lock: once defect votes reach threshold, box is permanently DEFECT (red) for this track.
     - Accumulated defect boxes: stored in box-relative coords; at render time converted using current box position so they move with the box. IoU dedup in box-relative space.
     - Entry/exit and voting as before.
+    - Track grace period: allows brief loss (e.g., from camera jitter) before declaring track as lost.
+    - Recent track recovery: if detection reappears with high IoU with recently lost track, reuse it.
     """
 
     def __init__(self, stability_config: dict):
@@ -23,6 +29,13 @@ class AppState:
         self.vote_window = stability_config.get("vote_window", 9)
         self.vote_threshold = stability_config.get("vote_threshold", 5)
         self.early_detection_frames = stability_config.get("early_detection_frames", 3)
+        
+        # Track grace period: allow brief loss before declaring track as lost
+        self.track_grace_frames = stability_config.get("track_grace_frames", 3)
+        # How long to keep recently lost track for recovery attempt
+        self.recent_track_max_age = stability_config.get("recent_track_max_age", 15)
+        # IoU threshold for recovery (may be higher than matching threshold)
+        self.recovery_iou_threshold = stability_config.get("recovery_iou_threshold", 0.4)
 
         self._vote_history: deque = deque(maxlen=self.vote_window)
         self._last_defect_result = (False, [])
@@ -33,6 +46,9 @@ class AppState:
         # Defect boxes in box-relative coords (dx1, dy1, dx2, dy2); origin = box top-left
         self._accumulated_defect_boxes: List[Tuple[float, float, float, float]] = []
         self._defect_dedup_iou = 0.35  # treat as same defect if IoU above this (in box-relative space)
+        
+        # Recent track for recovery: (bbox, frames_since_lost)
+        self._recent_lost_track: Optional[Tuple[Tuple[float, float, float, float], int]] = None
 
         self.frames_inside = 0
         self.missed_frames = 0
@@ -117,6 +133,10 @@ class AppState:
         """
         Call each frame: detected = we matched the current track this frame.
         Returns (just_exited: bool, final_decision: str | None).
+        
+        Track grace period allows brief loss (e.g., from camera jitter).
+        Recent track recovery: if detection reappears with high IoU with recently lost track,
+        reuse it instead of counting as exit+entry.
         """
         just_exited = False
         decision = None
@@ -128,13 +148,54 @@ class AppState:
                 self.inside = True
         else:
             self.missed_frames += 1
-            if self.missed_frames > self.max_missed and self.inside:
+            # Grace period: allow brief loss before declaring track as lost
+            if self.missed_frames > self.max_missed + self.track_grace_frames and self.inside:
                 # Use current vote-based decision before reset
                 _label, _color, decision = self.get_status()
                 self.frame_exit()
                 just_exited = True
 
         return just_exited, decision
+    
+    def set_recent_lost_track(self, bbox: Tuple[float, float, float, float]) -> None:
+        """
+        Store the track bbox when it's lost, for potential recovery.
+        Allows reuse if detection reappears with high IoU.
+        """
+        self._recent_lost_track = (bbox, 0)
+        logger.debug("Stored recent lost track for recovery")
+    
+    def try_recover_recent_track(self, new_bbox: Tuple[float, float, float, float]) -> bool:
+        """
+        Check if new detection matches recently lost track by IoU.
+        If yes, consider this a recovery (not a new box).
+        Returns True if recovered, False if no match.
+        """
+        if self._recent_lost_track is None:
+            return False
+        
+        stored_bbox, frames_since_lost = self._recent_lost_track
+        
+        # Increment age of stored track
+        self._recent_lost_track = (stored_bbox, frames_since_lost + 1)
+        
+        # If track is too old, forget it
+        if frames_since_lost >= self.recent_track_max_age:
+            self._recent_lost_track = None
+            return False
+        
+        # Check IoU with recently lost track
+        iou = box_iou(new_bbox, stored_bbox)
+        if iou >= self.recovery_iou_threshold:
+            logger.info("Recovered lost track (IoU=%.3f), preventing duplicate count", iou)
+            self._recent_lost_track = None
+            return True
+        
+        return False
+    
+    def clear_recent_lost_track(self) -> None:
+        """Clear recent track cache (e.g., when frame_exit is called)."""
+        self._recent_lost_track = None
 
     def frame_exit(self) -> None:
         """On exit: update counters and reset track state."""
@@ -152,10 +213,26 @@ class AppState:
         self._accumulated_defect_boxes.clear()
         self._vote_history.clear()
         self._last_defect_result = (False, [])
+        self._recent_lost_track = None  # Clear recovery candidate on exit
 
     def set_last_defect_result(self, is_defect: bool, defect_boxes: list) -> None:
         """Store last defect run for current track (used by pipeline cache)."""
         self._last_defect_result = (is_defect, defect_boxes)
+
+    def tick_recent_lost_track(self) -> None:
+        """
+        Advance age of the recent lost track each frame. If it becomes too old,
+        forget it to avoid spurious recovery attempts far in the past.
+        """
+        if self._recent_lost_track is None:
+            return
+        stored_bbox, age = self._recent_lost_track
+        age += 1
+        if age >= self.recent_track_max_age:
+            logger.debug("Recent lost track expired after %d frames", age)
+            self._recent_lost_track = None
+        else:
+            self._recent_lost_track = (stored_bbox, age)
 
     def get_last_defect_result(self) -> tuple:
         """(is_defect, defect_boxes)."""

@@ -1,5 +1,5 @@
 model_path: Boxes/trainig/defect-YOLO/models/exported/best.pt
-conf_thres: 0.4
+conf_thres: 0.3
 iou_thres: 0.6
 device: 0
 

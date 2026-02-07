@@ -22,17 +22,50 @@ def _viewer_loop(
 ) -> None:
     """Display loop for viewer window."""
     window_name = f"{VIEWER_WINDOW_PREFIX} | {report_id}"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     try:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        logger.debug("Viewer window created: %s", window_name)
+        
         while not stop_event.is_set():
             canvas = canvas_ref.get("canvas")
             if canvas is not None:
-                cv2.imshow(window_name, canvas)
-            if cv2.waitKey(1) & 0xFF == 27:
+                try:
+                    cv2.imshow(window_name, canvas)
+                except cv2.error as e:
+                    logger.warning("imshow failed for %s: %s", window_name, e)
+                    break
+            
+            # Use non-blocking key check with proper error handling
+            try:
+                key = cv2.waitKey(1)
+                if key != -1 and (key & 0xFF) == 27:  # ESC key
+                    logger.debug("ESC pressed, closing viewer %s", window_name)
+                    break
+            except cv2.error as e:
+                logger.warning("waitKey failed: %s", e)
                 break
+    
+    except Exception as e:
+        logger.error("Viewer loop error for %s: %s", window_name, e)
+    
     finally:
+        # Cleanup: destroy window and ensure all OpenCV resources are released
         try:
             cv2.destroyWindow(window_name)
+            logger.debug("Viewer window destroyed: %s", window_name)
+        except Exception as e:
+            logger.warning("Failed to destroy window %s: %s", window_name, e)
+        
+        # Force event-driven display processing to fully release resources
+        try:
+            cv2.waitKey(1)
+        except Exception:
+            pass
+        
+        # Also attempt to destroy any remaining windows to avoid resource leakage
+        try:
+            cv2.destroyAllWindows()
+            logger.debug("cv2.destroyAllWindows() called for %s", window_name)
         except Exception:
             pass
 
@@ -121,9 +154,23 @@ class SessionWorker(threading.Thread):
         """
         if not self._headless:
             return False
+        
+        # If viewer is already running, return success
         if self._viewer_thread is not None and self._viewer_thread.is_alive():
+            logger.info("Viewer already attached to session %s", self.report_id)
             return True
+        
+        # Clean up previous viewer thread if it exists but is not alive
+        if self._viewer_thread is not None and not self._viewer_thread.is_alive():
+            try:
+                self._viewer_thread.join(timeout=0.5)
+            except Exception:
+                pass
+        
+        # Reset the stop event to allow the new viewer thread to run
         self._viewer_stop_event.clear()
+        
+        # Start new viewer thread
         self._viewer_thread = threading.Thread(
             target=_viewer_loop,
             args=(self.report_id, self._viewer_canvas_ref, self._viewer_stop_event),
@@ -141,9 +188,29 @@ class SessionWorker(threading.Thread):
             True if viewer was stopped, False if no viewer attached
         """
         if self._viewer_thread is None or not self._viewer_thread.is_alive():
+            logger.debug("No active viewer to stop for session %s", self.report_id)
             return False
+        
+        # Signal viewer loop to stop
         self._viewer_stop_event.set()
+        
+        # Wait for viewer thread to terminate with timeout
         if self._viewer_thread is not None:
             self._viewer_thread.join(timeout=2.0)
+            if self._viewer_thread.is_alive():
+                logger.warning("Viewer thread did not terminate cleanly for session %s", self.report_id)
+
+        # Clear thread reference so future start creates a fresh thread object
+        try:
+            self._viewer_thread = None
+        except Exception:
+            pass
+
+        # Optionally clear canvas reference to release large frames
+        try:
+            self._viewer_canvas_ref.clear()
+        except Exception:
+            pass
+
         logger.info("Viewer detached from session %s", self.report_id)
         return True

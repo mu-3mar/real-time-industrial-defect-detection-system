@@ -85,6 +85,9 @@ def _load_configs(base: Path) -> None:
             "vote_window": 9,
             "vote_threshold": 5,
             "early_detection_frames": 3,
+            "track_grace_frames": 3,
+            "recent_track_max_age": 15,
+            "recovery_iou_threshold": 0.4,
         }
     # Ensure tracking config
     if "tracking" not in configs["defect"]:
