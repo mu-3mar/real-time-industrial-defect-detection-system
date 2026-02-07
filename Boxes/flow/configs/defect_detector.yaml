@@ -1,4 +1,20 @@
 model_path: Boxes/trainig/defect-YOLO/models/exported/best.pt
-conf_thres: 0.3
+conf_thres: 0.4
 iou_thres: 0.6
 device: 0
+
+# Single-box tracking (smooth, stable)
+tracking:
+  iou_threshold: 0.35   # min IoU to consider same box
+  bbox_smooth_alpha: 0.6  # 1=no smooth, lower=more smooth
+
+# Defect voting and entry/exit (less aggressive, smoother decisions)
+stability:
+  min_frames: 4        # frames before box is "inside"
+  max_missed: 6        # missed frames before exit
+  vote_window: 9       # votes kept per track
+  vote_threshold: 5    # defect votes needed to call DEFECT (out of window)
+
+# Defect rendering when box is partially out of frame (only affects drawing, not tracking)
+rendering:
+  visibility_threshold: 0.2  # draw defect only if visibility (intersection/frame) >= 20%; use 0 for any partial
