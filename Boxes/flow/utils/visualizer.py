@@ -62,19 +62,26 @@ class Visualizer:
         canvas,
         box_origin,
         defects,
+        is_early_phase=True,
         visibility_threshold=0.2,
     ):
         """
         Draws defect areas in box-relative coordinates, with visibility filtering.
+        Only draws defects if in early detection phase.
 
         - Converts each defect to frame/canvas coordinates using current box position.
         - Skips defects fully outside the frame.
         - Skips defects whose visible fraction (intersection with frame / defect area)
           is below visibility_threshold (default 0.2 = 20%). Use 0 to draw any
           partially visible defect.
+        - If not in early_phase, skips drawing entirely (but keeps tracking).
 
         Does not affect tracking or defect state; only rendering is filtered.
         """
+        # Only draw defects during early detection phase
+        if not is_early_phase:
+            return
+
         box_x1, box_y1 = box_origin
         base_x = box_x1 + self.roi_left
         base_y = box_y1

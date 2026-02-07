@@ -1,4 +1,4 @@
 model_path: Boxes/trainig/box-YOLO/models/exported/best.pt
-conf_thres: 0.75
+conf_thres: 0.7
 iou_thres: 0.6
 device: 0

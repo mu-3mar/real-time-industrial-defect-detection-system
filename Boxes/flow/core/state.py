@@ -22,11 +22,14 @@ class AppState:
         self.max_missed = stability_config.get("max_missed", 6)
         self.vote_window = stability_config.get("vote_window", 9)
         self.vote_threshold = stability_config.get("vote_threshold", 5)
+        self.early_detection_frames = stability_config.get("early_detection_frames", 3)
 
         self._vote_history: deque = deque(maxlen=self.vote_window)
         self._last_defect_result = (False, [])
         # Once True, this track is permanently DEFECT (bbox stays red)
         self._defect_locked = False
+        # Track frames since defect lock for early detection phase visualization
+        self._frames_since_lock = 0
         # Defect boxes in box-relative coords (dx1, dy1, dx2, dy2); origin = box top-left
         self._accumulated_defect_boxes: List[Tuple[float, float, float, float]] = []
         self._defect_dedup_iou = 0.35  # treat as same defect if IoU above this (in box-relative space)
@@ -47,6 +50,19 @@ class AppState:
     def _lock_defect(self) -> None:
         """Permanently mark this track as defective (bbox stays red until exit)."""
         self._defect_locked = True
+        self._frames_since_lock = 0  # Reset counter when defect is locked
+
+    def is_early_detection_phase(self) -> bool:
+        """
+        Returns True if in early detection phase (first N frames after defect lock).
+        Only show defect annotations during this phase.
+        """
+        return self._defect_locked and self._frames_since_lock < self.early_detection_frames
+
+    def increment_defect_lock_frame(self) -> None:
+        """Increment frame counter for early detection phase tracking."""
+        if self._defect_locked:
+            self._frames_since_lock += 1
 
     def get_status(self) -> tuple:
         """
@@ -132,6 +148,7 @@ class AppState:
         self.frames_inside = 0
         self.final_decision = None
         self._defect_locked = False
+        self._frames_since_lock = 0
         self._accumulated_defect_boxes.clear()
         self._vote_history.clear()
         self._last_defect_result = (False, [])

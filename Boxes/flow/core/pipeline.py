@@ -168,14 +168,20 @@ class Pipeline:
                     if need_canvas:
                         self.visualizer.draw_box(canvas, box_for_draw, label, color)
                         # Convert box-relative defects to frame using current box position
+                        # Only draw defects during early detection phase (first N frames after lock)
                         accumulated = self.state.get_accumulated_defect_boxes()
-                        if accumulated:
+                        is_early_phase = self.state.is_early_detection_phase()
+                        if accumulated and is_early_phase:
                             self.visualizer.draw_defects(
                                 canvas,
                                 (int(x1), int(y1)),
                                 accumulated,
+                                is_early_phase=is_early_phase,
                                 visibility_threshold=self.defect_visibility_threshold,
                             )
+
+                # Increment frame counter for early detection phase tracking
+                self.state.increment_defect_lock_frame()
 
                 just_exited, final_decision = self.state.process_entry_exit(detected)
                 if just_exited:

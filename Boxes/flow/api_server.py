@@ -1,7 +1,4 @@
-"""
-QC-SCM Detection Service API
-Multi-session quality control detection with four core endpoints.
-"""
+"""QC-SCM Detection Service API with multi-session support."""
 
 import logging
 from pathlib import Path
@@ -15,37 +12,37 @@ from core.backend_client import BackendClient
 from core.model_loader import ModelLoader
 from core.session_manager import SessionManager
 
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
+# FastAPI app
 app = FastAPI(
     title="QC-SCM Detection Service",
-    description="Multi-session quality control detection service",
+    description="Multi-session quality control detection with defect analysis",
     version="1.0.0",
 )
 
+# Global state
 session_manager = SessionManager.get_instance()
 backend_client: Optional[BackendClient] = None
 configs: dict = {}
 
 
 # -----------------------------------------------------------------------------
-# Request / Response schemas
-# -----------------------------------------------------------------------------
-
-
+# Schema models
 class SessionIdentifiers(BaseModel):
-    """Report and camera identifying a session."""
+    """Request body for session operations."""
 
     report_id: str
     camera_source: Union[str, int]
 
 
 class SessionResponse(BaseModel):
-    """Standard response for session mutations."""
+    """Response for session mutation endpoints."""
 
     status: str
     report_id: str
@@ -53,50 +50,53 @@ class SessionResponse(BaseModel):
 
 
 class SessionListResponse(BaseModel):
-    """Response for listing active sessions."""
+    """Response for list sessions endpoint."""
 
     sessions: list
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
+    """Response for health check endpoint."""
 
     status: str
     active_sessions: int
 
 
 # -----------------------------------------------------------------------------
-# Config and startup
-# -----------------------------------------------------------------------------
-
-
+# Configuration loading
 def _load_configs(base: Path) -> None:
-    """Load YAML configs and inject defaults where needed."""
-    with open(base / "configs/box_detector.yaml") as f:
+    """Load YAML configs and set defaults for missing sections."""
+    config_path = base / "configs"
+
+    with open(config_path / "box_detector.yaml") as f:
         configs["box"] = yaml.safe_load(f)
-    with open(base / "configs/defect_detector.yaml") as f:
+    with open(config_path / "defect_detector.yaml") as f:
         configs["defect"] = yaml.safe_load(f)
-    with open(base / "configs/stream.yaml") as f:
+    with open(config_path / "stream.yaml") as f:
         configs["stream"] = yaml.safe_load(f)
-    with open(base / "configs/backend.yaml") as f:
+    with open(config_path / "backend.yaml") as f:
         backend_cfg = yaml.safe_load(f)
 
-        if "stability" not in configs["defect"]:
-            configs["defect"]["stability"] = {
-                "min_frames": 4,
-                "max_missed": 6,
-                "vote_window": 9,
-                "vote_threshold": 5,
-            }
-        if "tracking" not in configs["defect"]:
-            configs["defect"]["tracking"] = {
-                "iou_threshold": 0.35,
-                "bbox_smooth_alpha": 0.6,
-            }
-        if "rendering" not in configs["defect"]:
-            configs["defect"]["rendering"] = {
-                "visibility_threshold": 0.2,
-            }
+    # Ensure stability config
+    if "stability" not in configs["defect"]:
+        configs["defect"]["stability"] = {
+            "min_frames": 4,
+            "max_missed": 6,
+            "vote_window": 9,
+            "vote_threshold": 5,
+            "early_detection_frames": 3,
+        }
+    # Ensure tracking config
+    if "tracking" not in configs["defect"]:
+        configs["defect"]["tracking"] = {
+            "iou_threshold": 0.35,
+            "bbox_smooth_alpha": 0.6,
+        }
+    # Ensure rendering config
+    if "rendering" not in configs["defect"]:
+        configs["defect"]["rendering"] = {
+            "visibility_threshold": 0.2,
+        }
 
     global backend_client
     backend_client = BackendClient(
@@ -109,7 +109,7 @@ def _load_configs(base: Path) -> None:
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Load configs, backend client, and models on startup."""
+    """Initialize configs, models, and backend client."""
     base = Path(__file__).resolve().parent
     logger.info("Starting QC-SCM Detection Service...")
     try:
@@ -121,23 +121,21 @@ async def startup_event() -> None:
         )
         logger.info("Service startup complete")
     except Exception as e:
-        logger.error("Error during startup: %s", e, exc_info=True)
+        logger.error("Startup error: %s", e, exc_info=True)
         raise
 
 
 # -----------------------------------------------------------------------------
-# Endpoints
-# -----------------------------------------------------------------------------
-
-
+# API Endpoints
 @app.post("/api/sessions/open", response_model=SessionResponse)
 async def open_session(body: SessionIdentifiers) -> SessionResponse:
-    """
-    Open a new detection session (headless).
-    Uses the given report_id and camera_source.
-    """
+    """Open a new headless detection session."""
     try:
-        logger.info("Opening session: report_id=%s camera_source=%s", body.report_id, body.camera_source)
+        logger.info(
+            "Opening session: report_id=%s camera_source=%s",
+            body.report_id,
+            body.camera_source,
+        )
         session_manager.create_session(
             report_id=body.report_id,
             camera_source=body.camera_source,
@@ -161,12 +159,13 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
 
 @app.post("/api/sessions/close", response_model=SessionResponse)
 async def close_session(body: SessionIdentifiers) -> SessionResponse:
-    """
-    Close an active detection session.
-    Report id and camera source must match the running session.
-    """
+    """Close an active detection session."""
     try:
-        logger.info("Closing session: report_id=%s camera_source=%s", body.report_id, body.camera_source)
+        logger.info(
+            "Closing session: report_id=%s camera_source=%s",
+            body.report_id,
+            body.camera_source,
+        )
         ok = session_manager.close_session(
             report_id=body.report_id,
             camera_source=body.camera_source,
@@ -174,7 +173,7 @@ async def close_session(body: SessionIdentifiers) -> SessionResponse:
         if not ok:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session not found or camera mismatch: report_id={body.report_id}, camera_source={body.camera_source}",
+                detail=f"Session not found or camera mismatch: report_id={body.report_id}",
             )
         return SessionResponse(
             status="success",
@@ -190,7 +189,7 @@ async def close_session(body: SessionIdentifiers) -> SessionResponse:
 
 @app.get("/api/sessions", response_model=SessionListResponse)
 async def list_sessions() -> SessionListResponse:
-    """List all active sessions."""
+    """List all active detection sessions."""
     try:
         sessions = session_manager.list_active_sessions()
         return SessionListResponse(sessions=sessions)
@@ -225,6 +224,35 @@ async def view_running_session(body: SessionIdentifiers) -> SessionResponse:
         raise
     except Exception as e:
         logger.exception("View session error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/sessions/view/close", response_model=SessionResponse)
+async def close_view(body: SessionIdentifiers) -> SessionResponse:
+    """
+    Close the viewer window for a running session.
+    The session continues running in headless mode.
+    """
+    try:
+        logger.info("Closing viewer: report_id=%s camera_source=%s", body.report_id, body.camera_source)
+        closed = session_manager.detach_viewer(
+            report_id=body.report_id,
+            camera_source=body.camera_source,
+        )
+        if not closed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No running session or viewer for report_id={body.report_id} with camera_source={body.camera_source}",
+            )
+        return SessionResponse(
+            status="success",
+            report_id=body.report_id,
+            message="Viewer closed successfully",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Close view error")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -1,31 +1,35 @@
-import threading
+"""Session manager for handling multiple concurrent detection sessions."""
+
 import logging
+import threading
 from typing import Dict, Optional, Union
-from core.session_worker import SessionWorker
+
 from core.backend_client import BackendClient
+from core.session_worker import SessionWorker
 
 logger = logging.getLogger(__name__)
 
+
 class SessionManager:
-    """Singleton class for managing active detection sessions."""
-    
-    _instance: Optional['SessionManager'] = None
+    """Singleton for managing active detection sessions with thread-safe operations."""
+
+    _instance: Optional["SessionManager"] = None
     _lock = threading.Lock()
-    
+
     def __init__(self):
         self.sessions: Dict[str, SessionWorker] = {}
         self.camera_locks: Dict[str, str] = {}  # camera_source -> report_id
         self.sessions_lock = threading.Lock()
-    
+
     @classmethod
-    def get_instance(cls) -> 'SessionManager':
+    def get_instance(cls) -> "SessionManager":
         """Get singleton instance (thread-safe)."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = cls()
         return cls._instance
-    
+
     def create_session(
         self,
         report_id: str,
@@ -43,14 +47,14 @@ class SessionManager:
             camera_source: Camera device path or index
             box_cfg: Box detector configuration
             defect_cfg: Defect detector configuration
-            stream_cfg: Stream configuration (source will be overridden by camera_source)
+            stream_cfg: Stream configuration (source overridden by camera_source)
             backend_client: Backend HTTP client
 
         Returns:
             SessionWorker instance
 
         Raises:
-            ValueError: If session already exists or camera is in use
+            ValueError: If session exists or camera is in use
         """
         camera_key = str(camera_source)
         with self.sessions_lock:
@@ -58,7 +62,9 @@ class SessionManager:
                 raise ValueError(f"Session {report_id} already exists")
             if camera_key in self.camera_locks:
                 locked_by = self.camera_locks[camera_key]
-                raise ValueError(f"Camera {camera_source} is already in use by session {locked_by}")
+                raise ValueError(
+                    f"Camera {camera_source} in use by session {locked_by}"
+                )
 
             worker = SessionWorker(
                 report_id=report_id,
@@ -76,24 +82,29 @@ class SessionManager:
             return worker
 
     def close_session(
-        self, report_id: str, camera_source: Optional[Union[str, int]] = None
+        self,
+        report_id: str,
+        camera_source: Optional[Union[str, int]] = None,
     ) -> bool:
         """
         Close and cleanup a session.
 
         Args:
             report_id: Session identifier
-            camera_source: Optional; if provided, session is closed only when it matches
+            camera_source: Optional; close only if matches
 
         Returns:
-            True if session was closed, False if not found or camera mismatch
+            True if closed, False if not found or mismatch
         """
         with self.sessions_lock:
             worker = self.sessions.get(report_id)
             if worker is None:
                 logger.warning("Session %s not found", report_id)
                 return False
-            if camera_source is not None and str(worker.camera_source) != str(camera_source):
+            if (
+                camera_source is not None
+                and str(worker.camera_source) != str(camera_source)
+            ):
                 logger.warning(
                     "Session %s camera mismatch: expected %s, got %s",
                     report_id,
@@ -116,9 +127,11 @@ class SessionManager:
             return self.sessions.get(report_id)
 
     def get_session_by_report_and_camera(
-        self, report_id: str, camera_source: Union[str, int]
+        self,
+        report_id: str,
+        camera_source: Union[str, int],
     ) -> Optional[SessionWorker]:
-        """Get session by report_id and camera_source; returns None if not found or mismatch."""
+        """Get session by report_id and camera_source."""
         worker = self.get_session(report_id)
         if worker is None:
             return None
@@ -128,20 +141,34 @@ class SessionManager:
 
     def attach_viewer(self, report_id: str, camera_source: Union[str, int]) -> bool:
         """
-        Attach a viewer window to a running session (report_id, camera_source).
-        Returns True if viewer was attached, False if session not found or not headless.
+        Attach a viewer window to a running session.
+
+        Returns:
+            True if viewer attached, False if session not found
         """
         worker = self.get_session_by_report_and_camera(report_id, camera_source)
         if worker is None:
             return False
         return worker.start_viewer()
-    
+
+    def detach_viewer(self, report_id: str, camera_source: Union[str, int]) -> bool:
+        """
+        Detach viewer from a running session.
+
+        Returns:
+            True if viewer stopped, False if session not found
+        """
+        worker = self.get_session_by_report_and_camera(report_id, camera_source)
+        if worker is None:
+            return False
+        return worker.stop_viewer()
+
     def is_camera_in_use(self, camera_source: Union[str, int]) -> bool:
-        """Check if camera is currently in use."""
+        """Check if camera is currently in use by any session."""
         camera_key = str(camera_source)
         with self.sessions_lock:
             return camera_key in self.camera_locks
-    
+
     def list_active_sessions(self) -> list:
         """Get list of all active sessions."""
         with self.sessions_lock:

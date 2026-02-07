@@ -1,19 +1,17 @@
-"""
-Session worker: runs detection pipeline in a background thread and supports
-optional viewer attachment for headless sessions.
-"""
+"""Background worker thread for running detection sessions."""
 
-import threading
 import logging
+import threading
 from datetime import datetime
-from typing import Dict, Optional, Union, Any
+from typing import Any, Dict, Optional, Union
 
-from core.pipeline import Pipeline
+import cv2
+
 from core.backend_client import BackendClient
+from core.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
-# Window title prefix for viewer
 VIEWER_WINDOW_PREFIX = "Session"
 
 
@@ -22,8 +20,7 @@ def _viewer_loop(
     canvas_ref: Dict[str, Any],
     stop_event: threading.Event,
 ) -> None:
-    """Display loop: reads canvas from shared ref and shows in OpenCV window."""
-    import cv2
+    """Display loop for viewer window."""
     window_name = f"{VIEWER_WINDOW_PREFIX} | {report_id}"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     try:
@@ -42,8 +39,8 @@ def _viewer_loop(
 
 class SessionWorker(threading.Thread):
     """
-    Runs a single detection session in a background thread.
-    Supports headless mode with optional viewer attachment (view running session).
+    Runs a detection session in a background thread.
+    Supports headless mode with optional viewer attachment.
     """
 
     def __init__(
@@ -72,11 +69,11 @@ class SessionWorker(threading.Thread):
         self._started_at: Optional[datetime] = None
 
     def _on_result(self, is_defect: bool) -> None:
-        """Callback when a box exits the frame; send result to backend."""
+        """Callback when box exits; send result to backend."""
         self._backend_client.send_result(self.report_id, is_defect)
 
     def run(self) -> None:
-        """Entry point for the worker thread."""
+        """Entry point for worker thread."""
         self._started_at = datetime.utcnow()
         try:
             pipeline = Pipeline(
@@ -107,21 +104,20 @@ class SessionWorker(threading.Thread):
             "camera_source": str(self.camera_source),
             "status": "running",
             "started_at": (
-                self._started_at.isoformat() + "Z"
-                if self._started_at
-                else None
+                self._started_at.isoformat() + "Z" if self._started_at else None
             ),
-            "viewer_attached": self._viewer_thread is not None and self._viewer_thread.is_alive(),
+            "viewer_attached": (
+                self._viewer_thread is not None
+                and self._viewer_thread.is_alive()
+            ),
         }
 
     def start_viewer(self) -> bool:
         """
-        Attach a viewer to this (headless) session. Starts a thread that
-        displays the annotated feed. No-op if session is not headless or
-        viewer already attached.
+        Attach a viewer to this session.
 
         Returns:
-            True if viewer was started, False if already attached or not headless.
+            True if viewer started, False if already attached
         """
         if not self._headless:
             return False
@@ -135,4 +131,19 @@ class SessionWorker(threading.Thread):
         )
         self._viewer_thread.start()
         logger.info("Viewer attached to session %s", self.report_id)
+        return True
+
+    def stop_viewer(self) -> bool:
+        """
+        Detach the viewer window. Session continues running.
+
+        Returns:
+            True if viewer was stopped, False if no viewer attached
+        """
+        if self._viewer_thread is None or not self._viewer_thread.is_alive():
+            return False
+        self._viewer_stop_event.set()
+        if self._viewer_thread is not None:
+            self._viewer_thread.join(timeout=2.0)
+        logger.info("Viewer detached from session %s", self.report_id)
         return True
