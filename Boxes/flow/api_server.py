@@ -265,6 +265,7 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
         raise HTTPException(status_code=404, detail="Session not found")
 
     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
+    # Create PeerConnection (Tailscale LAN: host candidates only)
     pc = RTCPeerConnection()
     pcs.add(pc)
 
