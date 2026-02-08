@@ -27,9 +27,9 @@ class Pipeline:
         box_cfg,
         defect_cfg,
         stream_cfg,
-        headless: bool = False,
+        headless: bool = True,
         on_result_callback: Optional[Callable[[bool], None]] = None,
-        viewer_canvas_ref: Optional[Dict[str, Any]] = None,
+        on_frame_callback: Optional[Callable[[np.ndarray], None]] = None,
     ):
         """
         Initialize detection pipeline.
@@ -38,15 +38,13 @@ class Pipeline:
             box_cfg: Box detector configuration
             defect_cfg: Defect detector configuration
             stream_cfg: Stream configuration
-            headless: If True, skip own GUI window
+            headless: If True, skip own GUI window (Always True now)
             on_result_callback: Optional callback when box exits with decision
-            viewer_canvas_ref: If set (headless), build annotated canvas and set
-                ref["canvas"] each frame for an external viewer
+            on_frame_callback: Optional callback to receive the annotated frame
         """
         self.headless = headless
         self.on_result_callback = on_result_callback
-        self.viewer_canvas_ref = viewer_canvas_ref
-        self.produce_viewer_canvas = headless and (viewer_canvas_ref is not None)
+        self.on_frame_callback = on_frame_callback
 
         # 1. Setup Stream
         self.stream = CamStream(
@@ -83,18 +81,15 @@ class Pipeline:
         rendering = defect_cfg.get("rendering", {})
         self.defect_visibility_threshold = float(rendering.get("visibility_threshold", 0.2))
 
-        # 4. Visualizer: used for GUI, or for viewer canvas in headless
+        # 4. Visualizer: always initialized for streaming
         self.LEFT_X = INFO_WIDTH + ROI_CENTER_OFFSET - ROI_WIDTH // 2
         self.RIGHT_X = INFO_WIDTH + ROI_CENTER_OFFSET + ROI_WIDTH // 2
-        if not self.headless or self.produce_viewer_canvas:
-            self.visualizer = Visualizer(
-                stream_cfg["width"],
-                stream_cfg["height"],
-                INFO_WIDTH,
-                ROI_WIDTH,
-            )
-        else:
-            self.visualizer = None
+        self.visualizer = Visualizer(
+            stream_cfg["width"],
+            stream_cfg["height"],
+            INFO_WIDTH,
+            ROI_WIDTH,
+        )
 
         self.SKIP_DEFECT_FRAMES = 2
         self.frame_count = 0
@@ -111,14 +106,9 @@ class Pipeline:
         Run detection pipeline.
 
         Args:
-            stop_event: Optional threading event to signal stop (headless mode)
+            stop_event: Optional threading event to signal stop
         """
-        need_canvas = not self.headless or self.produce_viewer_canvas
-        if not self.headless:
-            cv2.namedWindow("Box Inspection System", cv2.WINDOW_NORMAL)
-
-        logger.info("Pipeline started (headless=%s, produce_viewer_canvas=%s)", 
-                   self.headless, self.produce_viewer_canvas)
+        logger.info("Pipeline started (headless=%s)", self.headless)
 
         try:
             while True:
@@ -141,16 +131,14 @@ class Pipeline:
                 self.update_fps()
                 h, w = frame.shape[:2]
 
-                if need_canvas:
-                    canvas = cv2.copyMakeBorder(
-                        frame, 0, 0, self.visualizer.info_width, 0,
-                        cv2.BORDER_CONSTANT, value=(235, 235, 235),
-                    )
-                    self.visualizer.draw_layout(canvas)
-                    self.visualizer.draw_stats(canvas, self.state, self.fps)
-                    roi_offset = self.visualizer.info_width
-                else:
-                    roi_offset = 0
+                # Prepare Canvas
+                canvas = cv2.copyMakeBorder(
+                    frame, 0, 0, self.visualizer.info_width, 0,
+                    cv2.BORDER_CONSTANT, value=(235, 235, 235),
+                )
+                self.visualizer.draw_layout(canvas)
+                self.visualizer.draw_stats(canvas, self.state, self.fps)
+                roi_offset = self.visualizer.info_width
 
                 roi = frame[:, self.LEFT_X - roi_offset : self.RIGHT_X - roi_offset]
 
@@ -184,20 +172,19 @@ class Pipeline:
                     label, color, final_code = self.state.get_status()
                     box_for_draw = matched_box.astype(np.float32)
 
-                    if need_canvas:
-                        self.visualizer.draw_box(canvas, box_for_draw, label, color)
-                        # Convert box-relative defects to frame using current box position
-                        # Only draw defects during early detection phase (first N frames after lock)
-                        accumulated = self.state.get_accumulated_defect_boxes()
-                        is_early_phase = self.state.is_early_detection_phase()
-                        if accumulated and is_early_phase:
-                            self.visualizer.draw_defects(
-                                canvas,
-                                (int(x1), int(y1)),
-                                accumulated,
-                                is_early_phase=is_early_phase,
-                                visibility_threshold=self.defect_visibility_threshold,
-                            )
+                    self.visualizer.draw_box(canvas, box_for_draw, label, color)
+                    # Convert box-relative defects to frame using current box position
+                    # Only draw defects during early detection phase (first N frames after lock)
+                    accumulated = self.state.get_accumulated_defect_boxes()
+                    is_early_phase = self.state.is_early_detection_phase()
+                    if accumulated and is_early_phase:
+                        self.visualizer.draw_defects(
+                            canvas,
+                            (int(x1), int(y1)),
+                            accumulated,
+                            is_early_phase=is_early_phase,
+                            visibility_threshold=self.defect_visibility_threshold,
+                        )
 
                 # Increment frame counter for early detection phase tracking
                 self.state.increment_defect_lock_frame()
@@ -219,14 +206,9 @@ class Pipeline:
                 # Log detection status periodically
                 self._log_detection_status(detected, is_defect if detected and matched_box is not None else None)
 
-                if self.produce_viewer_canvas and self.viewer_canvas_ref is not None:
-                    self.viewer_canvas_ref["canvas"] = canvas.copy()
-
-                if not self.headless:
-                    cv2.imshow("Box Inspection System", canvas)
-                    if cv2.waitKey(1) & 0xFF == 27:
-                        logger.info("ESC pressed, exiting pipeline")
-                        break
+                # Send frame to callback if registered (for broadcasting)
+                if self.on_frame_callback:
+                    self.on_frame_callback(canvas)
 
         except Exception as e:
             logger.error("Pipeline error: %s", e, exc_info=True)
@@ -340,7 +322,4 @@ class Pipeline:
     def cleanup(self):
         """Release resources."""
         self.stream.release()
-        # Only destroy pipeline's own window; viewer thread has its own
-        if not self.headless:
-            cv2.destroyAllWindows()
         logger.info("Pipeline resources cleaned up")

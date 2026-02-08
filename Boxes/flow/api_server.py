@@ -1,16 +1,22 @@
 """QC-SCM Detection Service API with multi-session support."""
 
+import asyncio
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Set
 
 import yaml
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaPlayer
 
 from core.backend_client import BackendClient
 from core.model_loader import ModelLoader
 from core.session_manager import SessionManager
+from core.webrtc_track import VideoTransformTrack
 
 # Setup logging
 logging.basicConfig(
@@ -26,10 +32,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Global state
 session_manager = SessionManager.get_instance()
 backend_client: Optional[BackendClient] = None
 configs: dict = {}
+
+# WebRTC Peer Connections
+pcs: Set[RTCPeerConnection] = set()
 
 
 # -----------------------------------------------------------------------------
@@ -60,6 +78,19 @@ class HealthResponse(BaseModel):
 
     status: str
     active_sessions: int
+
+
+class OfferRequest(BaseModel):
+    """WebRTC Offer request."""
+    sdp: str
+    type: str
+    report_id: str
+
+
+class OfferResponse(BaseModel):
+    """WebRTC Answer response."""
+    sdp: str
+    type: str
 
 
 # -----------------------------------------------------------------------------
@@ -128,6 +159,14 @@ async def startup_event() -> None:
         raise
 
 
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    """Clean up WebRTC connections."""
+    coros = [pc.close() for pc in pcs]
+    await asyncio.gather(*coros)
+    pcs.clear()
+
+
 # -----------------------------------------------------------------------------
 # API Endpoints
 @app.post("/api/sessions/open", response_model=SessionResponse)
@@ -139,6 +178,9 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
             body.report_id,
             body.camera_source,
         )
+        # Capture the current event loop to pass to the worker
+        loop = asyncio.get_running_loop()
+
         session_manager.create_session(
             report_id=body.report_id,
             camera_source=body.camera_source,
@@ -146,6 +188,7 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
             defect_cfg=configs["defect"],
             stream_cfg=configs["stream"],
             backend_client=backend_client,
+            loop=loop,
         )
         return SessionResponse(
             status="success",
@@ -201,64 +244,6 @@ async def list_sessions() -> SessionListResponse:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/api/sessions/view", response_model=SessionResponse)
-async def view_running_session(body: SessionIdentifiers) -> SessionResponse:
-    """
-    Open a viewer window for an already-running session.
-    Shows the live feed with annotations (boxes, defects, stats) if the session is running.
-    """
-    try:
-        logger.info("View session: report_id=%s camera_source=%s", body.report_id, body.camera_source)
-        attached = session_manager.attach_viewer(
-            report_id=body.report_id,
-            camera_source=body.camera_source,
-        )
-        if not attached:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No running session for report_id={body.report_id} with camera_source={body.camera_source}",
-            )
-        return SessionResponse(
-            status="success",
-            report_id=body.report_id,
-            message=f"Viewer opened for session (camera {body.camera_source})",
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("View session error")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@app.post("/api/sessions/view/close", response_model=SessionResponse)
-async def close_view(body: SessionIdentifiers) -> SessionResponse:
-    """
-    Close the viewer window for a running session.
-    The session continues running in headless mode.
-    """
-    try:
-        logger.info("Closing viewer: report_id=%s camera_source=%s", body.report_id, body.camera_source)
-        closed = session_manager.detach_viewer(
-            report_id=body.report_id,
-            camera_source=body.camera_source,
-        )
-        if not closed:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No running session or viewer for report_id={body.report_id} with camera_source={body.camera_source}",
-            )
-        return SessionResponse(
-            status="success",
-            report_id=body.report_id,
-            message="Viewer closed successfully",
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Close view error")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """Service health and active session count."""
@@ -268,3 +253,66 @@ async def health_check() -> HealthResponse:
     except Exception as e:
         logger.exception("Health check error")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/webrtc/offer", response_model=OfferResponse)
+async def webrtc_offer(params: OfferRequest) -> OfferResponse:
+    """
+    Handle WebRTC SDP offer and establish connection.
+    Attach the detection stream as a video track.
+    """
+    worker = session_manager.get_session(params.report_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
+    pc = RTCPeerConnection()
+    pcs.add(pc)
+
+    @pc.on("connectionstatechange")
+    async def on_connectionstatechange():
+        logger.info("Connection state is %s", pc.connectionState)
+        if pc.connectionState == "failed":
+            await pc.close()
+            pcs.discard(pc)
+        elif pc.connectionState == "closed":
+             pcs.discard(pc)
+
+    # Create video track from session
+    video_track = VideoTransformTrack()
+    worker.add_track(video_track)
+
+    @pc.on("track")
+    def on_track(track):
+        # We don't handle incoming tracks (audio/video from client)
+        pass
+    
+    # We add track to PC to send video to client
+    pc.addTrack(video_track)
+
+    # Handle cleanup when PC closes
+    # We can't easily hook into pc.close() here, but connectionstatechange helps.
+    # More robustly, we should remove the track from worker when PC is closed.
+    # But for now, we rely on connectionstatechange.
+    orig_close = pc.close
+    async def new_close():
+        worker.remove_track(video_track)
+        await orig_close()
+    pc.close = new_close
+
+    try:
+        await pc.setRemoteDescription(offer)
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+
+        return OfferResponse(
+            sdp=pc.localDescription.sdp,
+            type=pc.localDescription.type
+        )
+    except Exception as e:
+        logger.error("WebRTC offer failed: %s", e)
+        # Cleanup
+        worker.remove_track(video_track)
+        await pc.close()
+        pcs.discard(pc)
+        raise HTTPException(status_code=500, detail=str(e))

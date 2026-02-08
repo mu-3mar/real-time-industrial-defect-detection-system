@@ -7,7 +7,6 @@ import yaml
 import uvicorn
 
 # Suppress warnings and debug logging
-os.environ["QT_LOGGING_RULES"] = "*.warning=false"
 os.environ["ORT_LOGGING_LEVEL"] = "3"
 
 try:

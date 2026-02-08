@@ -1,4 +1,4 @@
-base_url: "https://5aec-156-197-190-186.ngrok-free.app"
+base_url: "https://a238-156-197-182-249.ngrok-free.app"
 result_endpoint: "/report"
 timeout: 5
 max_retries: 3

@@ -1,5 +1,6 @@
 """Session manager for handling multiple concurrent detection sessions."""
 
+import asyncio
 import logging
 import threading
 from typing import Dict, Optional, Union
@@ -38,6 +39,7 @@ class SessionManager:
         defect_cfg: dict,
         stream_cfg: dict,
         backend_client: BackendClient,
+        loop: asyncio.AbstractEventLoop,
     ) -> SessionWorker:
         """
         Create and start a new headless detection session.
@@ -49,6 +51,7 @@ class SessionManager:
             defect_cfg: Defect detector configuration
             stream_cfg: Stream configuration (source overridden by camera_source)
             backend_client: Backend HTTP client
+            loop: Main asyncio event loop for broadcasting
 
         Returns:
             SessionWorker instance
@@ -73,7 +76,7 @@ class SessionManager:
                 defect_cfg=defect_cfg,
                 stream_cfg=stream_cfg,
                 backend_client=backend_client,
-                headless=True,
+                loop=loop,
             )
             self.sessions[report_id] = worker
             self.camera_locks[camera_key] = report_id
@@ -125,43 +128,6 @@ class SessionManager:
         """Get session by report_id."""
         with self.sessions_lock:
             return self.sessions.get(report_id)
-
-    def get_session_by_report_and_camera(
-        self,
-        report_id: str,
-        camera_source: Union[str, int],
-    ) -> Optional[SessionWorker]:
-        """Get session by report_id and camera_source."""
-        worker = self.get_session(report_id)
-        if worker is None:
-            return None
-        if str(worker.camera_source) != str(camera_source):
-            return None
-        return worker
-
-    def attach_viewer(self, report_id: str, camera_source: Union[str, int]) -> bool:
-        """
-        Attach a viewer window to a running session.
-
-        Returns:
-            True if viewer attached, False if session not found
-        """
-        worker = self.get_session_by_report_and_camera(report_id, camera_source)
-        if worker is None:
-            return False
-        return worker.start_viewer()
-
-    def detach_viewer(self, report_id: str, camera_source: Union[str, int]) -> bool:
-        """
-        Detach viewer from a running session.
-
-        Returns:
-            True if viewer stopped, False if session not found
-        """
-        worker = self.get_session_by_report_and_camera(report_id, camera_source)
-        if worker is None:
-            return False
-        return worker.stop_viewer()
 
     def is_camera_in_use(self, camera_source: Union[str, int]) -> bool:
         """Check if camera is currently in use by any session."""
