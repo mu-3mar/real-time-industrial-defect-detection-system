@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional, Union, Dict, Set
+from typing import Optional, Union, Set
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaPlayer
 
 from core.backend_client import BackendClient
 from core.model_loader import ModelLoader
