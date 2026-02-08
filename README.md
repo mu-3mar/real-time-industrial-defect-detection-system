@@ -1,226 +1,374 @@
-# QC-SCM: Quality Control & Supply Chain Management System
+# QC-SCM: Quality Control - Supply Chain Management
 
-> **A High-Performance AI-Driven Quality Assurance & Supply Chain Optimization Platform**
-> 
-> *Graduation Project 2026*
+A high-performance, AI-driven quality inspection system for real-time defect detection in manufacturing production lines. The system uses advanced computer vision and deep learning models to automatically detect and classify defects in boxes during production.
 
----
+## 🎯 Overview
 
-## 📋 Table of Contents
+QC-SCM is an intelligent quality control system designed for supply chain management that leverages state-of-the-art YOLO (You Only Look Once) models for real-time defect detection. The system provides:
 
-1.  [Overview](#-overview)
-2.  [System Architecture](#-system-architecture)
-3.  [Feature Modules](#-feature-modules)
-    *   [Box Inspection](#-box-inspection)
-    *   [Bottle Inspection](#-bottle-inspection)
-    *   [Demand Forecasting](#-demand-forecasting)
-4.  [Model Performance Metrics](#-model-performance-metrics)
-5.  [Installation & Setup](#-installation--setup)
-6.  [Usage Guide](#-usage-guide)
-7.  [API Documentation](#-api-documentation)
-8.  [Troubleshooting](#-troubleshooting)
+- **Real-time Detection**: Live video stream processing with WebRTC support
+- **Multi-Session Management**: Handle multiple production lines simultaneously
+- **High Accuracy**: Optimized YOLO models with excellent performance metrics
+- **Production-Ready**: RESTful API with FastAPI backend
+- **Scalable Architecture**: Modular design for easy extension and maintenance
 
----
+## 🏗️ Architecture
 
-## 🔥 Overview
+The system follows a modular architecture with the following components:
 
-**QC-SCM** is a comprehensive industrial automation solution designed to modernize production packaging lines. It integrates state-of-the-art Computer Vision (YOLOv8) and Machine Learning (LightGBM) to ensure product quality and optimize supply chain inventory.
+```
+QC-SCM/
+├── Boxes/                          # Box inspection module
+│   ├── flow/                       # Runtime detection pipeline
+│   │   ├── api_server.py          # FastAPI server with WebRTC
+│   │   ├── main.py                # Entry point
+│   │   ├── configs/               # Configuration files
+│   │   ├── core/                  # Core detection logic
+│   │   ├── detectors/             # Model inference
+│   │   └── utils/                 # Utility functions
+│   └── trainig/                   # Model training
+│       ├── box-YOLO/              # Box detection model
+│       └── defect-YOLO/           # Defect classification model
+├── index.html                      # Production dashboard UI
+└── pyproject.toml                 # Project dependencies
+```
 
-The system operates in real-time to:
-*   **Auto-Detect & Count** products (Boxes, Bottles).
-*   **Identify Defects** (Holes, Tears, Water Damage, Missing Caps/Labels).
-*   **Forecast Demand** to prevent stockouts and overstocking.
-*   **Visualize Data** via a modern WebSocket-based GUI.
+## 🤖 AI Models & Performance
 
----
+### Box Detection Model (YOLOv8)
 
-## 🏗 System Architecture
+The box detection model identifies boxes in the production line with high precision.
 
-The project is divided into three core intelligent modules:
+**Model Details:**
+- **Architecture**: YOLOv8n (Nano variant)
+- **Training Epochs**: 31
+- **Input Size**: Standard YOLO input
+- **Model Path**: `Boxes/trainig/box-YOLO/models/exported/best.pt`
 
-### 1. 📦 Box Inspection Module
-Focuses on packaging integrity. It uses a **two-stage detection pipeline**:
-1.  **Stage 1 (Global Detection)**: Identifies the presence and location of boxes on the conveyor belt.
-2.  **Stage 2 (Defect Analysis)**: Crops the detected box and runs a high-resolution analysis to find specific defects like water damage, holes, or tears.
+**Performance Metrics (Best Epoch - Epoch 31):**
 
-### 2. 🍾 Bottle Inspection Module
-Ensures liquid product quality. It also employs a multi-stage approach:
-1.  **Bottle Detection**: Counts distinct bottles in the frame.
-2.  **Attribute Verification**: Checks for critical components:
-    *   **Cap Presence**: Is the bottle sealed?
-    *   **Label Integrity**: Is the branding label attached?
-    *   **Water Level**: (Feature) Verifies fill level consistency.
+| Metric | Value |
+|--------|-------|
+| **mAP@50** | **95.87%** |
+| **mAP@50-95** | **83.08%** |
+| **Precision** | **94.61%** |
+| **Recall** | **89.62%** |
+| **Confidence Threshold** | 0.7 |
+| **IoU Threshold** | 0.6 |
 
-### 3. 📈 Demand Forecasting Module
-Optimizes the supply chain by predicting future product sales.
-*   Uses historical sales data and external factors (seasonality, promotions).
-*   Built on **FastAPI** and **LightGBM** for high-speed inference.
+### Defect Detection Model (YOLOv8)
 
----
+The defect detection model classifies defects within detected boxes using a two-stage pipeline.
 
-## 🚀 Feature Modules
+**Model Details:**
+- **Architecture**: YOLOv8n (Nano variant)
+- **Training Epochs**: 100
+- **Input Size**: Standard YOLO input
+- **Model Path**: `Boxes/trainig/defect-YOLO/models/exported/best.pt`
 
-### 📦 Box Inspection
+**Performance Metrics (Best Epoch - Epoch 100):**
 
-*   **Core Tech**: YOLOv8 (PyTorch/ONNX)
-*   **Defect Classes**:
-    *   `Hole`
-    *   `Tear`
-    *   `Water Damage`
-*   **Key Capabilities**:
-    *   Real-time processing (30+ FPS on GPU).
-    *   Dynamic defect visualization with transparent overlays.
-    *   WebRTC streaming to remote dashboards.
+| Metric | Value |
+|--------|-------|
+| **mAP@50** | **88.82%** |
+| **mAP@50-95** | **63.18%** |
+| **Precision** | **90.41%** |
+| **Recall** | **82.49%** |
+| **Confidence Threshold** | 0.3 |
+| **IoU Threshold** | 0.6 |
 
-### 🍾 Bottle Inspection
+**Defect Detection Features:**
+- **Single-box tracking** with smooth, stable annotations
+- **Defect voting system** for robust decision-making
+- **Configurable stability parameters**:
+  - Min frames before box is "inside": 4
+  - Max missed frames before exit: 6
+  - Vote window: 9 frames
+  - Vote threshold: 5 defect votes (out of 9) to classify as DEFECT
+- **Visibility-based rendering** (20% threshold)
 
-*   **Core Tech**: YOLOv8s (Medium) + YOLOv8n (Nano)
-*   **Inspection Points**:
-    *   Total Bottle Count
-    *   Defect Count (Missing Cap/Label)
-    *   Acceptable Product Count
-*   **Workflow**:
-    *   `YOLOv8s` detects all bottles.
-    *   `YOLOv8n` classifies cropped regions for Caps and Labels.
+## 📊 Detection Pipeline
 
-### 📈 Demand Forecasting
+The system uses a **two-stage detection pipeline**:
 
-*   **Core Tech**: LightGBM
-*   **Features**:
-    *   Stockout handling algorithms.
-    *   Multi-day lag features for trend analysis.
-    *   94%+ R² Accuracy on test data.
+1. **Stage 1 - Box Detection**: 
+   - Detects boxes in the video frame
+   - Tracks boxes across frames with IoU-based tracking
+   - Applies bounding box smoothing (alpha = 0.6)
 
----
+2. **Stage 2 - Defect Classification**:
+   - Crops detected boxes
+   - Classifies defects within each box
+   - Uses voting mechanism for stable defect decisions
+   - Tracks defects across frames
 
-## 📊 Model Performance Metrics
-
-We have rigorously trained and evaluated our models. Below are the key performance indicators (KPIs).
-
-### 1. Box Detection Models
-
-| Model Component | Architecture | Precision (P) | Recall (R) | mAP@50 | mAP@50-95 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Box Locator** | YOLOv8 | **94.6%** | 89.6% | **95.8%** | 83.1% |
-| **Defect Classifier** | YOLOv8 | 90.4% | 82.5% | 88.8% | 63.2% |
-
-### 2. Bottle Inspection Models
-
-| Model Component | Architecture | Precision (P) | Recall (R) | mAP@50 | mAP@50-95 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Bottle Detector** | YOLOv8s | **96.4%** | 93.2% | 96.8% | 89.7% |
-| **Bottle Attributes** | YOLOv8n | **98.4%** | **99.7%** | **99.1%** | 97.5% |
-
-### 3. Supply Chain Forecasting
-
-| Metric | Value | Description |
-| :--- | :--- | :--- |
-| **R² Score** | **94.43%** | Explains 94% of sales variance. |
-| **RMSE** | 0.423 | Root Mean Square Error. |
-| **MAE** | 0.223 | Mean Absolute Error. |
-
----
-
-## 🛠 Installation & Setup
+## 🚀 Installation
 
 ### Prerequisites
-*   **OS**: Linux (Ubuntu 20.04/22.04 recommended) or Windows 10/11
-*   **Python**: 3.10+
-*   **GPU**: NVIDIA GTX/RTX Series (CUDA 11.8+)
-*   **Conda**: Recommended for environment isolation
 
-### Step 1: Clone Repository
+- Python 3.10 or higher
+- CUDA-capable GPU (recommended for real-time performance)
+- Webcam or video input device
+
+### Setup
+
+1. **Clone the repository**:
 ```bash
-git clone https://github.com/mu-3mar/QC-SCM.git
+git clone <repository-url>
 cd QC-SCM
 ```
 
-### Step 2: Create Environment
+2. **Install dependencies**:
 ```bash
-conda create -n qc python=3.10 -y
-conda activate qc
+pip install -e .
 ```
 
-### Step 3: Install Dependencies
-```bash
-# Install core requirements
-pip install -r requirements.txt
+The project uses `pyproject.toml` for dependency management with the following key packages:
+- `ultralytics==8.4.7` - YOLO model framework
+- `torch==2.9.1` - Deep learning framework
+- `opencv-python==4.13.0.90` - Computer vision
+- `fastapi==0.115.6` - API framework
+- `uvicorn[standard]==0.34.0` - ASGI server
+- `onnxruntime-gpu==1.23.2` - Optimized inference
+- `aiortc` - WebRTC support
 
-# Install PyTorch with CUDA support (adjust for your CUDA version)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+## 💻 Usage
+
+### Starting the Detection Service
+
+1. **Start the API server**:
+```bash
+cd Boxes/flow
+python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
 ```
 
----
+2. **Open the production dashboard**:
+   - Open `index.html` in a web browser
+   - The dashboard provides controls for multiple production lines
 
-## 🎮 Usage Guide
+### Configuration
 
-### Running Box Inspection (Headless/API)
-Starts the backend detection server.
-```bash
-conda activate qc
-python Boxes/flow/main.py
+Edit the configuration files in `Boxes/flow/configs/`:
+
+**Box Detector (`box_detector.yaml`):**
+```yaml
+model_path: Boxes/trainig/box-YOLO/models/exported/best.pt
+conf_thres: 0.7
+iou_thres: 0.6
+device: 0
 ```
 
-### Running the Visualization GUI
-Launch the WebSocket viewer to see live inferences.
-1.  Open `index.html` in a modern web browser.
-2.  Or use the Python viewer:
-    ```bash
-    python GUI/viewer.py
-    ```
+**Defect Detector (`defect_detector.yaml`):**
+```yaml
+model_path: Boxes/trainig/defect-YOLO/models/exported/best.pt
+conf_thres: 0.3
+iou_thres: 0.6
+device: 0
 
-### Running Bottle Inspection Flow
-```bash
-# Update path to your specific flow script
-python Bottles/flow/main.py
+tracking:
+  iou_threshold: 0.35
+  bbox_smooth_alpha: 0.6
+
+stability:
+  min_frames: 4
+  max_missed: 6
+  vote_window: 9
+  vote_threshold: 5
+
+rendering:
+  visibility_threshold: 0.2
 ```
 
-### Running Demand Forecasting API
-```bash
-cd DevIgnite-AI_DemandForeCasting/src
-python app.py
+## 🔌 API Documentation
+
+### Base URL
 ```
-
----
-
-## 📡 API Documentation
-
-The system exposes a RESTful API (FastAPI) for integration.
-
-### Base URL: `http://localhost:8000`
+http://localhost:8000
+```
 
 ### Endpoints
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/sessions/open` | Start a new inspection session. Requires `report_id` and `camera_source`. |
-| `POST` | `/api/sessions/close` | Stop an active session. |
-| `GET` | `/api/sessions` | List all active inspection sessions. |
-| `GET` | `/api/health` | Check system health status. |
-| `POST` | `/webrtc/offer` | Initiate WebRTC stream for live video. |
+#### 1. Open Detection Session
+**POST** `/api/sessions/open`
 
-**Example: Open a Session**
-```bash
-curl -X POST "http://localhost:8000/api/sessions/open" \
-     -H "Content-Type: application/json" \
-     -d '{"report_id": "session_01", "camera_source": 0}'
+Opens a new headless detection session for a production line.
+
+**Request Body:**
+```json
+{
+  "report_id": "line1_abc123",
+  "camera_source": "/dev/v4l/by-id/camera-device"
+}
 ```
 
----
+**Response:**
+```json
+{
+  "status": "success",
+  "report_id": "line1_abc123",
+  "message": "Session started with camera /dev/v4l/by-id/camera-device"
+}
+```
 
-## 🔧 Troubleshooting
+#### 2. Close Detection Session
+**POST** `/api/sessions/close`
 
-| **Issue** | **Possible Cause** | **Solution** |
-| :--- | :--- | :--- |
-| **CUDA OOM Error** | GPU memory full. | Reduce `batch_size` in config or `PROCESS_EVERY_N_FRAMES` in `main.py`. |
-| **Low FPS** | Running on CPU. | Ensure `torch.cuda.is_available()` returns `True`. Install `onnxruntime-gpu`. |
-| **No Detection** | Confidence threshold too high. | Lower `conf_thres` in `Boxes/flow/configs/box_detector.yaml`. |
-| **WebRTC Fail** | Network firewall. | Ensure ports 8000 and UDP ports are open. Check `api_server.py` logs. |
+Closes an active detection session.
 
----
+**Request Body:**
+```json
+{
+  "report_id": "line1_abc123",
+  "camera_source": "/dev/v4l/by-id/camera-device"
+}
+```
 
-### 📞 Contact & Support
-*   **Lead Developer**: Muhammad Ammar
-*   **Project Link**: [GitHub Repository](https://github.com/mu-3mar/QC-SCM)
+**Response:**
+```json
+{
+  "status": "success",
+  "report_id": "line1_abc123",
+  "message": "Session closed successfully"
+}
+```
 
-> *"Quality is not an act, it is a habit."*
+#### 3. List Active Sessions
+**GET** `/api/sessions`
+
+Returns a list of all active detection sessions.
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "report_id": "line1_abc123",
+      "camera_source": "/dev/v4l/by-id/camera-device",
+      "status": "active"
+    }
+  ]
+}
+```
+
+#### 4. Health Check
+**GET** `/api/health`
+
+Returns service health status and active session count.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "active_sessions": 2
+}
+```
+
+#### 5. WebRTC Offer
+**POST** `/webrtc/offer`
+
+Establishes a WebRTC connection for real-time video streaming.
+
+**Request Body:**
+```json
+{
+  "sdp": "<SDP offer string>",
+  "type": "offer",
+  "report_id": "line1_abc123"
+}
+```
+
+**Response:**
+```json
+{
+  "sdp": "<SDP answer string>",
+  "type": "answer"
+}
+```
+
+## 🎨 Production Dashboard
+
+The `index.html` file provides a web-based dashboard for managing multiple production lines:
+
+**Features:**
+- **Multi-line support**: Monitor multiple production lines simultaneously
+- **Real-time video streaming**: WebRTC-based live video feed
+- **Session management**: Open/close detection sessions
+- **Status monitoring**: View connection and streaming status
+- **Clean UI**: Modern, responsive interface
+
+**Dashboard Controls:**
+- **Open**: Start a new detection session
+- **Close**: Stop the detection session
+- **Start Stream**: Begin WebRTC video streaming
+- **Stop Stream**: End video streaming
+- **List Sessions**: View all active sessions
+
+## 🔧 Training Models
+
+### Box Detection Model
+
+Navigate to the box detection training directory:
+```bash
+cd Boxes/trainig/box-YOLO
+```
+
+Run the complete training pipeline:
+```bash
+python scripts/run_all.py
+```
+
+This will:
+1. Train the model
+2. Export to ONNX format
+3. Quantize the model
+
+### Defect Detection Model
+
+Navigate to the defect detection training directory:
+```bash
+cd Boxes/trainig/defect-YOLO
+```
+
+Run the complete training pipeline:
+```bash
+python scripts/run_all.py
+```
+
+### Data Management
+
+Merge multiple datasets:
+```bash
+python scripts/merge_data.py
+```
+
+## 🌐 Network Configuration
+
+The system supports both local and remote deployment:
+
+- **Local Development**: Use `localhost` or `127.0.0.1`
+- **LAN Deployment**: Configure `BASE_URL` in `index.html` to your server's IP
+- **Tailscale VPN**: Supports peer-to-peer connections over Tailscale network
+
+**Example Configuration (index.html):**
+```javascript
+const BASE_URL = "......" // Tailscale IP
+```
+
+## 📈 Performance Optimization
+
+The system is optimized for real-time performance:
+
+- **GPU Acceleration**: CUDA support for fast inference
+- **Model Quantization**: INT8 quantization for reduced latency
+- **Frame Skipping**: Configurable frame processing rate
+- **Batch Processing**: Efficient batch inference
+- **WebRTC Streaming**: Low-latency video transmission
+
+## 🛠️ Technology Stack
+
+- **Deep Learning**: PyTorch, Ultralytics YOLO
+- **Computer Vision**: OpenCV
+- **Backend**: FastAPI, Uvicorn
+- **Real-time Communication**: WebRTC (aiortc)
+- **Model Optimization**: ONNX Runtime
+- **Frontend**: HTML5, JavaScript (Vanilla)
