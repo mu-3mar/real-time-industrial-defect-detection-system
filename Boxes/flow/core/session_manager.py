@@ -5,7 +5,7 @@ import logging
 import threading
 from typing import Dict, Optional, Union
 
-from core.backend_client import BackendClient
+from core.mqtt_client import MqttClient
 from core.session_worker import SessionWorker
 
 logger = logging.getLogger(__name__)
@@ -34,11 +34,12 @@ class SessionManager:
     def create_session(
         self,
         report_id: str,
+        production_line: str,
         camera_source: Union[str, int],
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
-        backend_client: BackendClient,
+        mqtt_client: MqttClient,
         loop: asyncio.AbstractEventLoop,
     ) -> SessionWorker:
         """
@@ -46,11 +47,12 @@ class SessionManager:
 
         Args:
             report_id: Unique session identifier
+            production_line: Production line identifier
             camera_source: Camera device path or index
             box_cfg: Box detector configuration
             defect_cfg: Defect detector configuration
             stream_cfg: Stream configuration (source overridden by camera_source)
-            backend_client: Backend HTTP client
+            mqtt_client: MQTT client for publishing insights
             loop: Main asyncio event loop for broadcasting
 
         Returns:
@@ -71,11 +73,12 @@ class SessionManager:
 
             worker = SessionWorker(
                 report_id=report_id,
+                production_line=production_line,
                 camera_source=camera_source,
                 box_cfg=box_cfg,
                 defect_cfg=defect_cfg,
                 stream_cfg=stream_cfg,
-                backend_client=backend_client,
+                mqtt_client=mqtt_client,
                 loop=loop,
             )
             self.sessions[report_id] = worker

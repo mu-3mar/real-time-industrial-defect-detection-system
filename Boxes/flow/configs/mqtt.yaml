@@ -1,0 +1,13 @@
+broker:
+  host: "fa3aa0b24a074b439e670ca6abc01ade.s1.eu.hivemq.cloud"
+  port: 8883
+  username: "QC-insights"
+  password: "Pa$$w0rd"
+
+client:
+  client_id_prefix: "qc-scm-edge"
+  keepalive: 60
+  clean_session: false
+
+topics:
+  insights_pattern: "factory/{production_line}/{report_id}/insights"

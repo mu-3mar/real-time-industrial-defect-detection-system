@@ -12,8 +12,8 @@ from pydantic import BaseModel
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
 
-from core.backend_client import BackendClient
 from core.model_loader import ModelLoader
+from core.mqtt_client import MqttClient
 from core.session_manager import SessionManager
 from core.webrtc_track import VideoTransformTrack
 
@@ -42,7 +42,7 @@ app.add_middleware(
 
 # Global state
 session_manager = SessionManager.get_instance()
-backend_client: Optional[BackendClient] = None
+mqtt_client: Optional[MqttClient] = None
 configs: dict = {}
 
 # WebRTC Peer Connections
@@ -55,6 +55,7 @@ class SessionIdentifiers(BaseModel):
     """Request body for session operations."""
 
     report_id: str
+    production_line: str
     camera_source: Union[str, int]
 
 
@@ -104,8 +105,8 @@ def _load_configs(base: Path) -> None:
         configs["defect"] = yaml.safe_load(f)
     with open(config_path / "stream.yaml") as f:
         configs["stream"] = yaml.safe_load(f)
-    with open(config_path / "backend.yaml") as f:
-        backend_cfg = yaml.safe_load(f)
+    with open(config_path / "mqtt.yaml") as f:
+        configs["mqtt"] = yaml.safe_load(f)
 
     # Ensure stability config
     if "stability" not in configs["defect"]:
@@ -131,18 +132,25 @@ def _load_configs(base: Path) -> None:
             "visibility_threshold": 0.2,
         }
 
-    global backend_client
-    backend_client = BackendClient(
-        base_url=backend_cfg["base_url"],
-        result_endpoint=backend_cfg["result_endpoint"],
-        timeout=backend_cfg.get("timeout", 5),
-        max_retries=backend_cfg.get("max_retries", 3),
+    # Initialize MQTT client
+    global mqtt_client
+    mqtt_cfg = configs["mqtt"]
+    mqtt_client = MqttClient.initialize(
+        host=mqtt_cfg["broker"]["host"],
+        port=mqtt_cfg["broker"]["port"],
+        username=mqtt_cfg["broker"]["username"],
+        password=mqtt_cfg["broker"]["password"],
+        client_id_prefix=mqtt_cfg["client"]["client_id_prefix"],
+        keepalive=mqtt_cfg["client"]["keepalive"],
+        clean_session=mqtt_cfg["client"]["clean_session"],
+        topic_pattern=mqtt_cfg["topics"]["insights_pattern"],
     )
+    mqtt_client.connect()
 
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Initialize configs, models, and backend client."""
+    """Initialize configs, models, and MQTT client."""
     base = Path(__file__).resolve().parent
     logger.info("Starting QC-SCM Detection Service...")
     try:
@@ -160,10 +168,14 @@ async def startup_event() -> None:
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
-    """Clean up WebRTC connections."""
+    """Clean up WebRTC connections and MQTT client."""
     coros = [pc.close() for pc in pcs]
     await asyncio.gather(*coros)
     pcs.clear()
+    
+    # Disconnect MQTT client
+    if mqtt_client:
+        mqtt_client.disconnect()
 
 
 # -----------------------------------------------------------------------------
@@ -173,8 +185,9 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
     """Open a new headless detection session."""
     try:
         logger.info(
-            "Opening session: report_id=%s camera_source=%s",
+            "Opening session: report_id=%s production_line=%s camera_source=%s",
             body.report_id,
+            body.production_line,
             body.camera_source,
         )
         # Capture the current event loop to pass to the worker
@@ -182,11 +195,12 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
 
         session_manager.create_session(
             report_id=body.report_id,
+            production_line=body.production_line,
             camera_source=body.camera_source,
             box_cfg=configs["box"],
             defect_cfg=configs["defect"],
             stream_cfg=configs["stream"],
-            backend_client=backend_client,
+            mqtt_client=mqtt_client,
             loop=loop,
         )
         return SessionResponse(

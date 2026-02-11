@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Union, List, Set
 
 import numpy as np
 
-from core.backend_client import BackendClient
+from core.mqtt_client import MqttClient
 from core.pipeline import Pipeline
 # We avoid direct import of VideoTransformTrack here to avoid circular dependencies
 # or issues if it's not needed by the worker logic directly other than typing.
@@ -28,21 +28,23 @@ class SessionWorker(threading.Thread):
     def __init__(
         self,
         report_id: str,
+        production_line: str,
         camera_source: Union[str, int],
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
-        backend_client: BackendClient,
+        mqtt_client: MqttClient,
         loop: asyncio.AbstractEventLoop,
     ):
         super().__init__(daemon=True)
         self.report_id = report_id
+        self.production_line = production_line
         self.camera_source = camera_source
         self._box_cfg = box_cfg
         self._defect_cfg = defect_cfg
         # Override source in stream cfg
         self._stream_cfg = {**stream_cfg, "source": camera_source}
-        self._backend_client = backend_client
+        self._mqtt_client = mqtt_client
         self._loop = loop  # Main event loop (kept for compatibility, though less used now)
 
         self._stop_event = threading.Event()
@@ -53,8 +55,12 @@ class SessionWorker(threading.Thread):
         self._tracks_lock = threading.Lock()
 
     def _on_result(self, is_defect: bool) -> None:
-        """Callback when box exits; send result to backend."""
-        self._backend_client.send_result(self.report_id, is_defect)
+        """Callback when box exits; publish result to MQTT."""
+        self._mqtt_client.publish_insight(
+            production_line=self.production_line,
+            report_id=self.report_id,
+            defect=is_defect,
+        )
 
     def _on_frame(self, frame: np.ndarray) -> None:
         """
