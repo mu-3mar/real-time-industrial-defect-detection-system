@@ -7,7 +7,7 @@ broker:
 client:
   client_id_prefix: "qc-scm-edge"
   keepalive: 60
-  clean_session: false
+  clean_session: true
 
 topics:
   insights_pattern: "factory/{production_line}/{report_id}/insights"

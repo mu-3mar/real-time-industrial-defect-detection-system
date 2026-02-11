@@ -28,7 +28,7 @@ class MqttClient:
         password: str,
         client_id_prefix: str = "qc-scm-edge",
         keepalive: int = 60,
-        clean_session: bool = False,
+        clean_session: bool = True,
         topic_pattern: str = "factory/{production_line}/{report_id}/insights",
     ):
         """
@@ -94,7 +94,7 @@ class MqttClient:
         password: str,
         client_id_prefix: str = "qc-scm-edge",
         keepalive: int = 60,
-        clean_session: bool = False,
+        clean_session: bool = True,
         topic_pattern: str = "factory/{production_line}/{report_id}/insights",
     ) -> "MqttClient":
         """
