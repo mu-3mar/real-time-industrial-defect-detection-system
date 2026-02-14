@@ -10,7 +10,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import (
+    RTCPeerConnection,
+    RTCSessionDescription,
+    RTCConfiguration,
+    RTCIceServer,
+)
 
 from core.model_loader import ModelLoader
 from core.mqtt_client import MqttClient
@@ -279,18 +284,111 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
         raise HTTPException(status_code=404, detail="Session not found")
 
     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
-    # Create PeerConnection (Tailscale LAN: host candidates only)
-    pc = RTCPeerConnection()
+
+    # Production-ready ICE: STUN for direct connectivity, TURN for relay fallback.
+    # iceTransportPolicy is controlled on the client (DEBUG_TURN_ONLY for testing).
+    config = RTCConfiguration(
+        iceServers=[
+            RTCIceServer(urls="stun:20.51.117.96:3478"),
+            RTCIceServer(
+                urls="turn:20.51.117.96:3478",
+                username="turnuser",
+                credential="Sup3r$tr0ngP@ssw0rd",
+            ),
+        ]
+    )
+    pc = RTCPeerConnection(configuration=config)
     pcs.add(pc)
+
+    def _log_ice_candidates() -> None:
+        """Log gathered ICE candidates with type (host, srflx, relay) for debugging."""
+        try:
+            ice_transport = None
+            if getattr(pc, "sctp", None) and getattr(pc.sctp, "transport", None):
+                dtls = pc.sctp.transport
+                ice_transport = getattr(dtls, "transport", None)
+            if ice_transport is None:
+                for transceiver in pc.getTransceivers():
+                    sender = getattr(transceiver, "sender", None)
+                    dtls = getattr(sender, "transport", None) if sender else None
+                    if dtls and getattr(dtls, "transport", None):
+                        ice_transport = dtls.transport
+                        break
+            if ice_transport and hasattr(ice_transport, "iceGatherer"):
+                gatherer = ice_transport.iceGatherer
+                if hasattr(gatherer, "getLocalCandidates"):
+                    for c in gatherer.getLocalCandidates():
+                        ctype = getattr(c, "type", "unknown")
+                        logger.info("ICE candidate gathered: type=%s", ctype)
+        except Exception as e:
+            logger.debug("ICE candidate logging skipped: %s", e)
+
+    @pc.on("icegatheringstatechange")
+    async def on_icegatheringstatechange():
+        if pc.iceGatheringState == "complete":
+            _log_ice_candidates()
+
+    async def _log_selected_transport() -> None:
+        """
+        Log a single clean line indicating how WebRTC connected:
+        - direct (host/srflx)
+        - turn-relay (relay)
+
+        Primary method uses aiortc's selected ICE candidate pair from the
+        underlying iceTransport. Falls back to 'unknown' on error.
+        """
+        transport = "unknown"
+        try:
+            ice_transport = None
+
+            # Prefer SCTP transport (if datachannel present)
+            if getattr(pc, "sctp", None) and getattr(pc.sctp, "transport", None):
+                dtls = pc.sctp.transport
+                ice_transport = getattr(dtls, "transport", None)
+
+            # Fallback: inspect sender transports if SCTP is not available
+            if ice_transport is None:
+                for transceiver in pc.getTransceivers():
+                    sender = getattr(transceiver, "sender", None)
+                    dtls = getattr(sender, "transport", None) if sender else None
+                    if dtls and getattr(dtls, "transport", None):
+                        ice_transport = dtls.transport
+                        break
+
+            if ice_transport and hasattr(ice_transport, "getSelectedCandidatePair"):
+                pair = ice_transport.getSelectedCandidatePair()
+                if pair:
+                    local_type = getattr(pair.local, "type", None)
+                    remote_type = getattr(pair.remote, "type", None)
+                    if local_type == "relay" or remote_type == "relay":
+                        transport = "turn-relay"
+                    else:
+                        transport = "direct"
+
+        except Exception as e:
+            logger.info("WebRTC connected; transport detection failed: %s", e)
+
+        logger.info(
+            "WebRTC Connected via: %s (connectionState=%s, iceConnectionState=%s)",
+            transport,
+            pc.connectionState,
+            pc.iceConnectionState,
+        )
 
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
-        logger.info("Connection state is %s", pc.connectionState)
-        if pc.connectionState == "failed":
+        state = pc.connectionState
+        if state == "connected":
+            await _log_selected_transport()
+        elif state in {"failed", "disconnected", "closed"}:
+            logger.info(
+                "WebRTC state=%s, ICE=%s", state, pc.iceConnectionState
+            )
+        if state == "failed":
             await pc.close()
             pcs.discard(pc)
-        elif pc.connectionState == "closed":
-             pcs.discard(pc)
+        elif state == "closed":
+            pcs.discard(pc)
 
     # Create video track from session
     video_track = VideoTransformTrack()

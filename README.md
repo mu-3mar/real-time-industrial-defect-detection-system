@@ -346,12 +346,12 @@ python scripts/merge_data.py
 The system supports both local and remote deployment:
 
 - **Local Development**: Use `localhost` or `127.0.0.1`
-- **LAN Deployment**: Configure `BASE_URL` in `index.html` to your server's IP
-- **Tailscale VPN**: Supports peer-to-peer connections over Tailscale network
+- **LAN / WAN Deployment**: Configure `BASE_URL` in `index.html` to your server's IP or DNS name.
+- **WebRTC Connectivity**: Uses public STUN and TURN servers for NAT traversal (no Tailscale required).
 
 **Example Configuration (index.html):**
 ```javascript
-const BASE_URL = "......" // Tailscale IP
+const BASE_URL = "https://your-server.example.com"; // Public or LAN address
 ```
 
 ## 📈 Performance Optimization

@@ -29,7 +29,6 @@ outputs/
 *.pdf
 *.svg
 *.eps
-*.html
 # Ignore notebook checkpoints, pycache
 __pycache__/
 *.pyc
