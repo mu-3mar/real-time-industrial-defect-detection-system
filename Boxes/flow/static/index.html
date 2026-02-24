@@ -2,261 +2,271 @@
 <html>
 
 <head>
-<meta charset="UTF-8">
-<title>QC-SCM Production Dashboard</title>
+    <meta charset="UTF-8">
+    <title>QC-SCM Production Dashboard</title>
 
-<style>
-:root {
-    --t50: #EDF8F7;
-    --t700: #2A6F67;
-    --t800: #1C4A45;
-}
+    <style>
+        :root {
+            --t50: #EDF8F7;
+            --t700: #2A6F67;
+            --t800: #1C4A45;
+        }
 
-body {
-    margin:0;
-    font-family:system-ui;
-    background:var(--t50);
-    color:var(--t800);
-}
+        body {
+            margin: 0;
+            font-family: system-ui;
+            background: var(--t50);
+            color: var(--t800);
+        }
 
-.header {
-    background:var(--t700);
-    color:white;
-    padding:18px;
-    font-size:22px;
-    font-weight:bold;
-}
+        .header {
+            background: var(--t700);
+            color: white;
+            padding: 18px;
+            font-size: 22px;
+            font-weight: bold;
+        }
 
-.container {
-    display:flex;
-    gap:25px;
-    padding:25px;
-}
+        .container {
+            display: flex;
+            gap: 25px;
+            padding: 25px;
+        }
 
-.line {
-    background:white;
-    border-radius:14px;
-    padding:20px;
-    flex:1;
-}
+        .line {
+            background: white;
+            border-radius: 14px;
+            padding: 20px;
+            flex: 1;
+        }
 
-button {
-    padding:10px;
-    margin:4px;
-    border-radius:8px;
-    border:none;
-    background:#6BC7BC;
-    color:white;
-    cursor:pointer;
-}
+        button {
+            padding: 10px;
+            margin: 4px;
+            border-radius: 8px;
+            border: none;
+            background: #6BC7BC;
+            color: white;
+            cursor: pointer;
+        }
 
-button.stop {
-    background:#e57373;
-}
+        button.stop {
+            background: #e57373;
+        }
 
-video {
-    width:100%;
-    background:black;
-}
-</style>
+        video {
+            width: 100%;
+            background: black;
+        }
+    </style>
 </head>
 
 <body>
 
-<div class="header">
-QC-SCM Production Lines Dashboard
-</div>
+    <div class="header">
+        QC-SCM Production Lines Dashboard
+    </div>
 
-<div class="container">
+    <div class="container">
 
-<div class="line" id="line1">
-<h3>Production Line 1</h3>
-<button onclick="openSession(1)">Open</button>
-<button onclick="closeSession(1)" class="stop">Close</button>
-<button onclick="startStream(1)">Start Stream</button>
-<button onclick="stopStream(1)" class="stop">Stop Stream</button>
-<button onclick="listSessions(1)">List Sessions</button>
+        <div class="line" id="line1">
+            <h3>Production Line 1</h3>
+            <button onclick="openSession(1)">Open</button>
+            <button onclick="closeSession(1)" class="stop">Close</button>
+            <button onclick="startStream(1)">Start Stream</button>
+            <button onclick="stopStream(1)" class="stop">Stop Stream</button>
+            <button onclick="listSessions(1)">List Sessions</button>
 
-<div class="status">Disconnected</div>
-<video autoplay playsinline muted></video>
-<pre></pre>
-</div>
+            <div class="status">Disconnected</div>
+            <video autoplay playsinline muted></video>
+            <pre></pre>
+        </div>
 
-<div class="line" id="line2">
-<h3>Production Line 2</h3>
-<button onclick="openSession(2)">Open</button>
-<button onclick="closeSession(2)" class="stop">Close</button>
-<button onclick="startStream(2)">Start Stream</button>
-<button onclick="stopStream(2)" class="stop">Stop Stream</button>
-<button onclick="listSessions(2)">List Sessions</button>
+        <div class="line" id="line2">
+            <h3>Production Line 2</h3>
+            <button onclick="openSession(2)">Open</button>
+            <button onclick="closeSession(2)" class="stop">Close</button>
+            <button onclick="startStream(2)">Start Stream</button>
+            <button onclick="stopStream(2)" class="stop">Stop Stream</button>
+            <button onclick="listSessions(2)">List Sessions</button>
 
-<div class="status">Disconnected</div>
-<video autoplay playsinline muted></video>
-<pre></pre>
-</div>
+            <div class="status">Disconnected</div>
+            <video autoplay playsinline muted></video>
+            <pre></pre>
+        </div>
 
-</div>
+    </div>
 
-<script>
-(function(){
-"use strict";
+    <script>
+        (function () {
+            "use strict";
 
-// Config loaded from GET /api/config (same origin when served from API)
-window.APP_CONFIG = { webrtc: { iceServers: [], debug_turn_only: false } };
+            // Config loaded from GET /api/config (same origin when served from API)
+            window.APP_CONFIG = { webrtc: { iceServers: [], debug_turn_only: false } };
 
-const pcs = {};
-const sessions = {};
+            const pcs = {};
+            const sessions = {};
 
-const CAMERAS = {
-    1: "/dev/v4l/by-id/v4l2loopback-DroidCam-video",
-    2: "/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0"
-};
+            const CAMERAS = {
+                1: "/dev/v4l/by-id/v4l2loopback-DroidCam-video",
+                2: "/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0"
+            };
 
-function randomID(line){
-    return "line"+line+"_"+Math.random().toString(36).substring(2,8);
-}
+            function randomID(line) {
+                return "line" + line + "_" + Math.random().toString(36).substring(2, 8);
+            }
 
-function getLine(id){
-    return document.getElementById("line"+id);
-}
+            function getLine(id) {
+                return document.getElementById("line" + id);
+            }
 
-function log(id,msg){
-    getLine(id).querySelector("pre").textContent =
-        typeof msg==="string"?msg:JSON.stringify(msg,null,2);
-}
+            function log(id, msg) {
+                getLine(id).querySelector("pre").textContent =
+                    typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+            }
 
-function status(id,msg){
-    getLine(id).querySelector(".status").textContent = msg;
-}
+            function status(id, msg) {
+                getLine(id).querySelector(".status").textContent = msg;
+            }
 
-// Relative URLs: same origin when UI is served from API (e.g. https://<ngrok>/)
-async function api(path, method, body){
-    method = method || "GET";
-    const opt = { method, headers: { "Content-Type": "application/json" } };
-    if (body) opt.body = JSON.stringify(body);
-    const res = await fetch(path, opt);
-    if (!res.ok) throw await res.text();
-    return await res.json();
-}
+            // Relative URLs: same origin when UI is served from API (e.g. https://<ngrok>/)
+            async function api(path, method, body) {
+                method = method || "GET";
+                const opt = { method, headers: { "Content-Type": "application/json" } };
+                if (body) opt.body = JSON.stringify(body);
+                const res = await fetch(path, opt);
+                if (!res.ok) throw await res.text();
+                return await res.json();
+            }
 
-function getData(id){
-    return {
-        report_id: sessions[id],
-        production_line: "line"+id,
-        camera_source: CAMERAS[id]
-    };
-}
+            function getData(id) {
+                return {
+                    report_id: sessions[id],
+                    production_line: "line" + id,
+                    camera_source: CAMERAS[id]
+                };
+            }
 
-async function openSession(id){
-    sessions[id] = randomID(id);
-    log(id, await api("/api/sessions/open", "POST", getData(id)));
-}
+            async function openSession(id) {
+                sessions[id] = randomID(id);
+                log(id, await api("/api/sessions/open", "POST", getData(id)));
+            }
 
-async function closeSession(id){
-    stopStream(id);
-    log(id, await api("/api/sessions/close", "POST", getData(id)));
-}
+            async function closeSession(id) {
+                stopStream(id);
+                log(id, await api("/api/sessions/close", "POST", getData(id)));
+            }
 
-async function listSessions(id){
-    log(id, await api("/api/sessions"));
-}
+            async function listSessions(id) {
+                log(id, await api("/api/sessions"));
+            }
 
-async function startStream(id){
-    const data = getData(id);
-    const line = getLine(id);
-    const video = line.querySelector("video");
+            async function startStream(id) {
+                const data = getData(id);
+                const line = getLine(id);
+                const video = line.querySelector("video");
 
-    if (pcs[id]) pcs[id].close();
+                if (pcs[id]) pcs[id].close();
 
-    var webrtc = window.APP_CONFIG.webrtc;
-    var iceServers = webrtc.iceServers || [];
-    var debugTurnOnly = webrtc.debug_turn_only || false;
+                var webrtc = window.APP_CONFIG.webrtc;
+                var iceServers = webrtc.iceServers || [];
+                var debugTurnOnly = webrtc.debug_turn_only || false;
 
-    // ICE config loaded from /api/config (config/webrtc.yaml) — no hardcoded servers here.
-    // iceTransportPolicy "all" = normal: host/srflx first, TURN only as last-resort fallback.
-    var pc = new RTCPeerConnection({
-        iceServers: iceServers,
-        iceTransportPolicy: debugTurnOnly ? "relay" : "all"
-    });
-
-    pcs[id] = pc;
-
-    pc.onicecandidate = function(e){
-        if (e.candidate)
-            console.log("ICE candidate gathered: type=" + (e.candidate.type || "unknown"));
-    };
-
-    pc.onconnectionstatechange = function(){
-        console.log("connectionState:", pc.connectionState);
-    };
-
-    pc.oniceconnectionstatechange = async function(){
-        var iceState = pc.iceConnectionState;
-        console.log("iceConnectionState:", iceState);
-        if (iceState === "connected" || iceState === "completed") {
-            var transport = "unknown";
-            try {
-                var stats = await pc.getStats();
-                stats.forEach(function(report){
-                    if (report.type === "candidate-pair" && (report.selected || report.nominated)) {
-                        var local = stats.get(report.localCandidateId);
-                        var remote = stats.get(report.remoteCandidateId);
-                        var localType = local && local.candidateType;
-                        var remoteType = remote && remote.candidateType;
-                        if (localType === "relay" || remoteType === "relay") transport = "turn-relay";
-                        else transport = "direct";
-                    }
+                // ICE config loaded from /api/config (config/webrtc.yaml) — no hardcoded servers here.
+                // iceTransportPolicy "all" = normal: host/srflx first, TURN only as last-resort fallback.
+                var pc = new RTCPeerConnection({
+                    iceServers: iceServers,
+                    iceTransportPolicy: debugTurnOnly ? "relay" : "all"
                 });
-            } catch (e) { console.warn("Failed to inspect ICE stats:", e); }
-            console.log("WebRTC Connected via: " + transport);
-        }
-    };
 
-    pc.ontrack = function(e){
-        video.srcObject = e.streams[0];
-        status(id, "Streaming");
-    };
+                pcs[id] = pc;
 
-    pc.addTransceiver("video", { direction: "recvonly" });
-    await pc.setLocalDescription(await pc.createOffer());
+                pc.onicecandidate = function (e) {
+                    if (e.candidate)
+                        console.log("ICE candidate gathered: type=" + (e.candidate.type || "unknown"));
+                };
 
-    var res = await api("/webrtc/offer", "POST", {
-        sdp: pc.localDescription.sdp,
-        type: pc.localDescription.type,
-        report_id: data.report_id
-    });
+                pc.onconnectionstatechange = function () {
+                    console.log("connectionState:", pc.connectionState);
+                };
 
-    await pc.setRemoteDescription(res);
-    status(id, "Connected");
-}
+                pc.oniceconnectionstatechange = async function () {
+                    var iceState = pc.iceConnectionState;
+                    console.log("iceConnectionState:", iceState);
+                    if (iceState === "connected" || iceState === "completed") {
+                        var transport = "unknown";
+                        try {
+                            var stats = await pc.getStats();
+                            stats.forEach(function (report) {
+                                if (report.type === "candidate-pair" && (report.selected || report.nominated)) {
+                                    var local = stats.get(report.localCandidateId);
+                                    var remote = stats.get(report.remoteCandidateId);
+                                    var localType = local && local.candidateType;
+                                    var remoteType = remote && remote.candidateType;
+                                    if (localType === "relay" || remoteType === "relay") transport = "turn-relay";
+                                    else transport = "direct";
+                                }
+                            });
+                        } catch (e) { console.warn("Failed to inspect ICE stats:", e); }
+                        console.log("WebRTC Connected via: " + transport);
+                    }
+                };
 
-function stopStream(id){
-    if (pcs[id]) {
-        pcs[id].close();
-        delete pcs[id];
-    }
-    getLine(id).querySelector("video").srcObject = null;
-    status(id, "Disconnected");
-}
+                pc.ontrack = function (e) {
+                    video.srcObject = e.streams[0];
+                    status(id, "Streaming");
+                };
 
-// Expose for onclick
-window.openSession = openSession;
-window.closeSession = closeSession;
-window.listSessions = listSessions;
-window.startStream = startStream;
-window.stopStream = stopStream;
+                pc.addTransceiver("video", { direction: "recvonly" });
+                await pc.setLocalDescription(await pc.createOffer());
 
-// Load config from API (same origin)
-fetch("/api/config")
-    .then(function(r){ return r.json(); })
-    .then(function(cfg){
-        window.APP_CONFIG = cfg;
-    })
-    .catch(function(e){
-        console.warn("Config load failed, using defaults:", e);
-    });
-})();
-</script>
+                // Wait for ICE gathering to complete so all candidates (including TURN relay)
+                // are included in the SDP before sending the offer to the backend.
+                await new Promise(function (resolve) {
+                    if (pc.iceGatheringState === "complete") return resolve();
+                    pc.addEventListener("icegatheringstatechange", function () {
+                        if (pc.iceGatheringState === "complete") resolve();
+                    });
+                });
+
+                var res = await api("/webrtc/offer", "POST", {
+                    sdp: pc.localDescription.sdp,
+                    type: pc.localDescription.type,
+                    report_id: data.report_id
+                });
+
+                await pc.setRemoteDescription(res);
+                status(id, "Connected");
+            }
+
+            function stopStream(id) {
+                if (pcs[id]) {
+                    pcs[id].close();
+                    delete pcs[id];
+                }
+                getLine(id).querySelector("video").srcObject = null;
+                status(id, "Disconnected");
+            }
+
+            // Expose for onclick
+            window.openSession = openSession;
+            window.closeSession = closeSession;
+            window.listSessions = listSessions;
+            window.startStream = startStream;
+            window.stopStream = stopStream;
+
+            // Load config from API (same origin)
+            fetch("/api/config")
+                .then(function (r) { return r.json(); })
+                .then(function (cfg) {
+                    window.APP_CONFIG = cfg;
+                })
+                .catch(function (e) {
+                    console.warn("Config load failed, using defaults:", e);
+                });
+        })();
+    </script>
 
 </body>
+
 </html>

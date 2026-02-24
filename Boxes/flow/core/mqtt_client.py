@@ -64,16 +64,17 @@ class MqttClient:
         # Set credentials
         self.client.username_pw_set(username, password)
 
-        # Configure TLS
-        self.client.tls_set(
-            cert_reqs=ssl.CERT_REQUIRED,
-            tls_version=ssl.PROTOCOL_TLSv1_2,
-        )
+        # Configure TLS — cert verification temporarily disabled to diagnose connection hang.
+        # TODO: restore cert_reqs=ssl.CERT_REQUIRED once root cause is confirmed.
+        self.client.tls_set(cert_reqs=ssl.CERT_NONE)
+        self.client.tls_insecure_set(True)
+        logger.debug("[MQTT] TLS configured: cert_reqs=CERT_NONE (insecure, debug mode)")
 
         # Set callbacks
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_publish = self._on_publish
+        self.client.on_log = self._on_log  # paho internal logs (TLS/TCP errors)
 
         # Connection state
         self._connected = False
@@ -128,14 +129,31 @@ class MqttClient:
                     )
         return cls._instance
 
+    # Human-readable MQTT return codes for debugging
+    _RC_MESSAGES = {
+        0: "Connection accepted",
+        1: "Refused – incorrect protocol version",
+        2: "Refused – invalid client identifier",
+        3: "Refused – server unavailable",
+        4: "Refused – bad username or password",
+        5: "Refused – not authorized",
+    }
+
     def _on_connect(self, client, userdata, flags, rc):
         """Callback when connected to broker."""
+        rc_msg = self._RC_MESSAGES.get(rc, f"Unknown error code {rc}")
         if rc == 0:
             self._connected = True
-            logger.info("MQTT client connected successfully to %s:%d", self.host, self.port)
+            logger.info(
+                "[MQTT] on_connect fired: rc=%d (%s) — connected to %s:%d",
+                rc, rc_msg, self.host, self.port,
+            )
         else:
             self._connected = False
-            logger.error("MQTT connection failed with code %d", rc)
+            logger.error(
+                "[MQTT] on_connect fired: rc=%d (%s) — connection REFUSED",
+                rc, rc_msg,
+            )
 
     def _on_disconnect(self, client, userdata, rc):
         """Callback when disconnected from broker."""
@@ -148,6 +166,18 @@ class MqttClient:
     def _on_publish(self, client, userdata, mid):
         """Callback when message is published."""
         logger.debug("MQTT message published (mid=%d)", mid)
+
+    def _on_log(self, client, userdata, level, buf):
+        """Paho internal log callback — captures TLS/TCP errors before on_connect fires."""
+        # Map paho log levels to Python logging levels
+        if level == mqtt.MQTT_LOG_ERR:
+            logger.error("[MQTT-paho] %s", buf)
+        elif level == mqtt.MQTT_LOG_WARNING:
+            logger.warning("[MQTT-paho] %s", buf)
+        elif level == mqtt.MQTT_LOG_NOTICE or level == mqtt.MQTT_LOG_INFO:
+            logger.info("[MQTT-paho] %s", buf)
+        else:
+            logger.debug("[MQTT-paho] %s", buf)
 
     def connect(self) -> bool:
         """
@@ -167,25 +197,39 @@ class MqttClient:
 
             try:
                 self._connecting = True
-                logger.info("Connecting to MQTT broker %s:%d...", self.host, self.port)
+                logger.info(
+                    "[MQTT] Connecting to broker: host=%s port=%d username=%s keepalive=%ds",
+                    self.host, self.port, self.username, self.keepalive,
+                )
                 self.client.connect_async(self.host, self.port, self.keepalive)
+                logger.debug("[MQTT] connect_async() called — starting network loop")
                 self.client.loop_start()
 
-                # Wait briefly for connection (non-blocking)
-                timeout = 5
+                # HiveMQ Cloud TLS handshake can take several seconds.
+                # Wait up to 15s for on_connect to fire before declaring "pending".
+                timeout = 15
                 start_time = time.time()
                 while not self._connected and (time.time() - start_time) < timeout:
                     time.sleep(0.1)
 
+                elapsed = time.time() - start_time
                 if self._connected:
-                    logger.info("MQTT connection established")
+                    logger.info("[MQTT] Connection established in %.1fs", elapsed)
                     return True
                 else:
-                    logger.warning("MQTT connection pending (async)")
-                    return True  # Connection in progress
+                    logger.warning(
+                        "[MQTT] Connection pending after %.1fs — "
+                        "on_connect has not fired yet. "
+                        "loop_start() is running; connection will complete in background.",
+                        elapsed,
+                    )
+                    return True  # loop_start() keeps retrying in background
 
             except Exception as e:
-                logger.error("Failed to connect to MQTT broker: %s", e)
+                logger.error(
+                    "[MQTT] Failed to initiate connection to %s:%d — %s: %s",
+                    self.host, self.port, type(e).__name__, e,
+                )
                 self._connecting = False
                 return False
             finally:
