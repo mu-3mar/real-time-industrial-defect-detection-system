@@ -21,15 +21,17 @@ QC-SCM/
 ├── Boxes/                          # Box inspection module
 │   ├── flow/                       # Runtime detection pipeline
 │   │   ├── api_server.py          # FastAPI server with WebRTC
-│   │   ├── main.py                # Entry point
-│   │   ├── configs/               # Configuration files
+│   │   ├── main.py                 # Entry point
+│   │   ├── config/                # Centralized config (app, api, webrtc)
+│   │   ├── configs/               # Service configs (box, defect, stream, mqtt)
+│   │   ├── static/                # Frontend (index.html served at GET /)
 │   │   ├── core/                  # Core detection logic
 │   │   ├── detectors/             # Model inference
 │   │   └── utils/                 # Utility functions
 │   └── trainig/                   # Model training
 │       ├── box-YOLO/              # Box detection model
 │       └── defect-YOLO/           # Defect classification model
-├── index.html                      # Production dashboard UI
+├── CLEANUP_REPORT.md              # Cleanup and safe-delete report
 └── pyproject.toml                 # Project dependencies
 ```
 
@@ -136,19 +138,29 @@ The project uses `pyproject.toml` for dependency management with the following k
 
 ### Starting the Detection Service
 
-1. **Start the API server**:
+1. **Start the API server** (uses `config/api.yaml` for host/port):
 ```bash
 cd Boxes/flow
-python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
+python main.py
 ```
+   Or with uvicorn directly: `python -m uvicorn api_server:app --host 0.0.0.0 --port 8000`
 
 2. **Open the production dashboard**:
-   - Open `index.html` in a web browser
-   - The dashboard provides controls for multiple production lines
+   - **Recommended**: Use the same URL as the API. The UI is served at the root:
+     - Local: `http://localhost:8000/`
+     - Via ngrok: `https://<your-ngrok-url>/`
+   - All API calls use relative paths (same origin), so no manual URL configuration in the browser.
 
 ### Configuration
 
-Edit the configuration files in `Boxes/flow/configs/`:
+**Centralized config (environment-dependent)** in `Boxes/flow/config/`:
+- **`app.yaml`**: `public_base_url` (e.g. ngrok URL) for CORS and docs.
+- **`api.yaml`**: `host`, `port`, `log_level` for the server.
+- **`webrtc.yaml`**: STUN/TURN URLs and credentials, `debug_turn_only` for testing relay.
+
+Change environment (local vs ngrok vs production) by editing these YAML files only; no URLs in HTML or Python.
+
+**Service configs** in `Boxes/flow/configs/`:
 
 **Box Detector (`box_detector.yaml`):**
 ```yaml
@@ -287,7 +299,7 @@ Establishes a WebRTC connection for real-time video streaming.
 
 ## 🎨 Production Dashboard
 
-The `index.html` file provides a web-based dashboard for managing multiple production lines:
+The dashboard is served at **GET /** from the API (`Boxes/flow/static/index.html`). Open the same URL as your API (e.g. `https://<ngrok-url>/` or `http://localhost:8000/`) to use it. It provides:
 
 **Features:**
 - **Multi-line support**: Monitor multiple production lines simultaneously
@@ -343,16 +355,9 @@ python scripts/merge_data.py
 
 ## 🌐 Network Configuration
 
-The system supports both local and remote deployment:
-
-- **Local Development**: Use `localhost` or `127.0.0.1`
-- **LAN / WAN Deployment**: Configure `BASE_URL` in `index.html` to your server's IP or DNS name.
-- **WebRTC Connectivity**: Uses public STUN and TURN servers for NAT traversal (no Tailscale required).
-
-**Example Configuration (index.html):**
-```javascript
-const BASE_URL = "https://your-server.example.com"; // Public or LAN address
-```
+- **Local**: Run `python main.py` and open `http://localhost:8000/`. The dashboard is served from the API (same origin).
+- **ngrok / Public**: Set `public_base_url` in `config/app.yaml` to your ngrok URL (e.g. `https://xxx.ngrok-free.dev`). CORS and frontend then use this origin. Open `https://<ngrok-url>/` for the UI.
+- **WebRTC**: STUN/TURN URLs and credentials are in `config/webrtc.yaml`; the frontend loads them via `GET /api/config`. No hardcoded URLs in HTML or JS.
 
 ## 📈 Performance Optimization
 

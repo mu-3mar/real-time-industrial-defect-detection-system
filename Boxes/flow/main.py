@@ -18,20 +18,18 @@ except ImportError:
 
 
 def main():
-    """Launch FastAPI server."""
+    """Launch FastAPI server. Configuration from config/api.yaml."""
     base = Path(__file__).resolve().parent
-    config_path = base / "configs/api_server.yaml"
-
-    # Load API configuration
-    if config_path.exists():
-        with open(config_path) as f:
-            api_cfg = yaml.safe_load(f)
+    api_cfg_path = base / "config" / "api.yaml"
+    if api_cfg_path.exists():
+        with open(api_cfg_path) as f:
+            api_cfg = yaml.safe_load(f) or {}
     else:
-        api_cfg = {
-            "host": "0.0.0.0",
-            "port": 8000,
-            "log_level": "info",
-        }
+        api_cfg = {}
+
+    api_cfg.setdefault("host", "0.0.0.0")
+    api_cfg.setdefault("port", 8000)
+    api_cfg.setdefault("log_level", "info")
 
     print(f"Starting QC-SCM Detection Service on {api_cfg['host']}:{api_cfg['port']}")
 
