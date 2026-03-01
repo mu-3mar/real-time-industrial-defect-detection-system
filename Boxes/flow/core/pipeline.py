@@ -1,10 +1,11 @@
-import cv2
 import time
 import logging
 from datetime import datetime
+from typing import Optional, Callable, Dict, Any, List, Tuple
+
+import cv2
 import numpy as np
 import threading
-from typing import Optional, Callable, Dict, Any, List, Tuple
 
 from core.state import AppState
 from core.stream import CamStream
@@ -35,18 +36,19 @@ class Pipeline:
         Initialize detection pipeline.
 
         Args:
-            box_cfg: Box detector configuration
-            defect_cfg: Defect detector configuration
-            stream_cfg: Stream configuration
-            headless: If True, skip own GUI window (Always True now)
-            on_result_callback: Optional callback when box exits with decision
-            on_frame_callback: Optional callback to receive the annotated frame
+            box_cfg:             Box detector configuration
+            defect_cfg:          Defect detector configuration
+            stream_cfg:          Stream configuration (includes throttle settings)
+            headless:            If True, skip own GUI window (always True now)
+            on_result_callback:  Optional callback when box exits with decision
+            on_frame_callback:   Optional callback to receive the annotated frame
         """
         self.headless = headless
         self.on_result_callback = on_result_callback
         self.on_frame_callback = on_frame_callback
 
-        # 1. Setup Stream
+        # 1. Setup Stream (producer thread, decouple camera IO from inference)
+        #    Camera runs independently at hardware FPS; pipeline reads latest frame only.
         self.stream = CamStream(
             stream_cfg["source"],
             stream_cfg["width"],
@@ -91,24 +93,65 @@ class Pipeline:
             ROI_WIDTH,
         )
 
-        self.SKIP_DEFECT_FRAMES = 2
+        # ── Task 3: Adaptive Detection Throttle ──────────────────────────────
+        # Read throttle values from stream_cfg (set via stream.yaml).
+        # box_detect_every_n_frames=1  → detect on every frame (no skip)
+        # defect_detect_every_n_frames=3 → detect every 3rd frame (2 skipped)
+        # Both values default to safe settings if not present in config.
+        self.box_detect_every_n: int = int(
+            stream_cfg.get("box_detect_every_n_frames", 1)
+        )
+        self.defect_detect_every_n: int = int(
+            stream_cfg.get("defect_detect_every_n_frames", 3)
+        )
+        logger.info(
+            "Detection throttle: box every %d frames, defect every %d frames",
+            self.box_detect_every_n,
+            self.defect_detect_every_n,
+        )
+
+        # Cached box detection result (reused between throttled frames)
+        self._last_boxes_roi: np.ndarray = np.zeros((0, 4))
+
         self.frame_count = 0
         self.last_time = time.time()
-        self.fps = 0
-        
+        self.fps = 0.0
+
         # Detection loop monitoring
         self._last_frame_log_count = 0
         self._last_detection_log_time = time.time()
-        self._detection_log_interval = 10  # Log detection status every 10 frames
+        self._detection_log_interval = 10  # Log detection status every 10 seconds
+
+        # ── Task 6: Runtime metrics (read by api_server /api/metrics) ──
+        # Written by pipeline thread only; read by API route (lightweight).
+        # Floats are GIL-safe for single reads — no explicit lock needed.
+        self.pipeline_fps: float = 0.0
+        self.camera_fps_estimate: float = 0.0
+        self.queue_latency_ms: float = 0.0
 
     def run(self, stop_event: Optional[threading.Event] = None):
         """
         Run detection pipeline.
 
+        Architecture (Tasks 1, 2):
+        --------------------------
+        The camera capture thread is started first and fills a deque(maxlen=1).
+        The main pipeline loop reads the latest frame non-blocking from that
+        queue, so inference latency never blocks camera capture.
+
+              CamStream._capture_loop()  [background thread]
+                        ↓
+              deque(maxlen=1)            [newest frame only]
+                        ↓
+              Pipeline.run() loop        [this method, consumer]
+
         Args:
             stop_event: Optional threading event to signal stop
         """
         logger.info("Pipeline started (headless=%s)", self.headless)
+
+        # Start the camera capture thread (producer)
+        self.stream.start()
 
         try:
             while True:
@@ -116,17 +159,26 @@ class Pipeline:
                     logger.info("Stop event received, exiting pipeline loop")
                     break
 
-                ret, frame = self.stream.read()
-                if not ret:
-                    logger.error("Failed to read frame from stream")
-                    break
+                # ── Non-blocking frame read from camera queue (Task 1+2) ──
+                ret, frame = self.stream.get_latest_frame()
+                if not ret or frame is None:
+                    # Queue empty: camera thread hasn't produced a frame yet.
+                    # Tiny sleep avoids a busy-spin and keeps CPU usage negligible
+                    # during the startup transition until the first frame arrives.
+                    time.sleep(0.001)
+                    continue
+
+                # ── Queue latency: time since producer enqueued this frame (Task 6) ──
+                enqueue_ts = self.stream.last_enqueue_time
+                if enqueue_ts > 0:
+                    self.queue_latency_ms = (time.time() - enqueue_ts) * 1000.0
 
                 # Advance recent lost track age to ensure recovery window expires
                 try:
                     self.state.tick_recent_lost_track()
                 except Exception:
-                    # Defensive: do not let state tick errors stop pipeline
                     logger.debug("tick_recent_lost_track() encountered an error", exc_info=False)
+
                 self.frame_count += 1
                 self.update_fps()
                 h, w = frame.shape[:2]
@@ -142,15 +194,20 @@ class Pipeline:
 
                 roi = frame[:, self.LEFT_X - roi_offset : self.RIGHT_X - roi_offset]
 
-                # --- STAGE 1: Box Detection ---
-                box_result = self.box_detector.detect(roi)
-                boxes_roi = (
-                    box_result.boxes.xyxy.cpu().numpy()
-                    if box_result.boxes is not None
-                    else np.zeros((0, 4))
-                )
+                # ── STAGE 1: Box Detection (with throttle, Task 3) ──
+                # Run the box detector every box_detect_every_n frames.
+                # Between runs, reuse the cached result so tracking stays continuous.
+                if self.frame_count % self.box_detect_every_n == 0:
+                    box_result = self.box_detector.detect(roi)
+                    self._last_boxes_roi = (
+                        box_result.boxes.xyxy.cpu().numpy()
+                        if box_result.boxes is not None
+                        else np.zeros((0, 4))
+                    )
 
-                # --- Track single box by IoU (smooth, stable identity) ---
+                boxes_roi = self._last_boxes_roi
+
+                # ── Track single box by IoU (smooth, stable identity) ──
                 matched_box, detected = self._match_track(boxes_roi)
                 label, color, final_code = "—", (128, 128, 128), "OK"
                 defect_boxes: List[np.ndarray] = []
@@ -197,14 +254,21 @@ class Pipeline:
                     print(
                         f"[{timestamp}] Box Processed: {final_decision} | Total: {self.state.total_count}"
                     )
-                    logger.info("Box exited: decision=%s, total=%d, defect=%d, ok=%d",
-                               final_decision, self.state.total_count, 
-                               self.state.defect_count, self.state.ok_count)
+                    logger.info(
+                        "Box exited: decision=%s, total=%d, defect=%d, ok=%d",
+                        final_decision, self.state.total_count,
+                        self.state.defect_count, self.state.ok_count,
+                    )
                     if self.on_result_callback:
                         self.on_result_callback(is_defect)
-                
+
                 # Log detection status periodically
-                self._log_detection_status(detected, is_defect if detected and matched_box is not None else None)
+                self._log_detection_status(
+                    detected, is_defect if detected and matched_box is not None else None
+                )
+
+                # Update camera FPS estimate from stream for metrics
+                self.camera_fps_estimate = self.stream.camera_fps
 
                 # Send frame to callback if registered (for broadcasting)
                 if self.on_frame_callback:
@@ -240,7 +304,7 @@ class Pipeline:
                 )
                 logger.debug("Track matched (IoU=%.3f)", best_iou)
                 return self._current_track.copy(), True
-            
+
             # No match with current track; store it for potential recovery
             logger.debug("Track lost, storing for recovery attempt")
             self.state.set_recent_lost_track(tuple(self._current_track))
@@ -253,29 +317,33 @@ class Pipeline:
             areas = (boxes_roi[:, 2] - boxes_roi[:, 0]) * (boxes_roi[:, 3] - boxes_roi[:, 1])
             best_idx = int(np.argmax(areas))
             new_box = boxes_roi[best_idx]
-            
+
             # Check if this matches recently lost track (e.g., from camera jitter)
             if self.state.try_recover_recent_track(tuple(new_box)):
                 # Recovered! Restart tracking with recovered box
                 self._current_track = smooth_bbox(None, new_box.astype(np.float64), self.bbox_smooth_alpha)
                 return self._current_track.copy(), True
-            
+
             # No recovery; start new track
             new_box_float = new_box.astype(np.float64)
             self._current_track = smooth_bbox(None, new_box_float, self.bbox_smooth_alpha)
             logger.debug("New track started")
             return self._current_track.copy(), True
-        
+
         return None, False
 
     def _check_defect_track(self, crop: np.ndarray) -> Tuple[bool, List]:
         """
-        Run defect detection on the tracked box crop; cache and skip frames for smoothness.
+        Run defect detection on the tracked box crop.
+
+        Task 3: Defect detector is throttled to run every `defect_detect_every_n`
+        frames. Between runs the last result is returned from cache in AppState,
+        preserving tracking correctness without forcing inference every frame.
+
         Returns (is_defect, defect_boxes).
         """
-        run_this_frame = (
-            self.frame_count % (self.SKIP_DEFECT_FRAMES + 1) == 0
-        )
+        # defect_detect_every_n=3 → run on frames 0, 3, 6, 9 … (every 3rd)
+        run_this_frame = (self.frame_count % self.defect_detect_every_n == 0)
         if run_this_frame and crop.size > 0:
             d_res = self.defect_detector.detect(crop)
             hole_detected = False
@@ -291,13 +359,15 @@ class Pipeline:
         return self.state.get_last_defect_result()
 
     def update_fps(self):
+        """Measure pipeline FPS every 10 frames and store for metrics."""
         if self.frame_count % 10 == 0:
             current_time = time.time()
             elapsed = current_time - self.last_time
             if elapsed > 0:
                 self.fps = 10 / elapsed
+                self.pipeline_fps = self.fps  # expose for /api/metrics
             self.last_time = current_time
-    
+
     def _log_detection_status(self, detected: bool, is_defect: Optional[bool] = None) -> None:
         """
         Log detection status periodically to monitor pipeline health.
@@ -307,10 +377,13 @@ class Pipeline:
         if current_time - self._last_detection_log_time >= self._detection_log_interval:
             frames_since_last_log = self.frame_count - self._last_frame_log_count
             logger.info(
-                "Pipeline status: frame=%d, fps=%.1f, detected=%s, "
-                "track_inside=%s, defect_status=%s, frames_in_window=%d",
+                "Pipeline status: frame=%d, pipeline_fps=%.1f, camera_fps=%.1f, "
+                "queue_latency_ms=%.1f, detected=%s, track_inside=%s, "
+                "defect_status=%s, frames_in_window=%d",
                 self.frame_count,
-                self.fps,
+                self.pipeline_fps,
+                self.camera_fps_estimate,
+                self.queue_latency_ms,
                 detected,
                 self.state.inside,
                 is_defect if is_defect is not None else "unknown",
@@ -318,7 +391,7 @@ class Pipeline:
             )
             self._last_detection_log_time = current_time
             self._last_frame_log_count = self.frame_count
-    
+
     def cleanup(self):
         """Release resources."""
         self.stream.release()
