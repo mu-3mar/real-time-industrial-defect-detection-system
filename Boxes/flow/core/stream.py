@@ -11,7 +11,12 @@ class CamStream:
     """Wrapper for OpenCV video capture."""
 
     def __init__(self, source, width, height):
-        self.cap = cv2.VideoCapture(source)
+        # Use V4L2 backend and force MJPG to avoid YUYV (10 FPS bottleneck on many webcams)
+        self.cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+        self.cap.set(
+            cv2.CAP_PROP_FOURCC,
+            cv2.VideoWriter_fourcc(*"MJPG"),
+        )
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
