@@ -142,7 +142,6 @@ def _load_configs(base: Path) -> None:
         configs["webrtc"] = {
             "stun": {"urls": "stun:20.51.117.96:3478"},
             "turn": {"urls": "turn:20.51.117.96:3478", "username": "turnuser", "credential": "Sup3r$tr0ngP@ssw0rd"},
-            "debug_turn_only": False,
         }
 
     # Service configs (now co-located in config/ alongside environment configs)
@@ -207,6 +206,8 @@ async def startup_event() -> None:
             configs["box"]["model_path"],
             configs["defect"]["model_path"],
         )
+        device = str(configs.get("box", {}).get("device", "0"))
+        model_loader.warmup(device=device)
         logger.info("Service startup complete")
     except Exception as e:
         logger.error("Startup error: %s", e, exc_info=True)
@@ -312,6 +313,22 @@ async def health_check() -> HealthResponse:
         return HealthResponse(status="healthy", active_sessions=active)
     except Exception as e:
         logger.exception("Health check error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/metrics")
+async def get_metrics() -> Dict[str, Any]:
+    """Optional metrics for observability. Does not affect API contracts."""
+    try:
+        sessions = session_manager.list_active_sessions()
+        active_viewers = sum(s.get("active_viewers", 0) for s in sessions)
+        return {
+            "active_sessions": len(sessions),
+            "active_viewers": active_viewers,
+            "webrtc_connections": len(pcs),
+        }
+    except Exception as e:
+        logger.exception("Metrics error")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -22,7 +22,7 @@ Each config file and its keys:
 |-----|---------|
 | `stun.urls` | STUN server for NAT traversal |
 | `turn` | TURN server (backend only; not exposed to clients) |
-| `debug_turn_only` | Force TURN relay for testing |
+| `debug_turn_only` | UNUSED (aiortc has no iceTransportPolicy) |
 
 ## stream.yaml (required)
 

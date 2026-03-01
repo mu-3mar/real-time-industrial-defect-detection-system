@@ -8,6 +8,4 @@ turn:
   username: "turnuser"
   credential: "Sup3r$tr0ngP@ssw0rd"
 
-# Set to true only for testing TURN relay (forces iceTransportPolicy: "relay").
-# Normal operation: keep false so WebRTC uses direct/srflx first, TURN only as fallback.
-debug_turn_only: false
+# debug_turn_only: Not implemented (aiortc has no iceTransportPolicy). Omit or false.

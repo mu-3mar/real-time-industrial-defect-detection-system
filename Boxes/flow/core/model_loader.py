@@ -46,6 +46,19 @@ class ModelLoader:
         self._loaded = True
         logger.info("Models loaded successfully")
 
+    def warmup(self, device: str = "0") -> None:
+        """Run dummy inference to warm up GPU/cache. Reduces first-frame latency."""
+        if not self._loaded:
+            return
+        try:
+            import numpy as np
+            dummy = np.zeros((480, 640, 3), dtype=np.uint8)
+            self.box_model(dummy, verbose=False, device=device)
+            self.defect_model(dummy, verbose=False, device=device)
+            logger.info("Model warmup complete")
+        except Exception as e:
+            logger.warning("Model warmup failed (non-fatal): %s", e)
+
     def get_box_model(self) -> YOLO:
         """Get box detection model."""
         if not self._loaded or self.box_model is None:
