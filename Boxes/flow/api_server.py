@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Union, Set
 import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from aiortc import (
@@ -31,20 +30,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _get_cors_origins() -> List[str]:
-    """Load CORS allowed origins from config so credentials work (no '*' with credentials)."""
+def _get_cors_config() -> tuple:
+    """
+    Load CORS config. Returns (allow_origins, allow_credentials).
+    - If config/app.yaml has cors_origins (non-empty list): use those with credentials=True.
+    - Else: use ["*"] with credentials=False (works for localhost, LAN, remote out-of-the-box).
+    """
     base = Path(__file__).resolve().parent
     app_cfg_path = base / "config" / "app.yaml"
     if app_cfg_path.exists():
         try:
             with open(app_cfg_path) as f:
                 app_cfg = yaml.safe_load(f) or {}
-            url = app_cfg.get("public_base_url")
-            if url:
-                return [url.rstrip("/")]
+            origins = app_cfg.get("cors_origins")
+            if origins and isinstance(origins, list) and len(origins) > 0:
+                cleaned = [str(o).rstrip("/") for o in origins if o]
+                if cleaned:
+                    return cleaned, True
         except Exception:  # noqa: S110
             pass
-    return ["*"]
+    return ["*"], False
 
 
 # FastAPI app
@@ -54,11 +59,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS: use config origins so allow_credentials works (browsers reject '*' with credentials)
+_cors_origins, _cors_credentials = _get_cors_config()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_get_cors_origins(),
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -71,9 +76,6 @@ configs: Dict[str, Any] = {}
 
 # WebRTC Peer Connections
 pcs: Set[RTCPeerConnection] = set()
-
-# Base path for static frontend (set at startup)
-_static_dir: Optional[Path] = None
 
 
 # -----------------------------------------------------------------------------
@@ -127,7 +129,8 @@ def _load_configs(base: Path) -> None:
     cfg = base / "config"
 
     # Environment-dependent config (optional, with defaults)
-    for key, filename in [("app", "app.yaml"), ("api", "api.yaml"), ("webrtc", "webrtc.yaml")]:
+    # Note: api.yaml is loaded by main.py only; webrtc used here for ICE
+    for key, filename in [("app", "app.yaml"), ("webrtc", "webrtc.yaml")]:
         path = cfg / filename
         if path.exists():
             with open(path) as f:
@@ -151,9 +154,6 @@ def _load_configs(base: Path) -> None:
         configs["stream"] = yaml.safe_load(f)
     with open(cfg / "mqtt.yaml") as f:
         configs["mqtt"] = yaml.safe_load(f)
-
-    global _static_dir
-    _static_dir = base / "static"
 
     # Ensure stability config
     if "stability" not in configs["defect"]:
@@ -316,39 +316,23 @@ async def health_check() -> HealthResponse:
 
 
 def _client_webrtc_config() -> Dict[str, Any]:
-    """Build client-safe WebRTC config from config/webrtc.yaml."""
+    """Build client-safe WebRTC config. Returns only STUN; TURN credentials never exposed."""
     w = configs.get("webrtc") or {}
     stun = w.get("stun") or {}
-    turn = w.get("turn") or {}
     ice_servers = []
     if stun.get("urls"):
         ice_servers.append({"urls": stun["urls"] if isinstance(stun["urls"], str) else stun["urls"]})
-    if turn.get("urls"):
-        ice_servers.append({
-            "urls": turn["urls"] if isinstance(turn["urls"], str) else turn["urls"],
-            "username": turn.get("username", ""),
-            "credential": turn.get("credential", ""),
-        })
     return {
         "webrtc": {
             "iceServers": ice_servers,
-            "debug_turn_only": bool(w.get("debug_turn_only", False)),
         }
     }
 
 
 @app.get("/api/config")
 async def get_client_config() -> Dict[str, Any]:
-    """Client configuration (WebRTC ICE, feature flags). No hardcoded URLs in frontend."""
+    """Client configuration (WebRTC STUN servers). Consumed by external frontends."""
     return _client_webrtc_config()
-
-
-@app.get("/")
-async def serve_frontend():
-    """Serve the main dashboard UI. Access via https://<ngrok-url>/ for same-origin API calls."""
-    if _static_dir is None or not (_static_dir / "index.html").exists():
-        raise HTTPException(status_code=503, detail="Frontend not configured (static/index.html missing)")
-    return FileResponse(_static_dir / "index.html", media_type="text/html")
 
 
 @app.post("/webrtc/offer", response_model=OfferResponse)

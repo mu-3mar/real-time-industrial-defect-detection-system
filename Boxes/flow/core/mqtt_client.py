@@ -305,7 +305,3 @@ class MqttClient:
         except Exception as e:
             logger.error("Error publishing insight: %s", e)
             return False
-
-    def is_connected(self) -> bool:
-        """Check if client is connected to broker."""
-        return self._connected

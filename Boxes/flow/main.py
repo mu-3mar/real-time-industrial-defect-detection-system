@@ -31,7 +31,14 @@ def main():
     api_cfg.setdefault("port", 8000)
     api_cfg.setdefault("log_level", "info")
 
-    print(f"Starting QC-SCM Detection Service on {api_cfg['host']}:{api_cfg['port']}")
+    port = api_cfg["port"]
+    print("=" * 60)
+    print("QC-SCM Detection Service")
+    print("=" * 60)
+    print(f"API Base URL: http://localhost:{port}")
+    print(f"  LAN:        http://<your-ip>:{port}")
+    print(f"  Docs:       http://localhost:{port}/docs")
+    print("=" * 60)
 
     uvicorn.run(
         "api_server:app",

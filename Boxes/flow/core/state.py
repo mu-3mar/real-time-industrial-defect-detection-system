@@ -192,10 +192,6 @@ class AppState:
             return True
         
         return False
-    
-    def clear_recent_lost_track(self) -> None:
-        """Clear recent track cache (e.g., when frame_exit is called)."""
-        self._recent_lost_track = None
 
     def frame_exit(self) -> None:
         """On exit: update counters and reset track state."""

@@ -1,5 +1,5 @@
-# WebRTC ICE configuration. Single source of truth for STUN/TURN.
-# Used by backend (api_server) and exposed to frontend via GET /api/config.
+# WebRTC ICE configuration. Backend uses full config for connections.
+# GET /api/config returns only STUN (no TURN credentials) to clients.
 stun:
   urls: "stun:20.51.117.96:3478"
 

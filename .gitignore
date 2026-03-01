@@ -1,8 +1,6 @@
 # ========================
 # GLOBAL IGNORE RULES
 # ========================
-# Ignore bottles 
-Bottles/
 
 # Ignore all datasets
 data/

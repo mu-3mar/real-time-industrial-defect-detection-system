@@ -4,7 +4,7 @@ import asyncio
 import logging
 import threading
 from datetime import datetime
-from typing import Any, Dict, Optional, Union, List, Set
+from typing import Any, Optional, Union, List, Set
 
 import numpy as np
 

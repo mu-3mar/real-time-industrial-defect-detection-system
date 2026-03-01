@@ -19,19 +19,16 @@ The system follows a modular architecture with the following components:
 ```
 QC-SCM/
 ├── Boxes/                          # Box inspection module
-│   ├── flow/                       # Runtime detection pipeline
+│   ├── flow/                       # Runtime detection pipeline (API only)
 │   │   ├── api_server.py          # FastAPI server with WebRTC
 │   │   ├── main.py                 # Entry point
-│   │   ├── config/                # Centralized config (app, api, webrtc)
-│   │   ├── configs/               # Service configs (box, defect, stream, mqtt)
-│   │   ├── static/                # Frontend (index.html served at GET /)
+│   │   ├── config/                # Config (app, api, webrtc, box, defect, stream, mqtt)
 │   │   ├── core/                  # Core detection logic
 │   │   ├── detectors/             # Model inference
 │   │   └── utils/                 # Utility functions
 │   └── trainig/                   # Model training
 │       ├── box-YOLO/              # Box detection model
 │       └── defect-YOLO/           # Defect classification model
-├── CLEANUP_REPORT.md              # Cleanup and safe-delete report
 └── pyproject.toml                 # Project dependencies
 ```
 
@@ -145,22 +142,18 @@ python main.py
 ```
    Or with uvicorn directly: `python -m uvicorn api_server:app --host 0.0.0.0 --port 8000`
 
-2. **Open the production dashboard**:
-   - **Recommended**: Use the same URL as the API. The UI is served at the root:
-     - Local: `http://localhost:8000/`
-     - Via ngrok: `https://<your-ngrok-url>/`
-   - All API calls use relative paths (same origin), so no manual URL configuration in the browser.
+2. **Use the API**: The backend is a pure API service. Consume it from an external frontend or API client.
+   - API docs: `http://localhost:8000/docs`
+   - Health: `http://localhost:8000/api/health`
 
 ### Configuration
 
-**Centralized config (environment-dependent)** in `Boxes/flow/config/`:
-- **`app.yaml`**: `public_base_url` (e.g. ngrok URL) for CORS and docs.
+**Config files** in `Boxes/flow/config/`:
+- **`app.yaml`**: Optional `cors_origins` list. Empty = allow all origins (works for localhost, LAN, remote).
 - **`api.yaml`**: `host`, `port`, `log_level` for the server.
-- **`webrtc.yaml`**: STUN/TURN URLs and credentials, `debug_turn_only` for testing relay.
+- **`webrtc.yaml`**: STUN/TURN for WebRTC (backend only; clients get STUN via `/api/config`).
 
-Change environment (local vs ngrok vs production) by editing these YAML files only; no URLs in HTML or Python.
-
-**Service configs** in `Boxes/flow/configs/`:
+**Service configs** in `Boxes/flow/config/`:
 
 **Box Detector (`box_detector.yaml`):**
 ```yaml
@@ -297,24 +290,6 @@ Establishes a WebRTC connection for real-time video streaming.
 }
 ```
 
-## 🎨 Production Dashboard
-
-The dashboard is served at **GET /** from the API (`Boxes/flow/static/index.html`). Open the same URL as your API (e.g. `https://<ngrok-url>/` or `http://localhost:8000/`) to use it. It provides:
-
-**Features:**
-- **Multi-line support**: Monitor multiple production lines simultaneously
-- **Real-time video streaming**: WebRTC-based live video feed
-- **Session management**: Open/close detection sessions
-- **Status monitoring**: View connection and streaming status
-- **Clean UI**: Modern, responsive interface
-
-**Dashboard Controls:**
-- **Open**: Start a new detection session
-- **Close**: Stop the detection session
-- **Start Stream**: Begin WebRTC video streaming
-- **Stop Stream**: End video streaming
-- **List Sessions**: View all active sessions
-
 ## 🔧 Training Models
 
 ### Box Detection Model
@@ -355,9 +330,12 @@ python scripts/merge_data.py
 
 ## 🌐 Network Configuration
 
-- **Local**: Run `python main.py` and open `http://localhost:8000/`. The dashboard is served from the API (same origin).
-- **ngrok / Public**: Set `public_base_url` in `config/app.yaml` to your ngrok URL (e.g. `https://xxx.ngrok-free.dev`). CORS and frontend then use this origin. Open `https://<ngrok-url>/` for the UI.
-- **WebRTC**: STUN/TURN URLs and credentials are in `config/webrtc.yaml`; the frontend loads them via `GET /api/config`. No hardcoded URLs in HTML or JS.
+- **Local**: Run `python main.py`. API at `http://localhost:8000`. Docs at `/docs`.
+- **LAN**: Use `http://<server-ip>:8000` from other machines on the network.
+- **Remote**: Deploy behind a reverse proxy or use ngrok (optional) for public access.
+- **WebRTC**: STUN servers from `GET /api/config`. TURN (backend-only) in `config/webrtc.yaml`.
+
+**Frontend integration:** See `Boxes/flow/FRONTEND_INTEGRATION.md` for API base URL, endpoints, and examples.
 
 ## 📈 Performance Optimization
 
@@ -373,7 +351,6 @@ The system is optimized for real-time performance:
 
 - **Deep Learning**: PyTorch, Ultralytics YOLO
 - **Computer Vision**: OpenCV
-- **Backend**: FastAPI, Uvicorn
+- **Backend**: FastAPI, Uvicorn (API-only, no built-in frontend)
 - **Real-time Communication**: WebRTC (aiortc)
 - **Model Optimization**: ONNX Runtime
-- **Frontend**: HTML5, JavaScript (Vanilla)

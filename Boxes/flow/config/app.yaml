@@ -1,7 +1,7 @@
-# Application-level configuration (environment-dependent).
-# Change this when deploying behind ngrok or another public URL.
-app_name: "QC-SCM Detection Service"
-# Public base URL where the API and frontend are reached.
-# Used for CORS allowed origins. No trailing slash.
-# Local: "http://localhost:8000"   Ngrok: "https://<your-subdomain>.ngrok-free.dev"
-public_base_url: "https://supereligible-fermina-clangorous.ngrok-free.dev"
+# Optional CORS configuration.
+# Leave empty or omit to allow all origins (works for localhost, LAN, remote).
+# To restrict origins (e.g. production), list them:
+#   cors_origins:
+#     - "http://localhost:3000"
+#     - "https://myapp.example.com"
+cors_origins: []

@@ -1,5 +1,4 @@
-# API server binding and logging.
-# Used by main.py (uvicorn) and by api_server for CORS when public_base_url is not set.
+# API server binding and logging. Used by main.py (uvicorn).
 host: "0.0.0.0"
 port: 8000
 log_level: "info"
