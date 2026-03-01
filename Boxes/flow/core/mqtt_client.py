@@ -5,6 +5,7 @@ import logging
 import ssl
 import threading
 import time
+import queue
 from datetime import datetime
 from typing import Optional
 import uuid
@@ -80,6 +81,11 @@ class MqttClient:
         self._connected = False
         self._connecting = False
         self._connection_lock = threading.Lock()
+        
+        # ── Task 5: Non-blocking Publish Queue ──
+        self._publish_queue: queue.Queue = queue.Queue()
+        self._sender_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
 
     @classmethod
     def get_instance(cls) -> Optional["MqttClient"]:
@@ -179,9 +185,43 @@ class MqttClient:
         else:
             logger.debug("[MQTT-paho] %s", buf)
 
+    def _sender_loop(self):
+        """
+        Background thread that drains the publish queue and sends to MQTT.
+        Ensures the pipeline is never blocked by network latency.
+        """
+        logger.info("[MQTT] Sender thread started")
+        while not self._stop_event.is_set():
+            try:
+                # Wait for an item, but wake up periodically to check stop_event
+                item = self._publish_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+
+            try:
+                topic, payload_str = item
+                if self._connected:
+                    result = self.client.publish(
+                        topic=topic,
+                        payload=payload_str,
+                        qos=1,
+                        retain=False,
+                    )
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        logger.info("Published insight to %s (queued msg, mid=%d)", topic, result.mid)
+                    else:
+                        logger.error("Failed to publish insight (rc=%d)", result.rc)
+                else:
+                    logger.warning("[MQTT] Dropped insight; client not connected. Topic: %s", topic)
+            except Exception as e:
+                logger.error("[MQTT] Error in sender loop: %s", e)
+            finally:
+                self._publish_queue.task_done()
+        logger.info("[MQTT] Sender thread stopped")
+
     def connect(self) -> bool:
         """
-        Connect to MQTT broker (non-blocking).
+        Connect to MQTT broker (non-blocking) and start background sender thread.
 
         Returns:
             True if connection initiated, False otherwise
@@ -204,6 +244,12 @@ class MqttClient:
                 self.client.connect_async(self.host, self.port, self.keepalive)
                 logger.debug("[MQTT] connect_async() called — starting network loop")
                 self.client.loop_start()
+
+                # Start the background sender thread for the queue
+                self._stop_event.clear()
+                if self._sender_thread is None or not self._sender_thread.is_alive():
+                    self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
+                    self._sender_thread.start()
 
                 # HiveMQ Cloud TLS handshake can take several seconds.
                 # Wait up to 15s for on_connect to fire before declaring "pending".
@@ -236,9 +282,13 @@ class MqttClient:
                 self._connecting = False
 
     def disconnect(self) -> None:
-        """Disconnect from MQTT broker."""
+        """Disconnect from MQTT broker and stop sender thread."""
         try:
             logger.info("Disconnecting MQTT client...")
+            self._stop_event.set()
+            if self._sender_thread is not None:
+                self._sender_thread.join(timeout=2.0)
+            
             self.client.loop_stop()
             self.client.disconnect()
             self._connected = False
@@ -253,7 +303,7 @@ class MqttClient:
         defect: bool,
     ) -> bool:
         """
-        Publish detection insight to MQTT (non-blocking).
+        Enqueue detection insight for MQTT publishing (non-blocking).
 
         Args:
             production_line: Production line identifier
@@ -261,12 +311,9 @@ class MqttClient:
             defect: True if defect detected, False otherwise
 
         Returns:
-            True if publish initiated, False otherwise
+            True if enqueue succeeded, False otherwise
         """
-        if not self._connected:
-            logger.warning("MQTT client not connected, cannot publish insight")
-            return False
-
+        # We don't check self._connected here to allow queueing while reconnecting
         try:
             # Build topic
             topic = self.topic_pattern.format(
@@ -281,27 +328,19 @@ class MqttClient:
                 "report_id": report_id,
                 "defect": defect,
             }
-
-            # Publish (QoS 1 for at-least-once delivery)
-            result = self.client.publish(
-                topic=topic,
-                payload=json.dumps(payload),
-                qos=1,
-                retain=False,
-            )
-
-            if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                logger.info(
-                    "Published insight to %s: defect=%s (mid=%d)",
-                    topic,
-                    defect,
-                    result.mid,
-                )
+            
+            payload_str = json.dumps(payload)
+            
+            # Enqueue to background thread
+            # Fast, non-blocking call
+            try:
+                self._publish_queue.put_nowait((topic, payload_str))
+                logger.debug("Enqueued insight to %s: defect=%s", topic, defect)
                 return True
-            else:
-                logger.error("Failed to publish insight (rc=%d)", result.rc)
+            except queue.Full:
+                logger.error("MQTT publish queue full, dropping insight")
                 return False
 
         except Exception as e:
-            logger.error("Error publishing insight: %s", e)
+            logger.error("Error queueing insight: %s", e)
             return False

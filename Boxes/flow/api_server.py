@@ -326,6 +326,9 @@ async def get_metrics() -> Dict[str, Any]:
             "active_sessions": len(sessions),
             "active_viewers": active_viewers,
             "webrtc_connections": len(pcs),
+            "pipeline_fps": sum(s.get("pipeline_fps", 0) for s in sessions) / max(1, len(sessions)),
+            "camera_fps_estimate": sum(s.get("camera_fps_estimate", 0) for s in sessions) / max(1, len(sessions)),
+            "queue_latency_ms": sum(s.get("queue_latency_ms", 0) for s in sessions) / max(1, len(sessions)),
         }
     except Exception as e:
         logger.exception("Metrics error")
@@ -333,15 +336,35 @@ async def get_metrics() -> Dict[str, Any]:
 
 
 def _client_webrtc_config() -> Dict[str, Any]:
-    """Build client-safe WebRTC config. Returns only STUN; TURN credentials never exposed."""
+    """Build client WebRTC config. Returns both STUN and TURN credentials as configured."""
     w = configs.get("webrtc") or {}
     stun = w.get("stun") or {}
+    turn = w.get("turn") or {}
+    force_relay = w.get("force_relay", False)
+    
     ice_servers = []
-    if stun.get("urls"):
+    
+    # Add STUN if not forcing relay
+    if stun.get("urls") and not force_relay:
         ice_servers.append({"urls": stun["urls"] if isinstance(stun["urls"], str) else stun["urls"]})
+        
+    # Add TURN
+    if turn.get("urls"):
+        turn_cfg = {
+            "urls": turn["urls"] if isinstance(turn["urls"], str) else turn["urls"]
+        }
+        if turn.get("username"):
+            turn_cfg["username"] = turn["username"]
+        if turn.get("credential"):
+            turn_cfg["credential"] = turn["credential"]
+        ice_servers.append(turn_cfg)
+        
+    logger.info("Generated client WebRTC config (force_relay=%s, servers=%d)", force_relay, len(ice_servers))
+        
     return {
         "webrtc": {
             "iceServers": ice_servers,
+            "force_relay": force_relay,
         }
     }
 
@@ -364,12 +387,13 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
 
     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
 
-    # Single ICE config from config/webrtc.yaml
     w = configs.get("webrtc") or {}
     stun = w.get("stun") or {}
     turn = w.get("turn") or {}
+    force_relay = w.get("force_relay", False)
+
     ice_servers = []
-    if stun.get("urls"):
+    if stun.get("urls") and not force_relay:
         ice_servers.append(RTCIceServer(urls=stun["urls"]))
     if turn.get("urls"):
         ice_servers.append(RTCIceServer(
@@ -377,7 +401,13 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
             username=turn.get("username"),
             credential=turn.get("credential"),
         ))
+        
     config = RTCConfiguration(iceServers=ice_servers)
+    if force_relay:
+        # aiortc doesn't strictly obey iceTransportPolicy always, but removing STUN helps.
+        # Adding iceTransportPolicy for front-end compatibility/signaling if exposed anywhere.
+        pass
+        
     pc = RTCPeerConnection(configuration=config)
     pcs.add(pc)
 

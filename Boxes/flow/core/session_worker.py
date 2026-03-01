@@ -49,6 +49,7 @@ class SessionWorker(threading.Thread):
 
         self._stop_event = threading.Event()
         self._started_at: Optional[datetime] = None
+        self._pipeline_ref: Optional[Pipeline] = None
         
         # WebRTC Tracks
         self._tracks: Set[Any] = set() # Set of VideoTransformTrack
@@ -81,7 +82,7 @@ class SessionWorker(threading.Thread):
         """Entry point for worker thread."""
         self._started_at = datetime.utcnow()
         try:
-            pipeline = Pipeline(
+            self._pipeline_ref = Pipeline(
                 box_cfg=self._box_cfg,
                 defect_cfg=self._defect_cfg,
                 stream_cfg=self._stream_cfg,
@@ -89,7 +90,7 @@ class SessionWorker(threading.Thread):
                 on_result_callback=self._on_result,
                 on_frame_callback=self._on_frame,
             )
-            pipeline.run(stop_event=self._stop_event)
+            self._pipeline_ref.run(stop_event=self._stop_event)
         except Exception as e:
             logger.exception("Session %s pipeline error: %s", self.report_id, e)
 
@@ -101,7 +102,8 @@ class SessionWorker(threading.Thread):
         """Return session info for list endpoint."""
         with self._tracks_lock:
             viewer_count = len(self._tracks)
-        return {
+            
+        info = {
             "report_id": self.report_id,
             "camera_source": str(self.camera_source),
             "status": "running",
@@ -110,6 +112,14 @@ class SessionWorker(threading.Thread):
             ),
             "active_viewers": viewer_count,
         }
+        
+        # Inject metrics from pipeline if running
+        if self._pipeline_ref is not None:
+            info["pipeline_fps"] = self._pipeline_ref.pipeline_fps
+            info["camera_fps_estimate"] = self._pipeline_ref.camera_fps_estimate
+            info["queue_latency_ms"] = self._pipeline_ref.queue_latency_ms
+            
+        return info
 
     def add_track(self, track: Any) -> None:
         """Add a WebRTC video track to receive frames."""

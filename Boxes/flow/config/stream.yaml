@@ -1,3 +1,7 @@
 # Default frame dimensions. Source comes from POST /api/sessions/open (camera_source).
 width: 1280
 height: 720
+
+# Adaptive detection throttle (frames between runs)
+box_detect_every_n_frames: 1
+defect_detect_every_n_frames: 2
