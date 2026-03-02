@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QC-SCM · Detection Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap"
+    rel="stylesheet">
+
+  <style>
+    /* ═══════════════════════════════════════════
+   ROOT & RESET
+══════════════════════════════════════════════ */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0d0f10;
+      --bg2: #13161a;
+      --bg3: #1a1e24;
+      --border: #2a2f38;
+      --border2: #3a4050;
+      --accent: #00e5c8;
+      --accent2: #ff5252;
+      --accent3: #ffd740;
+      --text: #d4dbe8;
+      --text-dim: #6b7585;
+      --text-faint: #3a4050;
+      --green: #69db7c;
+      --mono: 'Share Tech Mono', monospace;
+      --cond: 'Barlow Condensed', sans-serif;
+      --body: 'Barlow', sans-serif;
+    }
+
+    html,
+    body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 14px;
+      line-height: 1.5;
+      overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════
+   LAYOUT SHELL
+══════════════════════════════════════════════ */
+    #app {
+      display: grid;
+      grid-template-rows: 52px 1fr;
+      height: 100vh;
+    }
+
+    /* ═══════════════════════════════════════════
+   TOP BAR
+══════════════════════════════════════════════ */
+    #topbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+      position: relative;
+      z-index: 100;
+    }
+
+    .logo {
+      font-family: var(--cond);
+      font-weight: 900;
+      font-size: 20px;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo::before {
+      content: '';
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      display: inline-block;
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      animation: pulse-diamond 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-diamond {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: rotate(0deg) scale(1);
+      }
+
+      50% {
+        opacity: 0.5;
+        transform: rotate(45deg) scale(0.85);
+      }
+    }
+
+    .logo-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.15em;
+      margin-left: 2px;
+    }
+
+    .topbar-spacer {
+      flex: 1;
+    }
+
+    #health-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .health-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-faint);
+      transition: background 0.3s;
+    }
+
+    .health-dot.ok {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .health-dot.err {
+      background: var(--accent2);
+      box-shadow: 0 0 6px var(--accent2);
+    }
+
+    #api-base-toggle {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    #api-base-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ═══════════════════════════════════════════
+   MAIN CONTENT AREA
+══════════════════════════════════════════════ */
+    #main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════
+   LEFT PANEL – SESSION LIST
+══════════════════════════════════════════════ */
+    #left-panel {
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-family: var(--cond);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .btn-open {
+      font-family: var(--cond);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .btn-open:hover {
+      opacity: 0.85;
+    }
+
+    .btn-open:active {
+      transform: scale(0.97);
+    }
+
+    #session-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #session-list::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    #session-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #session-list::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 2px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 2;
+    }
+
+    .session-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .session-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--accent);
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .session-card:hover {
+      border-color: var(--border2);
+      background: #1e232b;
+    }
+
+    .session-card:hover::before {
+      opacity: 1;
+    }
+
+    .session-card.active {
+      border-color: var(--accent);
+      background: #1a2628;
+    }
+
+    .session-card.active::before {
+      opacity: 1;
+    }
+
+    .sc-id {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sc-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+    }
+
+    .sc-row span:last-child {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    .sc-viewers {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent3);
+      margin-top: 6px;
+    }
+
+    /* ═══════════════════════════════════════════
+   RIGHT PANEL – SESSION DETAIL / STREAM
+══════════════════════════════════════════════ */
+    #right-panel {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* NO SESSION placeholder */
+    #no-session {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-faint);
+    }
+
+    .no-session-icon {
+      font-size: 48px;
+      opacity: 0.3;
+      animation: float 4s ease-in-out infinite;
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-8px);
+      }
+    }
+
+    .no-session-label {
+      font-family: var(--cond);
+      font-size: 15px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+    }
+
+    /* SESSION VIEW */
+    #session-view {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* ── Controls bar ─────────────────────────────── */
+    #ctrl-bar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    #session-title {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ctrl-btn {
+      font-family: var(--cond);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid;
+      padding: 5px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, opacity 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ctrl-btn:active {
+      opacity: 0.75;
+    }
+
+    .btn-stream-start {
+      background: transparent;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-stream-start:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    .btn-stream-stop {
+      background: transparent;
+      border-color: var(--border2);
+      color: var(--text-dim);
+    }
+
+    .btn-stream-stop:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    .btn-close-session {
+      background: transparent;
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    .btn-close-session:hover {
+      background: var(--accent2);
+      color: #fff;
+    }
+
+    /* ── Stream area ──────────────────────────────── */
+    #stream-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px;
+      gap: 12px;
+    }
+
+    #video-wrap {
+      flex: 1;
+      background: #080a0b;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    #video-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      background: #080a0b;
+      transition: opacity 0.3s;
+    }
+
+    #video-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .overlay-icon {
+      font-size: 40px;
+      opacity: 0.25;
+    }
+
+    .overlay-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      letter-spacing: 0.1em;
+    }
+
+    /* scan lines effect on video */
+    #video-wrap::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.08) 2px,
+          rgba(0, 0, 0, 0.08) 4px);
+      pointer-events: none;
+      border-radius: 8px;
+    }
+
+    /* corner decorations */
+    #video-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .corner {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .corner-tl {
+      top: 8px;
+      left: 8px;
+      border-top: 2px solid var(--accent);
+      border-left: 2px solid var(--accent);
+    }
+
+    .corner-tr {
+      top: 8px;
+      right: 8px;
+      border-top: 2px solid var(--accent);
+      border-right: 2px solid var(--accent);
+    }
+
+    .corner-bl {
+      bottom: 8px;
+      left: 8px;
+      border-bottom: 2px solid var(--accent);
+      border-left: 2px solid var(--accent);
+    }
+
+    .corner-br {
+      bottom: 8px;
+      right: 8px;
+      border-bottom: 2px solid var(--accent);
+      border-right: 2px solid var(--accent);
+    }
+
+    /* ── Status bar ───────────────────────────────── */
+    #status-bar {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-dim);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-faint);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .status-dot.streaming {
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    .status-dot.connected {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .status-dot.error {
+      background: var(--accent2);
+      box-shadow: 0 0 6px var(--accent2);
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    #status-text {
+      color: var(--text);
+    }
+
+    .status-sep {
+      color: var(--text-faint);
+    }
+
+    #status-camera {
+      max-width: 180px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ═══════════════════════════════════════════
+   MODAL – OPEN SESSION
+══════════════════════════════════════════════ */
+    #modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+    }
+
+    #modal-overlay.show {
+      display: flex;
+    }
+
+    #modal {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      width: 380px;
+      padding: 24px;
+      animation: modal-in 0.2s ease;
+    }
+
+    @keyframes modal-in {
+      from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .modal-title {
+      font-family: var(--cond);
+      font-weight: 900;
+      font-size: 20px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-title::before {
+      content: '';
+      display: block;
+      width: 4px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-family: var(--cond);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 5px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--accent);
+    }
+
+    .field select option {
+      background: var(--bg3);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .btn-confirm {
+      flex: 1;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      padding: 10px;
+      font-family: var(--cond);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-confirm:hover {
+      opacity: 0.85;
+    }
+
+    .btn-confirm:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 16px;
+      font-family: var(--cond);
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-cancel:hover {
+      border-color: var(--text-dim);
+      color: var(--text);
+    }
+
+    /* ═══════════════════════════════════════════
+   MODAL – API BASE CONFIG
+══════════════════════════════════════════════ */
+    #config-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 600;
+    }
+
+    #config-modal-overlay.show {
+      display: flex;
+    }
+
+    #config-modal {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      width: 400px;
+      padding: 24px;
+      animation: modal-in 0.2s ease;
+    }
+
+    .config-url-hint {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 12px;
+      line-height: 1.8;
+    }
+
+    .config-url-hint code {
+      color: var(--accent3);
+      background: rgba(255, 215, 64, 0.08);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ═══════════════════════════════════════════
+   TOAST NOTIFICATIONS
+══════════════════════════════════════════════ */
+    #toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      max-width: 280px;
+      animation: toast-in 0.25s ease, toast-out 0.25s ease 2.75s forwards;
+      pointer-events: all;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toast.success {
+      border-color: var(--green);
+    }
+
+    .toast.error {
+      border-color: var(--accent2);
+    }
+
+    .toast.info {
+      border-color: var(--accent);
+    }
+
+    @keyframes toast-in {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+    }
+
+    @keyframes toast-out {
+      to {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+    }
+
+    /* ═══════════════════════════════════════════
+   LOADING SPINNER
+══════════════════════════════════════════════ */
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(0, 229, 200, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+
+    <!-- ─────────── TOP BAR ─────────── -->
+    <div id="topbar">
+      <div class="logo">
+        QC-SCM
+        <span class="logo-sub">DETECTION CONTROL</span>
+      </div>
+      <div class="topbar-spacer"></div>
+      <div id="health-badge">
+        <span class="health-dot" id="health-dot"></span>
+        <span id="health-text">—</span>
+      </div>
+      <button id="api-base-toggle" onclick="showConfigModal()">⚙ API</button>
+    </div>
+
+    <!-- ─────────── MAIN ─────────── -->
+    <div id="main">
+
+      <!-- LEFT: session list -->
+      <div id="left-panel">
+        <div class="panel-header">
+          <span class="panel-title">Sessions</span>
+          <button class="btn-open" onclick="showModal()">
+            <span>+</span> Open Session
+          </button>
+        </div>
+        <div id="session-list">
+          <div class="empty-state">NO ACTIVE SESSIONS<br>───────────────<br>CLICK + OPEN TO BEGIN</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: stream view -->
+      <div id="right-panel">
+
+        <!-- No session selected -->
+        <div id="no-session">
+          <div class="no-session-icon">◈</div>
+          <div class="no-session-label">Select a session to view stream</div>
+        </div>
+
+        <!-- Session active view -->
+        <div id="session-view">
+
+          <div id="ctrl-bar">
+            <span id="session-title">—</span>
+            <button class="ctrl-btn btn-stream-start" onclick="startStream()">▶ Start Stream</button>
+            <button class="ctrl-btn btn-stream-stop" onclick="stopStream()">■ Stop Stream</button>
+            <button class="ctrl-btn btn-close-session" onclick="closeSession()">✕ Close Session</button>
+          </div>
+
+          <div id="stream-area">
+            <div id="video-wrap">
+              <div class="corner corner-tl"></div>
+              <div class="corner corner-tr"></div>
+              <div class="corner corner-bl"></div>
+              <div class="corner corner-br"></div>
+              <video id="video" autoplay playsinline muted></video>
+              <div id="video-overlay">
+                <div class="overlay-icon">⬡</div>
+                <div class="overlay-text">STREAM NOT ACTIVE</div>
+              </div>
+            </div>
+
+            <div id="status-bar">
+              <div class="status-item">
+                <span class="status-dot" id="conn-dot"></span>
+                <span id="status-text">DISCONNECTED</span>
+              </div>
+              <span class="status-sep">│</span>
+              <div class="status-item">
+                <span>CAM:</span>
+                <span id="status-camera">—</span>
+              </div>
+              <span class="status-sep">│</span>
+              <div class="status-item">
+                <span>LINE:</span>
+                <span id="status-line">—</span>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /session-view -->
+      </div><!-- /right-panel -->
+    </div><!-- /main -->
+  </div><!-- /app -->
+
+  <!-- ═══════════════════════════════════════════
+     MODAL: OPEN SESSION
+══════════════════════════════════════════════ -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <div class="modal-title">Open Session</div>
+
+      <div class="field">
+        <label>Report ID</label>
+        <input type="text" id="f-report-id" placeholder="auto-generated" readonly style="cursor:default; opacity:0.7;">
+      </div>
+
+      <div class="field">
+        <label>Production Line</label>
+        <select id="f-line" onchange="onLineChange()">
+          <option value="line1">Production Line 1</option>
+          <option value="line2">Production Line 2</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Camera Source</label>
+        <input type="text" id="f-camera" readonly style="cursor:default; opacity:0.7; font-size:10px;">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="hideModal()">Cancel</button>
+        <button class="btn-confirm" id="btn-open-confirm" onclick="doOpenSession()">Open Session</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+     MODAL: API CONFIG
+══════════════════════════════════════════════ -->
+  <div id="config-modal-overlay">
+    <div id="config-modal">
+      <div class="modal-title">API Configuration</div>
+
+      <div class="field">
+        <label>API Base URL</label>
+        <input type="text" id="f-api-base" placeholder="http://localhost:8000">
+      </div>
+
+      <div class="config-url-hint">
+        <b>Examples:</b><br>
+        Local: <code>http://localhost:8000</code><br>
+        LAN: <code>http://192.168.1.100:8000</code><br>
+        Server: <code>https://api.example.com</code><br>
+        ngrok: <code>https://abc123.ngrok-free.dev</code>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="hideConfigModal()">Cancel</button>
+        <button class="btn-confirm" onclick="saveApiBase()">Save &amp; Reload Config</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container"></div>
+
+  <!-- ═══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════ -->
+  <script>
+    "use strict";
+
+    /* ─────────────────────────────────────────────
+       STATE
+    ───────────────────────────────────────────── */
+    let API_BASE = localStorage.getItem("qcscm_api_base") || "http://localhost:8000";
+    let ICE_SERVERS = [];
+    let FORCE_RELAY = false;  // set by backend via /api/config → webrtc.force_relay
+    let currentSession = null;  // highlighted card in the list
+    let viewedSession = null;  // session currently open in the right panel (close/stream act on this)
+    let pc = null;
+    let refreshTimer = null;
+
+    // Local store: report_id → full session object { report_id, production_line, camera_source }
+    // Ensures production_line and camera_source are never lost between list refreshes
+    const sessionStore = {};
+
+    const CAMERAS = {
+      line1: "/dev/v4l/by-id/v4l2loopback-DroidCam-video",
+      line2: "/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0"
+    };
+
+    /* ─────────────────────────────────────────────
+       API HELPER
+    ───────────────────────────────────────────── */
+    async function api(path, method = "GET", body = null) {
+      const opts = {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",   // skip ngrok browser warning page
+        },
+        mode: "cors",
+      };
+      if (body) opts.body = JSON.stringify(body);
+
+      let res;
+      try {
+        res = await fetch(`${API_BASE}${path}`, opts);
+      } catch (e) {
+        throw new Error(`Cannot reach backend at ${API_BASE} — check ⚙ API URL (${e.message})`);
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "Unknown error");
+        throw new Error(`${res.status}: ${txt}`);
+      }
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Backend returned non-JSON (got "${contentType}") — wrong API URL? Check ⚙ API`);
+      }
+      return res.json();
+    }
+
+    /* ─────────────────────────────────────────────
+       TOAST
+    ───────────────────────────────────────────── */
+    function toast(msg, type = "info") {
+      const el = document.createElement("div");
+      el.className = `toast ${type}`;
+      const icon = type === "success" ? "✓" : type === "error" ? "✕" : "◈";
+      el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+      document.getElementById("toast-container").appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    /* ─────────────────────────────────────────────
+       HEALTH CHECK
+    ───────────────────────────────────────────── */
+    async function checkHealth() {
+      const dot = document.getElementById("health-dot");
+      const text = document.getElementById("health-text");
+      try {
+        const data = await api("/api/health");
+        dot.className = "health-dot ok";
+        text.textContent = `HEALTHY · ${data.active_sessions} SESSION${data.active_sessions !== 1 ? "S" : ""}`;
+      } catch (e) {
+        dot.className = "health-dot err";
+        text.textContent = "UNREACHABLE — check ⚙ API";
+        console.warn("Health check failed:", e.message);
+      }
+    }
+
+    /* ─────────────────────────────────────────────
+       LOAD WEBRTC CONFIG  (GET /api/config)
+    ───────────────────────────────────────────── */
+    async function loadWebRTCConfig() {
+      try {
+        const cfg = await api("/api/config");
+        ICE_SERVERS = cfg?.webrtc?.iceServers ?? [];
+        FORCE_RELAY = cfg?.webrtc?.force_relay === true;
+        console.log("WebRTC config loaded — iceServers:", ICE_SERVERS.length, "| force_relay:", FORCE_RELAY);
+      } catch (e) {
+        console.warn("Could not load /api/config, using empty ICE servers:", e.message);
+        ICE_SERVERS = [];
+        FORCE_RELAY = false;
+      }
+    }
+
+    /* ─────────────────────────────────────────────
+       SESSION LIST  (GET /api/sessions)
+    ───────────────────────────────────────────── */
+    async function refreshSessions() {
+      try {
+        const data = await api("/api/sessions");
+        renderSessions(data.sessions ?? []);
+      } catch (e) {
+        console.warn("Refresh failed:", e.message);
+      }
+    }
+
+    function renderSessions(sessions) {
+      const root = document.getElementById("session-list");
+
+      if (!sessions.length) {
+        root.innerHTML = `<div class="empty-state">NO ACTIVE SESSIONS<br>───────────────<br>CLICK + OPEN TO BEGIN</div>`;
+        return;
+      }
+
+      root.innerHTML = "";
+      sessions.forEach(s => {
+        const div = document.createElement("div");
+        const isActive = currentSession?.report_id === s.report_id;
+        div.className = `session-card${isActive ? " active" : ""}`;
+        div.innerHTML = `
+      <div class="sc-id">${s.report_id}</div>
+      <div class="sc-row"><span>LINE</span><span>${s.production_line}</span></div>
+      <div class="sc-row"><span>CAM</span><span>${s.camera_source}</span></div>
+      <div class="sc-viewers">◉ ${s.active_viewers ?? 0} VIEWER${(s.active_viewers ?? 0) !== 1 ? "S" : ""}</div>
+    `;
+        div.onclick = () => enterSession(s.report_id, s.production_line, s.camera_source);
+        root.appendChild(div);
+      });
+    }
+
+    /* ─────────────────────────────────────────────
+       OPEN SESSION MODAL
+    ───────────────────────────────────────────── */
+    function showModal() {
+      document.getElementById("f-report-id").value = generateID();
+      document.getElementById("f-line").value = "line1";
+      document.getElementById("f-camera").value = CAMERAS["line1"];
+      document.getElementById("modal-overlay").classList.add("show");
+    }
+
+    function onLineChange() {
+      const line = document.getElementById("f-line").value;
+      document.getElementById("f-camera").value = CAMERAS[line] ?? "";
+    }
+
+    function hideModal() {
+      document.getElementById("modal-overlay").classList.remove("show");
+    }
+
+    function generateID() {
+      return "session_" + Math.random().toString(36).slice(2, 9);
+    }
+
+    async function doOpenSession() {
+      const report_id = document.getElementById("f-report-id").value.trim();
+      const production_line = document.getElementById("f-line").value;
+      const camera_source = CAMERAS[production_line];
+
+      if (!camera_source) { toast("No camera configured for this line", "error"); return; }
+
+      const btn = document.getElementById("btn-open-confirm");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Opening...`;
+
+      try {
+        await api("/api/sessions/open", "POST", { report_id, production_line, camera_source });
+        // Store full data locally immediately — list refresh may not return all fields
+        sessionStore[report_id] = { report_id, production_line, camera_source };
+        hideModal();
+        toast(`Session opened: ${report_id}`, "success");
+        await refreshSessions();
+        enterSession(report_id, production_line, camera_source);
+      } catch (e) {
+        toast(e.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Open Session";
+      }
+    }
+
+    /* ─────────────────────────────────────────────
+       NAV
+    ───────────────────────────────────────────── */
+    function enterSession(report_id, production_line, camera_source) {
+      stopStream();
+
+      // Persist full data locally — API list responses may omit some fields
+      if (production_line) sessionStore[report_id] = { report_id, production_line, camera_source };
+
+      // Recover from store if API returned incomplete data
+      const stored = sessionStore[report_id] ?? {};
+      const resolved = {
+        report_id,
+        production_line: production_line || stored.production_line || "—",
+        camera_source: camera_source || stored.camera_source || "—",
+      };
+
+      viewedSession = resolved;
+      currentSession = resolved;
+
+      document.getElementById("no-session").style.display = "none";
+      document.getElementById("session-view").style.display = "flex";
+
+      document.getElementById("session-title").textContent = resolved.report_id;
+      document.getElementById("status-camera").textContent = resolved.camera_source;
+      document.getElementById("status-line").textContent = resolved.production_line;
+
+      setStatus("DISCONNECTED", "");
+
+      // Highlight card
+      document.querySelectorAll(".session-card").forEach(c => {
+        c.classList.toggle("active", c.querySelector(".sc-id")?.textContent === report_id);
+      });
+    }
+
+    /* ─────────────────────────────────────────────
+       CLOSE SESSION  (POST /api/sessions/close)
+    ───────────────────────────────────────────── */
+    async function closeSession() {
+      // Always act on what's shown in the panel, not what's highlighted in the list
+      if (!viewedSession) return;
+
+      const target = { ...viewedSession }; // snapshot before we clear it
+      stopStream();
+
+      try {
+        await api("/api/sessions/close", "POST", {
+          report_id: target.report_id,
+          production_line: target.production_line,
+          camera_source: target.camera_source,
+        });
+        toast(`Session closed: ${target.report_id}`, "success");
+      } catch (e) {
+        toast(e.message, "error");
+      }
+
+      delete sessionStore[target.report_id];
+      viewedSession = null;
+      currentSession = null;
+      document.getElementById("no-session").style.display = "flex";
+      document.getElementById("session-view").style.display = "none";
+
+      await refreshSessions();
+    }
+
+    /* ─────────────────────────────────────────────
+       STATUS HELPERS
+    ───────────────────────────────────────────── */
+    function setStatus(text, dotClass) {
+      document.getElementById("status-text").textContent = text;
+      const dot = document.getElementById("conn-dot");
+      dot.className = "status-dot" + (dotClass ? " " + dotClass : "");
+    }
+
+    /* ─────────────────────────────────────────────
+       WEBRTC – START STREAM
+       Follows: GET /api/config  →  POST /webrtc/offer
+    ───────────────────────────────────────────── */
+    async function startStream() {
+      if (!viewedSession) { toast("No session selected", "error"); return; }
+
+      if (pc) { pc.close(); pc = null; }
+
+      // Re-fetch ICE config each time in case it changed
+      await loadWebRTCConfig();
+
+      setStatus("CONNECTING...", "");
+
+      try {
+        const rtcConfig = { iceServers: ICE_SERVERS };
+        if (FORCE_RELAY) {
+          rtcConfig.iceTransportPolicy = "relay";
+        }
+
+        // ── 5) Log final RTCPeerConnection config ──────────────────────────────
+        console.log("[WebRTC] PeerConnection config:", JSON.stringify(rtcConfig, null, 2));
+
+        pc = new RTCPeerConnection(rtcConfig);
+
+        // ── 1) Full state lifecycle listeners ─────────────────────────────────
+        pc.onconnectionstatechange = () => {
+          console.log("[WebRTC] connectionState:", pc.connectionState);
+          const s = pc?.connectionState;
+          if (s === "failed" || s === "disconnected") {
+            setStatus("DISCONNECTED", "error");
+            document.getElementById("video-overlay").classList.remove("hidden");
+          } else if (s === "closed") {
+            setStatus("DISCONNECTED", "");
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          console.log("[WebRTC] iceConnectionState:", pc.iceConnectionState);
+        };
+
+        pc.onicegatheringstatechange = () => {
+          console.log("[WebRTC] iceGatheringState:", pc.iceGatheringState);
+        };
+
+        pc.onsignalingstatechange = () => {
+          console.log("[WebRTC] signalingState:", pc.signalingState);
+        };
+
+        // ── 2) Log all ICE candidates ──────────────────────────────────────────
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log("[WebRTC] ICE Candidate:", event.candidate.candidate);
+          } else {
+            console.log("[WebRTC] ICE gathering completed");
+          }
+        };
+
+        // ── 4) ICE candidate errors ────────────────────────────────────────────
+        pc.onicecandidateerror = (event) => {
+          console.error("[WebRTC] ICE Candidate Error:", event);
+        };
+
+        // ── 3) Remote track received ───────────────────────────────────────────
+        pc.ontrack = e => {
+          console.log("[WebRTC] Remote track received:", e.streams);
+          const video = document.getElementById("video");
+          video.srcObject = e.streams[0];
+          document.getElementById("video-overlay").classList.add("hidden");
+          setStatus("STREAMING", "streaming");
+        };
+
+        pc.addTransceiver("video", { direction: "recvonly" });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        console.log("[WebRTC] Offer created and set as local description");
+
+        // Wait for ICE gathering to complete so relay candidates are included in the SDP
+        if (pc.iceGatheringState !== "complete") {
+          console.log("[WebRTC] Waiting for ICE gathering to complete...");
+          await new Promise(resolve => {
+            const checkState = () => {
+              if (pc.iceGatheringState === "complete") {
+                pc.removeEventListener("icegatheringstatechange", checkState);
+                resolve();
+              }
+            };
+            pc.addEventListener("icegatheringstatechange", checkState);
+          });
+          console.log("[WebRTC] ICE gathering completed (Promise resolved)");
+        }
+
+        // Now send the fully gathered SDP offer to the backend
+        console.log("[WebRTC] Sending offer to backend →", viewedSession.report_id);
+        const ans = await api("/webrtc/offer", "POST", {
+          sdp: pc.localDescription.sdp,
+          type: pc.localDescription.type,
+          report_id: viewedSession.report_id,
+        });
+        console.log("[WebRTC] Answer received from backend, type:", ans.type);
+
+        await pc.setRemoteDescription(new RTCSessionDescription(ans));
+        console.log("[WebRTC] Remote description set — waiting for ICE + track");
+
+        setStatus("CONNECTED — AWAITING TRACK", "connected");
+
+        // Stats after connection settles — shows relay vs direct
+        setTimeout(async () => {
+          if (!pc) return;
+          const stats = await pc.getStats();
+          stats.forEach(r => {
+            if (r.type === "candidate-pair" && r.state === "succeeded") {
+              const local = stats.get(r.localCandidateId);
+              const remote = stats.get(r.remoteCandidateId);
+              console.log("[WebRTC] ICE TYPE:", local?.candidateType, "->", remote?.candidateType);
+              console.log("[WebRTC] Local candidate:", local?.candidate);
+              console.log("[WebRTC] Remote candidate:", remote?.candidate);
+            }
+          });
+        }, 2000);
+
+      } catch (e) {
+        console.error("[WebRTC] startStream error:", e);
+        toast("Stream error: " + e.message, "error");
+        setStatus("ERROR", "error");
+        if (pc) { pc.close(); pc = null; }
+      }
+    }
+
+    /* ─────────────────────────────────────────────
+       WEBRTC – STOP STREAM
+    ───────────────────────────────────────────── */
+    function stopStream() {
+      if (pc) { pc.close(); pc = null; }
+      const video = document.getElementById("video");
+      video.srcObject = null;
+      document.getElementById("video-overlay").classList.remove("hidden");
+      setStatus("DISCONNECTED", "");
+    }
+
+    /* ─────────────────────────────────────────────
+       API BASE CONFIG MODAL
+    ───────────────────────────────────────────── */
+    function showConfigModal() {
+      document.getElementById("f-api-base").value = API_BASE;
+      document.getElementById("config-modal-overlay").classList.add("show");
+      setTimeout(() => document.getElementById("f-api-base").focus(), 80);
+    }
+
+    function hideConfigModal() {
+      document.getElementById("config-modal-overlay").classList.remove("show");
+    }
+
+    async function saveApiBase() {
+      const val = document.getElementById("f-api-base").value.trim().replace(/\/$/, "");
+      if (!val) { toast("URL cannot be empty", "error"); return; }
+      API_BASE = val;
+      localStorage.setItem("qcscm_api_base", val);
+      hideConfigModal();
+      toast("API base updated", "success");
+      stopStream();
+      viewedSession = null;
+      currentSession = null;
+      document.getElementById("no-session").style.display = "flex";
+      document.getElementById("session-view").style.display = "none";
+      await init();
+    }
+
+    /* ─────────────────────────────────────────────
+       INIT
+    ───────────────────────────────────────────── */
+    async function init() {
+      await checkHealth();
+      await loadWebRTCConfig();
+      await refreshSessions();
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") { hideModal(); hideConfigModal(); }
+    });
+
+    // Click outside modal to close
+    document.getElementById("modal-overlay").addEventListener("click", e => {
+      if (e.target === document.getElementById("modal-overlay")) hideModal();
+    });
+    document.getElementById("config-modal-overlay").addEventListener("click", e => {
+      if (e.target === document.getElementById("config-modal-overlay")) hideConfigModal();
+    });
+
+    // Enter key in open session modal
+    document.getElementById("f-camera").addEventListener("keydown", e => {
+      if (e.key === "Enter") doOpenSession();
+    });
+
+    // Boot
+    (async () => {
+      await init();
+      // Poll health + sessions every 5 s
+      refreshTimer = setInterval(async () => {
+        await checkHealth();
+        await refreshSessions();
+      }, 5000);
+    })();
+  </script>
+
+</body>
+
+</html>

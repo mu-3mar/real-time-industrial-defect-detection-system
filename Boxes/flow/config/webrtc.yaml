@@ -5,10 +5,9 @@ stun:
 
 turn:
   urls: "turn:20.51.117.96:3478"
-  username: "turnuser"
-  credential: "Sup3r$tr0ngP@ssw0rd"
+  secret: "Kf83Jd9sL2PqX91AbC77LmN"
 
 # debug_turn_only: Not implemented (aiortc has no iceTransportPolicy). Omit or false.
 # Forcing WebRTC connection over Relay (TURN) only.
-force_relay: false
+force_relay: true
 

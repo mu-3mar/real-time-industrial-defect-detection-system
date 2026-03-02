@@ -51,6 +51,7 @@ venv/
 secrets.json
 
 # Ignore base model weights
+*.yaml
 *.tflite
 *.npy
 *.h5

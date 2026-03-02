@@ -1,7 +1,11 @@
 """QC-SCM Detection Service API with multi-session support."""
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
 
@@ -335,8 +339,23 @@ async def get_metrics() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _generate_turn_credentials(secret: str) -> tuple[str, str]:
+    """Generate temporary TURN credentials using REST API authentication (valid for 5 mins)."""
+    expiry = int(time.time()) + 300
+    username = f"{expiry}:stream"
+
+    digest = hmac.new(
+        secret.encode(),
+        username.encode(),
+        hashlib.sha1
+    ).digest()
+
+    credential = base64.b64encode(digest).decode()
+    return username, credential
+
+
 def _client_webrtc_config() -> Dict[str, Any]:
-    """Build client WebRTC config. Returns both STUN and TURN credentials as configured."""
+    """Build client WebRTC config. Returns both STUN and dynamically generated TURN credentials."""
     w = configs.get("webrtc") or {}
     stun = w.get("stun") or {}
     turn = w.get("turn") or {}
@@ -349,14 +368,14 @@ def _client_webrtc_config() -> Dict[str, Any]:
         ice_servers.append({"urls": stun["urls"] if isinstance(stun["urls"], str) else stun["urls"]})
         
     # Add TURN
-    if turn.get("urls"):
+    if turn.get("urls") and turn.get("secret"):
+        username, credential = _generate_turn_credentials(turn["secret"])
+        
         turn_cfg = {
-            "urls": turn["urls"] if isinstance(turn["urls"], str) else turn["urls"]
+            "urls": turn["urls"] if isinstance(turn["urls"], str) else turn["urls"],
+            "username": username,
+            "credential": credential
         }
-        if turn.get("username"):
-            turn_cfg["username"] = turn["username"]
-        if turn.get("credential"):
-            turn_cfg["credential"] = turn["credential"]
         ice_servers.append(turn_cfg)
         
     logger.info("Generated client WebRTC config (force_relay=%s, servers=%d)", force_relay, len(ice_servers))
@@ -395,11 +414,12 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
     ice_servers = []
     if stun.get("urls") and not force_relay:
         ice_servers.append(RTCIceServer(urls=stun["urls"]))
-    if turn.get("urls"):
+    if turn.get("urls") and turn.get("secret"):
+        username, credential = _generate_turn_credentials(turn["secret"])
         ice_servers.append(RTCIceServer(
             urls=turn["urls"],
-            username=turn.get("username"),
-            credential=turn.get("credential"),
+            username=username,
+            credential=credential,
         ))
         
     config = RTCConfiguration(iceServers=ice_servers)
