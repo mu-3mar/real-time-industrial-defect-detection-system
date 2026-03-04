@@ -9,5 +9,5 @@ turn:
 
 # debug_turn_only: Not implemented (aiortc has no iceTransportPolicy). Omit or false.
 # Forcing WebRTC connection over Relay (TURN) only.
-force_relay: true
+force_relay: false
 
