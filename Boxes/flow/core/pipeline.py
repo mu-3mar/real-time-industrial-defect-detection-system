@@ -1,6 +1,5 @@
 import time
 import logging
-from datetime import datetime
 from typing import Optional, Callable, Dict, Any, List, Tuple
 
 import cv2
@@ -104,7 +103,7 @@ class Pipeline:
         self.defect_detect_every_n: int = int(
             stream_cfg.get("defect_detect_every_n_frames", 3)
         )
-        logger.info(
+        logger.debug(
             "Detection throttle: box every %d frames, defect every %d frames",
             self.box_detect_every_n,
             self.defect_detect_every_n,
@@ -116,11 +115,6 @@ class Pipeline:
         self.frame_count = 0
         self.last_time = time.time()
         self.fps = 0.0
-
-        # Detection loop monitoring
-        self._last_frame_log_count = 0
-        self._last_detection_log_time = time.time()
-        self._detection_log_interval = 10  # Log detection status every 10 seconds
 
         # ── Task 6: Runtime metrics (read by api_server /api/metrics) ──
         # Written by pipeline thread only; read by API route (lightweight).
@@ -148,7 +142,7 @@ class Pipeline:
         Args:
             stop_event: Optional threading event to signal stop
         """
-        logger.info("Pipeline started (headless=%s)", self.headless)
+        logger.info("Session pipeline started (headless=%s)", self.headless)
 
         # Start the camera capture thread (producer)
         self.stream.start()
@@ -156,7 +150,7 @@ class Pipeline:
         try:
             while True:
                 if stop_event and stop_event.is_set():
-                    logger.info("Stop event received, exiting pipeline loop")
+                    logger.info("Session pipeline stopped")
                     break
 
                 # ── Non-blocking frame read from camera queue (Task 1+2) ──
@@ -250,22 +244,15 @@ class Pipeline:
                 if just_exited:
                     self._current_track = None
                     is_defect = final_decision == "DEFECT"
-                    timestamp = datetime.now().strftime('%H:%M:%S')
-                    print(
-                        f"[{timestamp}] Box Processed: {final_decision} | Total: {self.state.total_count}"
-                    )
                     logger.info(
-                        "Box exited: decision=%s, total=%d, defect=%d, ok=%d",
+                        "Box processed: decision=%s total=%d defect=%d ok=%d",
                         final_decision, self.state.total_count,
                         self.state.defect_count, self.state.ok_count,
                     )
                     if self.on_result_callback:
                         self.on_result_callback(is_defect)
-
-                # Log detection status periodically
-                self._log_detection_status(
-                    detected, is_defect if detected and matched_box is not None else None
-                )
+                    else:
+                        logger.warning("No on_result_callback registered; result not published")
 
                 # Update camera FPS estimate from stream for metrics
                 self.camera_fps_estimate = self.stream.camera_fps
@@ -278,7 +265,7 @@ class Pipeline:
             logger.error("Pipeline error: %s", e, exc_info=True)
         finally:
             self.cleanup()
-            logger.info("Pipeline cleanup complete. Total frames: %d", self.frame_count)
+            logger.info("Session pipeline ended. Total frames: %d", self.frame_count)
 
     def _match_track(self, boxes_roi: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
         """
@@ -368,31 +355,7 @@ class Pipeline:
                 self.pipeline_fps = self.fps  # expose for /api/metrics
             self.last_time = current_time
 
-    def _log_detection_status(self, detected: bool, is_defect: Optional[bool] = None) -> None:
-        """
-        Log detection status periodically to monitor pipeline health.
-        Helps identify when detection or inference has stalled.
-        """
-        current_time = time.time()
-        if current_time - self._last_detection_log_time >= self._detection_log_interval:
-            frames_since_last_log = self.frame_count - self._last_frame_log_count
-            logger.info(
-                "Pipeline status: frame=%d, pipeline_fps=%.1f, camera_fps=%.1f, "
-                "queue_latency_ms=%.1f, detected=%s, track_inside=%s, "
-                "defect_status=%s, frames_in_window=%d",
-                self.frame_count,
-                self.pipeline_fps,
-                self.camera_fps_estimate,
-                self.queue_latency_ms,
-                detected,
-                self.state.inside,
-                is_defect if is_defect is not None else "unknown",
-                frames_since_last_log,
-            )
-            self._last_detection_log_time = current_time
-            self._last_frame_log_count = self.frame_count
-
     def cleanup(self):
         """Release resources."""
         self.stream.release()
-        logger.info("Pipeline resources cleaned up")
+        logger.debug("Pipeline resources cleaned up")

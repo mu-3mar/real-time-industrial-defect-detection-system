@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
@@ -22,7 +23,7 @@ from aiortc import (
 )
 
 from core.model_loader import ModelLoader
-from core.mqtt_client import MqttClient
+from core.firebase_client import initialize as init_firebase
 from core.session_manager import SessionManager
 from core.webrtc_track import VideoTransformTrack
 
@@ -75,7 +76,7 @@ app.add_middleware(
 
 # Global state
 session_manager = SessionManager.get_instance()
-mqtt_client: Optional[MqttClient] = None
+factory_id: str = "default_factory"
 configs: Dict[str, Any] = {}
 
 # WebRTC Peer Connections
@@ -155,8 +156,8 @@ def _load_configs(base: Path) -> None:
         configs["defect"] = yaml.safe_load(f)
     with open(cfg / "stream.yaml") as f:
         configs["stream"] = yaml.safe_load(f)
-    with open(cfg / "mqtt.yaml") as f:
-        configs["mqtt"] = yaml.safe_load(f)
+    with open(cfg / "firebase.yaml") as f:
+        configs["firebase"] = yaml.safe_load(f)
 
     # Ensure stability config
     if "stability" not in configs["defect"]:
@@ -182,25 +183,17 @@ def _load_configs(base: Path) -> None:
             "visibility_threshold": 0.2,
         }
 
-    # Initialize MQTT client
-    global mqtt_client
-    mqtt_cfg = configs["mqtt"]
-    mqtt_client = MqttClient.initialize(
-        host=mqtt_cfg["broker"]["host"],
-        port=mqtt_cfg["broker"]["port"],
-        username=mqtt_cfg["broker"]["username"],
-        password=mqtt_cfg["broker"]["password"],
-        client_id_prefix=mqtt_cfg["client"]["client_id_prefix"],
-        keepalive=mqtt_cfg["client"]["keepalive"],
-        clean_session=mqtt_cfg["client"]["clean_session"],
-        topic_pattern=mqtt_cfg["topics"]["insights_pattern"],
-    )
-    mqtt_client.connect()
+    # Initialize Firebase Firestore
+    global factory_id
+    fb_cfg = configs["firebase"]
+    factory_id = os.environ.get("FACTORY_ID", fb_cfg.get("factory_id", "default_factory"))
+    cred_path = base / "config" / fb_cfg.get("credentials_path", "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json")
+    init_firebase(str(cred_path))
 
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Initialize configs, models, and MQTT client."""
+    """Initialize configs, models, and Firebase client."""
     base = Path(__file__).resolve().parent
     logger.info("Starting QC-SCM Detection Service...")
     try:
@@ -220,14 +213,10 @@ async def startup_event() -> None:
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
-    """Clean up WebRTC connections and MQTT client."""
+    """Clean up WebRTC connections."""
     coros = [pc.close() for pc in pcs]
     await asyncio.gather(*coros)
     pcs.clear()
-    
-    # Disconnect MQTT client
-    if mqtt_client:
-        mqtt_client.disconnect()
 
 
 # -----------------------------------------------------------------------------
@@ -252,7 +241,7 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
             box_cfg=configs["box"],
             defect_cfg=configs["defect"],
             stream_cfg=configs["stream"],
-            mqtt_client=mqtt_client,
+            factory_id=factory_id,
             loop=loop,
         )
         return SessionResponse(

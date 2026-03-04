@@ -187,7 +187,7 @@ class AppState:
         # Check IoU with recently lost track
         iou = box_iou(new_bbox, stored_bbox)
         if iou >= self.recovery_iou_threshold:
-            logger.info("Recovered lost track (IoU=%.3f), preventing duplicate count", iou)
+            logger.debug("Recovered lost track (IoU=%.3f), preventing duplicate count", iou)
             self._recent_lost_track = None
             return True
         

@@ -8,7 +8,7 @@ from typing import Any, Optional, Union, List, Set
 
 import numpy as np
 
-from core.mqtt_client import MqttClient
+from core.firebase_client import publish_detection
 from core.pipeline import Pipeline
 # We avoid direct import of VideoTransformTrack here to avoid circular dependencies
 # or issues if it's not needed by the worker logic directly other than typing.
@@ -33,7 +33,7 @@ class SessionWorker(threading.Thread):
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
-        mqtt_client: MqttClient,
+        factory_id: str,
         loop: asyncio.AbstractEventLoop,
     ):
         super().__init__(daemon=True)
@@ -44,7 +44,7 @@ class SessionWorker(threading.Thread):
         self._defect_cfg = defect_cfg
         # Override source in stream cfg
         self._stream_cfg = {**stream_cfg, "source": camera_source}
-        self._mqtt_client = mqtt_client
+        self._factory_id = factory_id
         self._loop = loop  # Main event loop (kept for compatibility, though less used now)
 
         self._stop_event = threading.Event()
@@ -56,10 +56,17 @@ class SessionWorker(threading.Thread):
         self._tracks_lock = threading.Lock()
 
     def _on_result(self, is_defect: bool) -> None:
-        """Callback when box exits; publish result to MQTT."""
-        self._mqtt_client.publish_insight(
-            production_line=self.production_line,
-            report_id=self.report_id,
+        """Callback when box exits; publish result to Firestore."""
+        logger.info(
+            "Box result → session=%s line=%s defect=%s (publishing to Firestore)",
+            self.report_id, self.production_line, is_defect,
+        )
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        publish_detection(
+            factory_id=self._factory_id,
+            line_id=self.production_line,
+            session_id=self.report_id,
+            timestamp=timestamp,
             defect=is_defect,
         )
 

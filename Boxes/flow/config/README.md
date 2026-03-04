@@ -33,18 +33,15 @@ Each config file and its keys:
 
 Source comes from `camera_source` in POST /api/sessions/open.
 
-## mqtt.yaml (required)
+## firebase.yaml (required)
 
 | Key | Purpose |
 |-----|---------|
-| `broker.host` | MQTT broker hostname |
-| `broker.port` | MQTT broker port |
-| `broker.username` | MQTT username |
-| `broker.password` | MQTT password |
-| `client.client_id_prefix` | Client ID prefix |
-| `client.keepalive` | Keepalive seconds |
-| `client.clean_session` | Clean session flag |
-| `topics.insights_pattern` | Topic pattern for insights |
+| `credentials_path` | Filename of Firebase service account JSON in `config/` |
+| `factory_id` | Default factory identifier (override with env `FACTORY_ID`) |
+
+Insights are written to Firestore at:
+`factories/{factory_id}/production_lines/{line_id}/sessions/{session_id}/insights/`.
 
 ## box_detector.yaml (required)
 

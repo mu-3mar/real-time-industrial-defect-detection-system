@@ -5,7 +5,6 @@ import logging
 import threading
 from typing import Dict, Optional, Union
 
-from core.mqtt_client import MqttClient
 from core.session_worker import SessionWorker
 
 logger = logging.getLogger(__name__)
@@ -39,7 +38,7 @@ class SessionManager:
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
-        mqtt_client: MqttClient,
+        factory_id: str,
         loop: asyncio.AbstractEventLoop,
     ) -> SessionWorker:
         """
@@ -52,7 +51,7 @@ class SessionManager:
             box_cfg: Box detector configuration
             defect_cfg: Defect detector configuration
             stream_cfg: Stream configuration (source overridden by camera_source)
-            mqtt_client: MQTT client for publishing insights
+            factory_id: Factory identifier for Firestore insights
             loop: Main asyncio event loop for broadcasting
 
         Returns:
@@ -78,7 +77,7 @@ class SessionManager:
                 box_cfg=box_cfg,
                 defect_cfg=defect_cfg,
                 stream_cfg=stream_cfg,
-                mqtt_client=mqtt_client,
+                factory_id=factory_id,
                 loop=loop,
             )
             self.sessions[report_id] = worker
