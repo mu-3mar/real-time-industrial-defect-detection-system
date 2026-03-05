@@ -1,1564 +1,1950 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QC-SCM · Detection Control</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-  <style>
-/* ══════════════════════════════════════════════════════
-   THEME TOKENS
-══════════════════════════════════════════════════════ */
-:root {
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QC-SCM · Detection Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Barlow:wght@300;400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════════════════ */
+:root{
+  --ink:#0a0c0e; --void:#0d1014;
+  --s0:#111518; --s1:#171c20; --s2:#1d2328; --s3:#242b31; --s4:#2c343b;
+  --ld:rgba(255,255,255,0.04); --ls:rgba(255,255,255,0.08);
+  --lm:rgba(255,255,255,0.13); --lh:rgba(255,255,255,0.22);
+  --amber:#f5a623; --amber-hi:#ffbc4a;
+  --amber-lo:rgba(245,166,35,0.14); --amber-glow:rgba(245,166,35,0.28);
+  --green:#00c87a; --green-lo:rgba(0,200,122,0.12);
+  --red:#ff3b5c;   --red-lo:rgba(255,59,92,0.12);
+  --ice:#5bc8ff;   --ice-lo:rgba(91,200,255,0.1);
+  --violet:#a78bfa; --violet-lo:rgba(167,139,250,0.12);
+  --tb:#f0f2f4; --t1:#a8b2bb; --t2:#5e6d78; --t3:#2e3a42;
+  --sh-sm:0 2px 12px rgba(0,0,0,0.6);
+  --sh-md:0 6px 32px rgba(0,0,0,0.7);
+  --sh-lg:0 16px 64px rgba(0,0,0,0.8);
+  --expo:cubic-bezier(0.16,1,0.3,1);
+  --snap:cubic-bezier(0.34,1.56,0.64,1);
+  --nav-h:52px; --rail-w:56px; --panel-w:304px;
 }
-
-[data-theme="dark"] {
-  --bg-base:       #070b14;
-  --bg-surface:    #0d1220;
-  --bg-raised:     #131929;
-  --bg-overlay:    #1a2235;
-  --bg-hover:      #1f2a3d;
-  --border-subtle: rgba(99,147,255,0.08);
-  --border-soft:   rgba(99,147,255,0.15);
-  --border-strong: rgba(99,147,255,0.28);
-  --accent:        #3b82f6;
-  --accent-bright: #60a5fa;
-  --accent-glow:   rgba(59,130,246,0.25);
-  --accent-dim:    rgba(59,130,246,0.12);
-  --teal:          #14b8a6;
-  --teal-glow:     rgba(20,184,166,0.2);
-  --teal-dim:      rgba(20,184,166,0.1);
-  --green:         #22c55e;
-  --green-glow:    rgba(34,197,94,0.2);
-  --green-dim:     rgba(34,197,94,0.1);
-  --red:           #f43f5e;
-  --red-glow:      rgba(244,63,94,0.2);
-  --red-dim:       rgba(244,63,94,0.1);
-  --amber:         #f59e0b;
-  --amber-dim:     rgba(245,158,11,0.12);
-  --text-primary:  #e2e8f8;
-  --text-secondary:#8b9bcc;
-  --text-muted:    #4a5578;
-  --text-faint:    #2d3550;
-  --shadow-sm:  0 2px 8px rgba(0,0,0,0.4);
-  --shadow-md:  0 4px 24px rgba(0,0,0,0.5);
-  --shadow-lg:  0 8px 40px rgba(0,0,0,0.6);
-  --shadow-accent: 0 0 30px rgba(59,130,246,0.15);
+/* Light mode */
+body[data-light]{
+  --void:#f0f2f5; --s0:#f8f9fb; --s1:#ffffff; --s2:#f3f5f8; --s3:#eaecf0; --s4:#e0e3e8;
+  --ld:rgba(0,0,0,0.04); --ls:rgba(0,0,0,0.08); --lm:rgba(0,0,0,0.13); --lh:rgba(0,0,0,0.22);
+  --amber:#c47c0a; --amber-hi:#d98e10;
+  --amber-lo:rgba(196,124,10,0.1); --amber-glow:rgba(196,124,10,0.22);
+  --green:#059669; --green-lo:rgba(5,150,105,0.1);
+  --red:#dc2626; --red-lo:rgba(220,38,38,0.1);
+  --ice:#0284c7; --ice-lo:rgba(2,132,199,0.1);
+  --violet:#7c3aed; --violet-lo:rgba(124,58,237,0.1);
+  --tb:#0f172a; --t1:#334155; --t2:#64748b; --t3:#94a3b8;
+  --sh-sm:0 2px 12px rgba(0,0,0,0.08);
+  --sh-md:0 6px 32px rgba(0,0,0,0.12);
+  --sh-lg:0 16px 64px rgba(0,0,0,0.16);
 }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--void);color:var(--t1);font-family:'Barlow',sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+::selection{background:var(--amber-lo);color:var(--amber-hi)}
+button{font-family:inherit}
 
-[data-theme="light"] {
-  --bg-base:       #f0f4ff;
-  --bg-surface:    #ffffff;
-  --bg-raised:     #f7f9ff;
-  --bg-overlay:    #eef2ff;
-  --bg-hover:      #e8eeff;
-  --border-subtle: rgba(59,130,246,0.08);
-  --border-soft:   rgba(59,130,246,0.16);
-  --border-strong: rgba(59,130,246,0.3);
-  --accent:        #2563eb;
-  --accent-bright: #3b82f6;
-  --accent-glow:   rgba(37,99,235,0.18);
-  --accent-dim:    rgba(37,99,235,0.08);
-  --teal:          #0d9488;
-  --teal-glow:     rgba(13,148,136,0.15);
-  --teal-dim:      rgba(13,148,136,0.08);
-  --green:         #16a34a;
-  --green-glow:    rgba(22,163,74,0.15);
-  --green-dim:     rgba(22,163,74,0.08);
-  --red:           #e11d48;
-  --red-glow:      rgba(225,29,72,0.15);
-  --red-dim:       rgba(225,29,72,0.08);
-  --amber:         #d97706;
-  --amber-dim:     rgba(217,119,6,0.1);
-  --text-primary:  #0f172a;
-  --text-secondary:#475569;
-  --text-muted:    #94a3b8;
-  --text-faint:    #cbd5e1;
-  --shadow-sm:  0 2px 8px rgba(59,130,246,0.08);
-  --shadow-md:  0 4px 24px rgba(59,130,246,0.1);
-  --shadow-lg:  0 8px 40px rgba(59,130,246,0.12);
-  --shadow-accent: 0 0 30px rgba(37,99,235,0.1);
-}
+/* ═══════════════════════════════════════════════════════════
+   APP SHELL
+═══════════════════════════════════════════════════════════ */
+#app{display:grid;grid-template-rows:var(--nav-h) 1fr;height:100vh}
+#body-row{display:grid;grid-template-columns:var(--rail-w) var(--panel-w) 1fr;overflow:hidden;animation:fadein .55s var(--expo) both}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-/* ══════════════════════════════════════════════════════
-   RESET & BASE
-══════════════════════════════════════════════════════ */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html, body {
-  height: 100%;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  line-height: 1.6;
-  overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-  transition: background 0.4s, color 0.4s;
-}
-
-/* noise overlay */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  opacity: 0.022;
-  pointer-events: none;
-  z-index: 9999;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
-}
-
-/* ══════════════════════════════════════════════════════
-   APP LAYOUT
-══════════════════════════════════════════════════════ */
-#app {
-  display: grid;
-  grid-template-rows: 60px 1fr;
-  height: 100vh;
-  animation: app-in 0.55s var(--ease-out-expo) both;
-}
-
-@keyframes app-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* ══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
    TOPBAR
-══════════════════════════════════════════════════════ */
-#topbar {
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  padding: 0 22px;
-  gap: 10px;
-  position: relative;
-  z-index: 100;
-  box-shadow: var(--shadow-sm);
-  animation: topbar-in 0.5s var(--ease-out-expo) 0.08s both;
+═══════════════════════════════════════════════════════════ */
+#nav{
+  background:var(--s0);border-bottom:1px solid var(--ls);
+  display:flex;align-items:center;padding:0 16px 0 0;
+  position:relative;z-index:300;
+  animation:navslide .4s var(--expo) both;
 }
+@keyframes navslide{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:none}}
+#nav::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--amber) 30%,var(--amber-hi) 70%,transparent);opacity:.25}
 
-@keyframes topbar-in {
-  from { opacity: 0; transform: translateY(-100%); }
-  to   { opacity: 1; transform: none; }
+.nav-brand{
+  width:calc(var(--rail-w) + var(--panel-w));padding:0 18px;
+  display:flex;align-items:center;gap:12px;flex-shrink:0;
+  border-right:1px solid var(--ls);height:100%;
 }
+.brand-hex{width:30px;height:30px;flex-shrink:0}
+.brand-hex svg{width:30px;height:30px}
+.brand-text{display:flex;flex-direction:column;line-height:1}
+.brand-name{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:17px;letter-spacing:.14em;text-transform:uppercase;color:var(--tb)}
+.brand-tag{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--t2);margin-top:2px}
 
-.logo { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+.nav-center{flex:1;padding:0 24px;display:flex;align-items:center;gap:8px}
+.crumb{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--t2)}
+.crumb-sep{color:var(--t3);font-size:16px}
+.crumb.active{color:var(--t1)}
+#view-label{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--t1)}
 
-.logo-icon {
-  position: relative;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+.nav-right{display:flex;align-items:center;gap:6px}
+#clock{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--t3);margin-right:4px}
+
+.health-pill{
+  display:flex;align-items:center;gap:7px;
+  font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.05em;
+  padding:6px 13px;border-radius:3px;border:1px solid var(--ls);
+  background:var(--s2);color:var(--t2);transition:all .3s;cursor:default;white-space:nowrap;
 }
+.health-pill.ok{border-color:rgba(0,200,122,.35);background:var(--green-lo);color:var(--green)}
+.health-pill.err{border-color:rgba(255,59,92,.35);background:var(--red-lo);color:var(--red)}
+.health-pill.err .h-dot{animation:blink 1s infinite}
+.h-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;box-shadow:0 0 6px currentColor}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 
-.logo-icon-bg {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, var(--accent), var(--teal));
-  border-radius: 10px;
-  animation: logo-breathe 3s ease-in-out infinite;
+.nav-btn{
+  width:34px;height:34px;border-radius:3px;background:transparent;border:1px solid var(--ls);
+  color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .18s;position:relative;flex-shrink:0;
 }
-
-@keyframes logo-breathe {
-  0%,100% { box-shadow: 0 0 0 0 var(--accent-glow); }
-  50%      { box-shadow: 0 0 20px 4px var(--accent-glow); }
+.nav-btn:hover{background:var(--s3);border-color:var(--lm);color:var(--tb)}
+.nav-btn.amber:hover{background:var(--amber-lo);border-color:rgba(245,166,35,.4);color:var(--amber);box-shadow:0 0 14px var(--amber-glow)}
+.nav-btn[data-tip]::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--tb);background:var(--s4);
+  border:1px solid var(--lm);padding:4px 10px;border-radius:3px;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity .15s;z-index:999;
 }
+.nav-btn[data-tip]:hover::after{opacity:1}
+#panel-toggle-btn{display:none}
 
-.logo-icon svg { position: relative; z-index: 1; width: 17px; height: 17px; color: #fff; }
-
-.logo-text { display: flex; flex-direction: column; }
-
-.logo-name {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: 0.1em;
-  color: var(--text-primary);
-  line-height: 1;
+/* ═══════════════════════════════════════════════════════════
+   ICON RAIL
+═══════════════════════════════════════════════════════════ */
+#rail{
+  background:var(--s0);border-right:1px solid var(--ls);
+  display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;
 }
-
-.logo-tagline {
-  font-family: 'DM Mono', monospace;
-  font-size: 8px;
-  letter-spacing: 0.22em;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  margin-top: 3px;
-  line-height: 1;
+.rail-btn{
+  width:36px;height:36px;border-radius:4px;background:transparent;border:none;
+  color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s;
 }
+.rail-btn:hover{background:var(--s3);color:var(--t1)}
+.rail-btn.active{background:var(--amber-lo);color:var(--amber);box-shadow:inset 2px 0 0 0 var(--amber)}
+.rail-btn svg{width:16px;height:16px}
+.rail-sep{width:28px;height:1px;background:var(--ls);margin:4px 0}
+.rail-spacer{flex:1}
 
-.topbar-divider { width: 1px; height: 26px; background: var(--border-subtle); margin: 0 6px; }
-.topbar-spacer  { flex: 1; }
-
-#health-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  color: var(--text-secondary);
-  padding: 5px 13px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: 20px;
-  transition: all 0.3s;
-  letter-spacing: 0.04em;
-}
-
-#health-badge.ok  { border-color: rgba(34,197,94,0.3);  background: var(--green-dim); }
-#health-badge.err { border-color: rgba(244,63,94,0.3);   background: var(--red-dim);   }
-
-.health-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--text-faint);
-  transition: background 0.4s, box-shadow 0.4s;
-  flex-shrink: 0;
-}
-.health-dot.ok  { background: var(--green); box-shadow: 0 0 10px var(--green); }
-.health-dot.err { background: var(--red);   box-shadow: 0 0 10px var(--red); animation: pulse-dot 1s infinite; }
-
-@keyframes pulse-dot {
-  0%,100% { box-shadow: 0 0 6px var(--red); }
-  50%      { box-shadow: 0 0 18px var(--red), 0 0 32px var(--red-glow); }
-}
-
-#theme-toggle {
-  width: 36px; height: 36px;
-  border-radius: 10px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-soft);
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px;
-  transition: all 0.25s;
-  flex-shrink: 0;
-}
-#theme-toggle:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-  transform: rotate(20deg) scale(1.05);
-}
-
-#api-base-toggle {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  background: var(--bg-raised);
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  padding: 0 14px;
-  height: 36px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex; align-items: center; gap: 7px;
-}
-#api-base-toggle:hover {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: var(--accent-bright);
-  box-shadow: 0 0 16px var(--accent-glow);
-}
-
-/* ══════════════════════════════════════════════════════
-   MAIN
-══════════════════════════════════════════════════════ */
-#main {
-  display: grid;
-  grid-template-columns: 288px 1fr;
-  overflow: hidden;
-}
-
-/* ══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
    LEFT PANEL
-══════════════════════════════════════════════════════ */
-#left-panel {
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: left-in 0.55s var(--ease-out-expo) 0.12s both;
+═══════════════════════════════════════════════════════════ */
+#panel{
+  background:var(--s0);border-right:1px solid var(--ls);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.panel-hd{padding:14px 14px 12px;border-bottom:1px solid var(--ld);flex-shrink:0}
+.panel-hd-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.section-label{
+  font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--t2);
+  display:flex;align-items:center;gap:8px;
+}
+.section-label::before{content:'';display:block;width:3px;height:13px;background:var(--amber);border-radius:1px}
+#sess-count{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber);letter-spacing:.06em;display:none}
+
+.btn-cta{
+  font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--amber);color:var(--ink);border:none;border-radius:3px;
+  padding:8px 13px;cursor:pointer;display:flex;align-items:center;gap:5px;
+  transition:all .2s var(--expo);box-shadow:0 2px 10px var(--amber-glow);white-space:nowrap;
+}
+.btn-cta:hover{background:var(--amber-hi);transform:translateY(-1px);box-shadow:0 4px 20px var(--amber-glow)}
+.btn-cta:active{transform:scale(.97)}
+.btn-cta:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.panel-search{position:relative;margin-bottom:2px}
+.panel-search input{
+  width:100%;background:var(--s2);border:1px solid var(--ls);border-radius:3px;
+  padding:7px 10px 7px 30px;font-family:'Barlow',sans-serif;font-size:12px;
+  color:var(--t1);outline:none;transition:border-color .18s;
+}
+.panel-search input::placeholder{color:var(--t3)}
+.panel-search input:focus{border-color:var(--lm)}
+.search-ico{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+
+#session-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:1px}
+#session-list::-webkit-scrollbar{width:3px}
+#session-list::-webkit-scrollbar-thumb{background:var(--lm);border-radius:2px}
+
+/* Empty state */
+.empty-state{display:flex;flex-direction:column;align-items:center;gap:10px;padding:48px 16px;text-align:center}
+.empty-ico{
+  width:50px;height:50px;border-radius:50%;border:1px dashed var(--lm);
+  display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:18px;
+  animation:spin-idle 20s linear infinite;
+}
+@keyframes spin-idle{to{transform:rotate(360deg)}}
+.empty-h{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--t2)}
+.empty-p{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t3);line-height:1.9}
+
+/* Session card */
+.sess-card{
+  background:transparent;border-left:2px solid transparent;border-radius:2px;
+  padding:10px 11px;cursor:pointer;transition:all .18s var(--expo);
+  animation:card-in .3s var(--expo) both;
+}
+@keyframes card-in{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.sess-card:hover{background:var(--s2);border-left-color:var(--lm)}
+.sess-card.active{background:var(--s2);border-left-color:var(--amber)}
+.sc-row1{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.sc-id{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:165px}
+.sc-live{display:flex;align-items:center;gap:4px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--green);letter-spacing:.08em}
+.sc-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sc-chips{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px}
+.sc-chip{
+  font-family:'Barlow Condensed',sans-serif;font-weight:500;font-size:10px;
+  letter-spacing:.06em;text-transform:uppercase;
+  color:var(--t2);background:var(--s3);border:1px solid var(--ld);padding:1px 6px;border-radius:2px;
+}
+.sc-src{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Panel footer stats */
+.panel-ft{flex-shrink:0;border-top:1px solid var(--ld);padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr)}
+.ft-cell{display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 0}
+.ft-num{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--tb);transition:color .3s}
+.ft-lbl{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:.14em;color:var(--t3);text-transform:uppercase}
+
+/* ═══════════════════════════════════════════════════════════
+   WORKSPACE
+═══════════════════════════════════════════════════════════ */
+#workspace{
+  display:flex;flex-direction:column;background:var(--void);overflow:hidden;position:relative;
+}
+#workspace::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--ld) 1px,transparent 1px),linear-gradient(90deg,var(--ld) 1px,transparent 1px);
+  background-size:32px 32px;opacity:.6;
 }
 
-@keyframes left-in {
-  from { opacity: 0; transform: translateX(-16px); }
-  to   { opacity: 1; transform: none; }
+/* ── VIEW SYSTEM: only one view visible at a time ── */
+.view{display:none;flex-direction:column;height:100%;position:relative;z-index:1;overflow:hidden}
+.view.active{display:flex}
+
+/* ─── OVERVIEW VIEW ─── */
+#view-overview{padding:0;overflow-y:auto}
+#view-overview::-webkit-scrollbar{width:4px}
+#view-overview::-webkit-scrollbar-thumb{background:var(--lm);border-radius:2px}
+
+/* Overview header bar */
+.ov-bar{
+  background:rgba(17,21,24,.95);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--ls);padding:0 22px;height:50px;
+  display:flex;align-items:center;gap:16px;flex-shrink:0;
+}
+.ov-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--tb)}
+.ov-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2)}
+.ov-spacer{flex:1}
+.ov-refresh-btn{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;border:1px solid var(--ls);border-radius:3px;
+  padding:6px 13px;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .18s;
+}
+.ov-refresh-btn:hover{background:var(--s3);border-color:var(--lm);color:var(--tb)}
+.ov-refresh-btn.spinning svg{animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* Metrics strip */
+.metrics-strip{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:0;
+  border-bottom:1px solid var(--ls);flex-shrink:0;
+}
+.metric-tile{
+  padding:14px 18px;border-right:1px solid var(--ld);
+  display:flex;flex-direction:column;gap:4px;
+  transition:background .2s;
+}
+.metric-tile:last-child{border-right:none}
+.metric-tile:hover{background:var(--s2)}
+.mt-label{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--t3)}
+.mt-value{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:var(--tb);line-height:1;transition:color .4s}
+.mt-value.green{color:var(--green)}
+.mt-value.amber{color:var(--amber)}
+.mt-value.red{color:var(--red)}
+.mt-unit{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3)}
+.mt-bar{height:2px;background:var(--ls);border-radius:1px;margin-top:4px;overflow:hidden}
+.mt-bar-fill{height:100%;border-radius:1px;transition:width .6s var(--expo)}
+
+/* Session grid */
+.grid-header{
+  padding:14px 22px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.grid-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--t2)}
+.grid-actions{display:flex;gap:6px}
+
+#session-grid{
+  flex:1;padding:0 16px 16px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:12px;align-content:start;overflow-y:auto;
+}
+#session-grid::-webkit-scrollbar{width:4px}
+#session-grid::-webkit-scrollbar-thumb{background:var(--lm);border-radius:2px}
+
+/* Camera / session card in grid */
+.cam-card{
+  background:var(--s1);border:1px solid var(--ls);border-radius:4px;
+  overflow:hidden;display:flex;flex-direction:column;
+  transition:border-color .2s,box-shadow .2s;
+  animation:card-in .3s var(--expo) both;
+}
+.cam-card:hover{border-color:var(--lm);box-shadow:var(--sh-md)}
+.cam-card.streaming{border-color:rgba(0,200,122,.35);box-shadow:0 0 0 1px rgba(0,200,122,.15)}
+
+/* Card video area */
+.cam-video-wrap{
+  position:relative;background:#06080a;aspect-ratio:16/9;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+}
+.cam-video-wrap video{width:100%;height:100%;object-fit:contain;display:block}
+.cam-video-wrap::after{
+  content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 3px);
 }
 
-.panel-header {
-  padding: 16px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  gap: 8px;
+/* Corner brackets on cards */
+.card-brk{position:absolute;width:14px;height:14px;z-index:4;pointer-events:none}
+.card-brk.tl{top:7px;left:7px;border-top:1.5px solid var(--amber);border-left:1.5px solid var(--amber)}
+.card-brk.tr{top:7px;right:7px;border-top:1.5px solid var(--amber);border-right:1.5px solid var(--amber)}
+.card-brk.bl{bottom:7px;left:7px;border-bottom:1.5px solid var(--amber);border-left:1.5px solid var(--amber)}
+.card-brk.br{bottom:7px;right:7px;border-bottom:1.5px solid var(--amber);border-right:1.5px solid var(--amber)}
+
+.card-live-badge{
+  position:absolute;top:8px;left:8px;z-index:5;
+  display:none;align-items:center;gap:5px;
+  font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:.16em;
+  color:var(--red);background:rgba(6,8,10,.9);
+  border:1px solid rgba(255,59,92,.4);border-radius:2px;padding:3px 8px;
 }
+.card-live-badge.on{display:flex}
+.card-live-dot{width:4px;height:4px;border-radius:50%;background:var(--red);box-shadow:0 0 5px var(--red);animation:blink 1s infinite}
 
-.panel-title-group { display: flex; align-items: center; gap: 8px; }
-
-.panel-title {
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--text-primary);
+/* Card offline overlay */
+.card-offline{
+  position:absolute;inset:0;z-index:3;background:#06080a;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  transition:opacity .4s var(--expo);
 }
+.card-offline.hidden{opacity:0;pointer-events:none}
+.offline-rings{position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center}
+.offline-ring{position:absolute;border-radius:50%;border:1px solid rgba(245,166,35,.12);animation:ring-out 3s ease-out infinite}
+.offline-ring:nth-child(1){width:44px;height:44px}
+.offline-ring:nth-child(2){width:30px;height:30px;animation-delay:.7s}
+@keyframes ring-out{0%{opacity:.6;transform:scale(.8)}100%{opacity:0;transform:scale(1.5)}}
+.offline-ico{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(245,166,35,.2)}
+.offline-txt{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:rgba(245,166,35,.2)}
 
-.sessions-count {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  color: var(--accent-bright);
-  background: var(--accent-dim);
-  border: 1px solid rgba(59,130,246,0.2);
-  padding: 1px 8px;
-  border-radius: 20px;
-  animation: pop 0.3s var(--ease-spring);
+/* Card info section */
+.cam-card-info{padding:10px 12px;border-top:1px solid var(--ld);flex:1;display:flex;flex-direction:column;gap:6px}
+.cam-card-id{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cam-card-meta{display:flex;gap:4px;flex-wrap:wrap}
+.cam-card-chip{
+  font-family:'Barlow Condensed',sans-serif;font-weight:500;font-size:9px;
+  letter-spacing:.06em;text-transform:uppercase;
+  color:var(--t2);background:var(--s3);border:1px solid var(--ld);padding:1px 6px;border-radius:2px;
 }
+.cam-card-src{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-@keyframes pop {
-  from { transform: scale(0.5); opacity: 0; }
-  to   { transform: scale(1);   opacity: 1; }
+/* Card action row */
+.cam-card-actions{display:flex;gap:4px;padding:0 12px 10px}
+.cta-sm{
+  font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid;border-radius:3px;padding:5px 10px;cursor:pointer;
+  display:flex;align-items:center;gap:4px;transition:all .18s;white-space:nowrap;
 }
+.cta-sm:active{transform:scale(.95)}
+.cta-sm:disabled{opacity:.4;cursor:not-allowed}
+.cta-stream{background:var(--green-lo);border-color:rgba(0,200,122,.3);color:var(--green)}
+.cta-stream:hover:not(:disabled){background:var(--green);border-color:var(--green);color:var(--ink);box-shadow:0 0 14px rgba(0,200,122,.3)}
+.cta-stop{background:transparent;border-color:var(--ls);color:var(--t2)}
+.cta-stop:hover:not(:disabled){background:var(--red-lo);border-color:var(--red);color:var(--red)}
+.cta-close{background:transparent;border-color:var(--ld);color:var(--t3)}
+.cta-close:hover:not(:disabled){background:var(--red-lo);border-color:var(--red);color:var(--red)}
+.cta-view{background:var(--amber-lo);border-color:rgba(245,166,35,.3);color:var(--amber)}
+.cta-view:hover:not(:disabled){background:var(--amber);border-color:var(--amber);color:var(--ink)}
+.cta-sm .mini-spin{width:10px;height:10px;border:1.5px solid rgba(0,0,0,.2);border-top-color:currentColor;border-radius:50%;animation:sp .6s linear infinite}
 
-.btn-open {
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  background: linear-gradient(135deg, var(--accent), var(--teal));
-  color: #fff;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s var(--ease-out-expo);
-  display: flex; align-items: center; gap: 6px;
-  box-shadow: 0 2px 12px var(--accent-glow);
-  position: relative;
-  overflow: hidden;
+/* Status dot in card */
+.cam-status-dot{width:6px;height:6px;border-radius:50%;background:var(--t3);flex-shrink:0;transition:background .3s,box-shadow .3s}
+.cam-status-dot.streaming{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.5s infinite}
+.cam-status-dot.connected{background:var(--ice);box-shadow:0 0 8px var(--ice)}
+.cam-status-dot.error{background:var(--red);box-shadow:0 0 8px var(--red)}
+
+/* ─── SINGLE STREAM VIEW ─── */
+#view-stream{flex-direction:column}
+
+/* Stream command bar */
+#stream-cmdbar{
+  background:rgba(17,21,24,.95);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--ls);padding:0 20px;height:50px;
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
 }
-.btn-open::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0); transition: background 0.2s; }
-.btn-open:hover { transform: translateY(-1px); box-shadow: 0 4px 22px var(--accent-glow), 0 0 40px var(--teal-glow); }
-.btn-open:hover::after { background: rgba(255,255,255,0.08); }
-.btn-open:active { transform: scale(0.96); }
-
-#session-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+.stream-info{flex:1;min-width:0;display:flex;align-items:center;gap:12px}
+.stream-sess-id{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stream-tags{display:flex;gap:6px}
+.stream-tag{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--t3);background:var(--s3);border:1px solid var(--ld);padding:2px 7px;border-radius:2px;
 }
-#session-list::-webkit-scrollbar { width: 3px; }
-#session-list::-webkit-scrollbar-track { background: transparent; }
-#session-list::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 2px; }
-
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 50px 20px;
+.cmd-sep{width:1px;height:20px;background:var(--ls);flex-shrink:0}
+.act-btn{
+  font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid;padding:6px 13px;border-radius:3px;cursor:pointer;
+  display:flex;align-items:center;gap:5px;white-space:nowrap;transition:all .18s var(--expo);
 }
+.act-btn:active{transform:scale(.95)}
+.btn-stream-start{background:var(--green-lo);border-color:rgba(0,200,122,.3);color:var(--green)}
+.btn-stream-start:hover:not(:disabled){background:var(--green);border-color:var(--green);color:var(--ink);box-shadow:0 0 16px rgba(0,200,122,.3);transform:translateY(-1px)}
+.btn-stream-stop{background:transparent;border-color:var(--ls);color:var(--t2)}
+.btn-stream-stop:hover:not(:disabled){background:var(--red-lo);border-color:var(--red);color:var(--red);transform:translateY(-1px)}
+.btn-terminate{background:transparent;border-color:var(--ld);color:var(--t3)}
+.btn-terminate:hover:not(:disabled){background:var(--red-lo);border-color:var(--red);color:var(--red);transform:translateY(-1px)}
+.btn-back{background:transparent;border-color:var(--ls);color:var(--t2)}
+.btn-back:hover{background:var(--s3);border-color:var(--lm);color:var(--tb);transform:translateY(-1px)}
+.act-btn:disabled{opacity:.45;cursor:not-allowed}
 
-.empty-icon-wrap {
-  position: relative; width: 54px; height: 54px;
-  display: flex; align-items: center; justify-content: center;
+/* Stage */
+#stream-stage{flex:1;padding:14px;display:grid;grid-template-rows:1fr auto;gap:10px;overflow:hidden}
+#video-frame{
+  position:relative;background:#06080a;border:1px solid var(--ls);border-radius:4px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--sh-lg),inset 0 0 80px rgba(0,0,0,.8);
 }
-
-.empty-icon-ring {
-  position: absolute; inset: 0; border-radius: 50%;
-  border: 1.5px dashed var(--border-soft);
-  animation: spin-slow 12s linear infinite;
+#video-frame video{width:100%;height:100%;object-fit:contain;display:block}
+#video-frame::after{
+  content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 3px);
 }
+.brk{position:absolute;width:18px;height:18px;z-index:4;pointer-events:none}
+.brk.tl{top:10px;left:10px;border-top:1.5px solid var(--amber);border-left:1.5px solid var(--amber)}
+.brk.tr{top:10px;right:10px;border-top:1.5px solid var(--amber);border-right:1.5px solid var(--amber)}
+.brk.bl{bottom:10px;left:10px;border-bottom:1.5px solid var(--amber);border-left:1.5px solid var(--amber)}
+.brk.br{bottom:10px;right:10px;border-bottom:1.5px solid var(--amber);border-right:1.5px solid var(--amber)}
+.brk::before{content:'';position:absolute;width:3px;height:3px;border-radius:50%;background:var(--amber);box-shadow:0 0 5px var(--amber)}
+.brk.tl::before{top:-1px;left:-1px}.brk.tr::before{top:-1px;right:-1px}
+.brk.bl::before{bottom:-1px;left:-1px}.brk.br::before{bottom:-1px;right:-1px}
 
-@keyframes spin-slow { to { transform: rotate(360deg); } }
-
-.empty-icon-inner {
-  font-size: 20px; opacity: 0.18;
-  animation: float-gentle 4s ease-in-out infinite;
+#stream-live-badge{
+  position:absolute;top:11px;left:11px;z-index:5;
+  display:none;align-items:center;gap:5px;
+  font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.18em;
+  color:var(--red);background:rgba(6,8,10,.9);border:1px solid rgba(255,59,92,.4);
+  border-radius:2px;padding:4px 10px;backdrop-filter:blur(8px);
 }
-
-@keyframes float-gentle {
-  0%,100% { transform: translateY(0); }
-  50%      { transform: translateY(-5px); }
+#stream-live-badge.on{display:flex}
+.live-dot{width:5px;height:5px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);animation:blink 1s infinite}
+#frame-ts{
+  position:absolute;bottom:10px;left:11px;z-index:5;
+  font-family:'Share Tech Mono',monospace;font-size:9px;
+  color:rgba(245,166,35,.32);letter-spacing:.08em;pointer-events:none;
 }
-
-.empty-label { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 12px; color: var(--text-muted); }
-.empty-hint  { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-faint); text-align: center; line-height: 1.8; }
-
-/* Session cards */
-.session-card {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 12px 13px;
-  cursor: pointer;
-  transition: all 0.2s var(--ease-out-expo);
-  position: relative;
-  overflow: hidden;
-  animation: card-in 0.3s var(--ease-out-expo) both;
+#stream-offline{
+  position:absolute;inset:0;z-index:3;background:#06080a;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  transition:opacity .5s var(--expo);
 }
+#stream-offline.hidden{opacity:0;pointer-events:none}
+.ns-rings{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center}
+.ns-ring{position:absolute;border-radius:50%;border:1px solid rgba(245,166,35,.12);animation:ring-out 3.2s ease-out infinite}
+.ns-ring:nth-child(1){width:60px;height:60px}.ns-ring:nth-child(2){width:44px;height:44px;animation-delay:.7s}
+.ns-icon{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(245,166,35,.2)}
+.ns-txt{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:rgba(245,166,35,.2)}
 
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to   { opacity: 1; transform: none; }
+/* Telemetry bar */
+#telemetry-bar{
+  background:var(--s1);border:1px solid var(--ls);border-radius:4px;padding:0 16px;
+  height:44px;display:flex;align-items:center;gap:0;flex-shrink:0;
 }
+.tele-cell{display:flex;align-items:center;gap:7px;padding:0 16px;border-right:1px solid var(--ld);height:100%;flex-shrink:0}
+.tele-cell:first-child{padding-left:0}.tele-cell:last-child{border-right:none}
+.tele-k{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--t3);flex-shrink:0}
+.tele-v{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.tele-spacer{flex:1}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--t3);flex-shrink:0;transition:background .3s,box-shadow .3s}
+.status-dot.streaming{background:var(--ice);box-shadow:0 0 8px var(--ice);animation:blink 1.5s infinite}
+.status-dot.connected{background:var(--green);box-shadow:0 0 8px var(--green)}
+.status-dot.error{background:var(--red);box-shadow:0 0 8px var(--red)}
 
-.session-card::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(135deg, var(--accent-dim), transparent 60%);
-  opacity: 0;
-  transition: opacity 0.2s;
-  border-radius: 12px;
+/* ─── NO SESSIONS VIEW ─── */
+#view-empty{align-items:center;justify-content:center;flex-direction:column;gap:18px}
+.ns-glow{position:absolute;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(245,166,35,.05) 0%,transparent 65%);animation:breathe 7s ease-in-out infinite;pointer-events:none}
+@keyframes breathe{0%,100%{transform:scale(.65);opacity:.4}50%{transform:scale(1.15);opacity:.9}}
+.ns-target{position:relative;width:88px;height:88px;display:flex;align-items:center;justify-content:center;z-index:1}
+.ns-ring-big{position:absolute;border-radius:50%;border:1px solid var(--lm);animation:ring-out 3.5s ease-out infinite}
+.ns-ring-big:nth-child(1){width:88px;height:88px}
+.ns-ring-big:nth-child(2){width:62px;height:62px;animation-delay:.8s}
+.ns-ring-big:nth-child(3){width:38px;height:38px;animation-delay:1.6s}
+.ns-cross{z-index:2;color:var(--amber);opacity:.28}
+.ns-hl{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);z-index:1}
+.ns-sub{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.1em;color:var(--t3);z-index:1}
+.ns-open-btn{
+  font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;letter-spacing:.16em;text-transform:uppercase;
+  background:var(--amber);color:var(--ink);border:none;border-radius:3px;
+  padding:11px 28px;cursor:pointer;display:flex;align-items:center;gap:7px;
+  transition:all .2s var(--expo);box-shadow:0 3px 16px var(--amber-glow);z-index:1;
 }
+.ns-open-btn:hover{background:var(--amber-hi);transform:translateY(-2px);box-shadow:0 6px 28px var(--amber-glow)}
 
-.session-card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-.session-card:hover::before { opacity: 1; }
-
-.session-card.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), var(--shadow-accent);
-}
-.session-card.active::before { opacity: 1; }
-
-.sc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
-
-.sc-id {
-  font-family: 'DM Mono', monospace;
-  font-size: 11px;
-  color: var(--accent-bright);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 175px;
-}
-
-.sc-live {
-  display: flex; align-items: center; gap: 4px;
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  color: var(--green);
-  letter-spacing: 0.1em;
-}
-
-.sc-live-dot {
-  width: 5px; height: 5px; border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
-  animation: pulse-dot 2s infinite;
-}
-
-.sc-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
-
-.sc-tag {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  color: var(--text-secondary);
-  background: var(--bg-overlay);
-  border: 1px solid var(--border-subtle);
-  padding: 2px 7px;
-  border-radius: 5px;
-}
-
-.sc-cam {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ══════════════════════════════════════════════════════
-   RIGHT PANEL
-══════════════════════════════════════════════════════ */
-#right-panel {
-  background: var(--bg-base);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: right-in 0.55s var(--ease-out-expo) 0.18s both;
-}
-
-@keyframes right-in {
-  from { opacity: 0; transform: translateX(16px); }
-  to   { opacity: 1; transform: none; }
-}
-
-#no-session {
-  flex: 1;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 16px;
-  position: relative;
-  overflow: hidden;
-}
-
-#no-session::before {
-  content: '';
-  position: absolute;
-  width: 480px; height: 480px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
-  animation: breathe 6s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes breathe {
-  0%,100% { transform: scale(0.7); opacity: 0.3; }
-  50%      { transform: scale(1.3); opacity: 0.7; }
-}
-
-.no-session-rings {
-  position: relative; width: 80px; height: 80px;
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1;
-}
-
-.ring {
-  position: absolute; border-radius: 50%;
-  border: 1px solid var(--border-soft);
-  animation: expand-ring 3s ease-out infinite;
-}
-.ring-1 { width: 80px; height: 80px; animation-delay: 0s; }
-.ring-2 { width: 58px; height: 58px; animation-delay: 0.6s; }
-.ring-3 { width: 38px; height: 38px; animation-delay: 1.2s; }
-
-@keyframes expand-ring {
-  0%   { opacity: 0.5; transform: scale(0.85); }
-  100% { opacity: 0;   transform: scale(1.4); }
-}
-
-.no-session-center-icon { font-size: 22px; z-index: 1; opacity: 0.25; }
-
-.no-session-label {
-  font-family: 'Syne', sans-serif; font-weight: 700;
-  font-size: 15px; color: var(--text-secondary); z-index: 1;
-}
-
-.no-session-hint {
-  font-family: 'DM Mono', monospace; font-size: 10px;
-  color: var(--text-muted); z-index: 1; letter-spacing: 0.06em;
-}
-
-/* Session view */
-#session-view { display: none; flex-direction: column; height: 100%; }
-
-#ctrl-bar {
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 11px 18px;
-  display: flex; align-items: center; gap: 9px;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
-}
-
-#session-title-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-
-#session-title-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 8px; letter-spacing: 0.25em;
-  color: var(--text-muted); text-transform: uppercase;
-}
-
-#session-title {
-  font-family: 'DM Mono', monospace; font-size: 12px;
-  color: var(--accent-bright); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-}
-
-.ctrl-btn {
-  font-family: 'Syne', sans-serif; font-weight: 700;
-  font-size: 11px; letter-spacing: 0.05em;
-  border: 1px solid;
-  padding: 7px 13px;
-  border-radius: 9px;
-  cursor: pointer;
-  transition: all 0.18s var(--ease-out-expo);
-  display: flex; align-items: center; gap: 6px;
-  white-space: nowrap;
-}
-.ctrl-btn:active { transform: scale(0.95); }
-
-.btn-stream-start {
-  background: var(--teal-dim);
-  border-color: rgba(20,184,166,0.3);
-  color: var(--teal);
-}
-.btn-stream-start:hover {
-  background: var(--teal); border-color: var(--teal); color: #fff;
-  box-shadow: 0 4px 18px var(--teal-glow);
-  transform: translateY(-1px);
-}
-
-.btn-stream-stop {
-  background: transparent;
-  border-color: var(--border-soft);
-  color: var(--text-secondary);
-}
-.btn-stream-stop:hover {
-  background: var(--red-dim); border-color: var(--red); color: var(--red);
-  transform: translateY(-1px);
-}
-
-.btn-close-session {
-  background: transparent;
-  border-color: var(--border-subtle);
-  color: var(--text-muted);
-}
-.btn-close-session:hover {
-  background: var(--red-dim); border-color: var(--red); color: var(--red);
-  transform: translateY(-1px);
-}
-
-#stream-area {
-  flex: 1; display: flex; flex-direction: column;
-  overflow: hidden; padding: 14px; gap: 11px;
-}
-
-#video-wrap {
-  flex: 1;
-  background: #030508;
-  border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  position: relative;
-  overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: var(--shadow-lg), inset 0 0 60px rgba(0,0,0,0.7);
-}
-
-#video { width: 100%; height: 100%; object-fit: contain; display: block; }
-
-#video-overlay {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  flex-direction: column; gap: 14px;
-  background: #030508;
-  transition: opacity 0.5s var(--ease-out-expo);
-  border-radius: 16px;
-}
-#video-overlay.hidden { opacity: 0; pointer-events: none; }
-
-.overlay-pulse-ring {
-  position: relative; width: 60px; height: 60px;
-  display: flex; align-items: center; justify-content: center;
-}
-.overlay-pulse-ring::before,
-.overlay-pulse-ring::after {
-  content: '';
-  position: absolute; border-radius: 50%;
-  border: 1px solid rgba(59,130,246,0.25);
-  animation: expand-ring 2.5s ease-out infinite;
-}
-.overlay-pulse-ring::before { width: 60px; height: 60px; }
-.overlay-pulse-ring::after  { width: 42px; height: 42px; animation-delay: 0.6s; }
-
-.overlay-icon-inner {
-  width: 26px; height: 26px;
-  background: rgba(59,130,246,0.1);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: rgba(99,147,255,0.35);
-}
-
-.overlay-text {
-  font-family: 'DM Mono', monospace; font-size: 10px;
-  letter-spacing: 0.2em; color: rgba(99,147,255,0.25);
-  text-transform: uppercase;
-}
-
-/* scanlines */
-#video-wrap::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px);
-  pointer-events: none; z-index: 2; border-radius: 16px;
-}
-
-.corner {
-  position: absolute; width: 20px; height: 20px;
-  z-index: 3; pointer-events: none;
-}
-.corner-tl { top:12px; left:12px;   border-top:2px solid var(--accent); border-left:2px solid var(--accent);   border-radius:3px 0 0 0; }
-.corner-tr { top:12px; right:12px;  border-top:2px solid var(--accent); border-right:2px solid var(--accent);  border-radius:0 3px 0 0; }
-.corner-bl { bottom:12px; left:12px;  border-bottom:2px solid var(--accent); border-left:2px solid var(--accent);   border-radius:0 0 0 3px; }
-.corner-br { bottom:12px; right:12px; border-bottom:2px solid var(--accent); border-right:2px solid var(--accent);  border-radius:0 0 3px 0; }
-
-#rec-indicator {
-  position: absolute; top:13px; right:13px; z-index: 4;
-  display: none; align-items: center; gap: 7px;
-  background: rgba(3,5,8,0.85);
-  border: 1px solid rgba(244,63,94,0.4);
-  border-radius: 8px; padding: 5px 12px;
-  font-family: 'DM Mono', monospace; font-size: 9px;
-  letter-spacing: 0.16em; color: var(--red);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 12px rgba(244,63,94,0.2);
-}
-#rec-indicator.visible { display: flex; }
-
-.rec-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--red); box-shadow: 0 0 8px var(--red);
-  animation: pulse-dot 1s infinite;
-}
-
-#status-bar {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 9px 16px;
-  display: flex; align-items: center; gap: 14px;
-  flex-shrink: 0;
-  font-family: 'DM Mono', monospace; font-size: 10px;
-  box-shadow: var(--shadow-sm);
-}
-
-.status-item { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); min-width: 0; }
-
-.status-label {
-  font-size: 9px; letter-spacing: 0.14em;
-  color: var(--text-muted); text-transform: uppercase; flex-shrink: 0;
-}
-
-.status-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--text-faint);
-  transition: background 0.3s, box-shadow 0.3s;
-  flex-shrink: 0;
-}
-.status-dot.streaming { background: var(--teal); box-shadow: 0 0 10px var(--teal); animation: pulse-dot 1.5s infinite; }
-.status-dot.connected { background: var(--green); box-shadow: 0 0 10px var(--green); }
-.status-dot.error     { background: var(--red);   box-shadow: 0 0 10px var(--red); }
-
-#status-text { color: var(--text-primary); }
-.status-sep  { color: var(--border-soft); font-size: 14px; line-height: 1; }
-#status-camera { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
-#status-line   { color: var(--text-primary); }
-
-@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-
-/* ══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
    MODALS
-══════════════════════════════════════════════════════ */
-.modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(3,5,8,0.82);
-  backdrop-filter: blur(12px);
-  display: none; align-items: center; justify-content: center;
-  z-index: 500;
+═══════════════════════════════════════════════════════════ */
+.overlay{position:fixed;inset:0;background:rgba(6,8,10,.88);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:800}
+.overlay.show{display:flex}
+.modal{
+  background:var(--s1);border:1px solid var(--lm);border-radius:4px;
+  width:min(468px,calc(100vw - 28px));max-height:90vh;overflow-y:auto;padding:0;
+  animation:modal-rise .3s var(--expo);position:relative;box-shadow:var(--sh-lg);
 }
-.modal-overlay.show { display: flex; }
+.modal::-webkit-scrollbar{width:3px}
+.modal::-webkit-scrollbar-thumb{background:var(--lm);border-radius:2px}
+.modal::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--amber),var(--amber-hi),transparent);border-radius:4px 4px 0 0}
+@keyframes modal-rise{from{opacity:0;transform:translateY(22px) scale(.96)}to{opacity:1;transform:none}}
+.modal-hd{padding:22px 24px 0}
+.modal-kicker{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--amber);margin-bottom:5px;display:flex;align-items:center;gap:7px}
+.modal-kicker::before{content:'//'}
+.modal-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;letter-spacing:.04em;text-transform:uppercase;color:var(--tb);line-height:1;margin-bottom:18px}
+.modal-body{padding:0 24px}
+.modal-ft{padding:14px 24px 22px}
+.modal-rule{height:1px;background:var(--ld);margin:14px 0;position:relative}
+.modal-rule::after{content:'';position:absolute;left:0;top:0;width:26px;height:1px;background:var(--amber)}
+.fld{margin-bottom:13px}
+.fld label{display:block;font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--t2);margin-bottom:6px}
+.fld input,.fld select{
+  width:100%;background:var(--s2);border:1px solid var(--lm);border-radius:3px;
+  padding:9px 11px;color:var(--tb);font-family:'Share Tech Mono',monospace;font-size:12px;
+  outline:none;transition:border-color .18s,box-shadow .18s,background .18s;appearance:none;
+}
+.fld input:focus,.fld select:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-lo),0 0 12px var(--amber-glow);background:var(--s3)}
+.fld input::placeholder{color:var(--t3)}
+.fld input[readonly]{cursor:default;color:var(--t2)}
+.sel-wrap{position:relative}
+.sel-wrap::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--t2);font-size:11px;pointer-events:none}
+.sel-wrap select{padding-right:26px;cursor:pointer}
+.fld select option{background:var(--s2);color:var(--tb)}
+.custom-slide{margin-top:7px;overflow:hidden;max-height:0;opacity:0;transition:max-height .28s var(--expo),opacity .22s;display:flex;flex-direction:column;gap:5px}
+.custom-slide.open{max-height:130px;opacity:1}
+.fld-note{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);margin-top:4px}
+.fld-err{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--red);margin-top:4px;display:none}
+.fld-err.show{display:block;animation:shake .3s ease}
+.fld.bad input,.fld.bad select{border-color:var(--red)!important;box-shadow:0 0 0 3px var(--red-lo)!important}
+@keyframes shake{0%,100%{transform:translateX(0)}25%,75%{transform:translateX(-3px)}50%{transform:translateX(3px)}}
+.modal-acts{display:flex;gap:7px}
+.btn-primary{
+  flex:1;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--amber);color:var(--ink);border:none;border-radius:3px;padding:11px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;transition:all .2s var(--expo);box-shadow:0 2px 12px var(--amber-glow);
+}
+.btn-primary:hover:not(:disabled){background:var(--amber-hi);transform:translateY(-1px);box-shadow:0 4px 22px var(--amber-glow)}
+.btn-primary:active:not(:disabled){transform:scale(.97)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-ghost{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;color:var(--t2);border:1px solid var(--lm);border-radius:3px;
+  padding:11px 16px;cursor:pointer;transition:all .18s;
+}
+.btn-ghost:hover{background:var(--s3);border-color:var(--lh);color:var(--t1)}
 
-.modal {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-soft);
-  border-radius: 20px;
-  width: 440px;
-  max-height: 88vh;
-  overflow-y: auto;
-  padding: 30px;
-  animation: modal-in 0.32s var(--ease-spring);
-  position: relative;
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-subtle);
-}
+/* Config box */
+.cfg-box{margin-top:12px;background:var(--s2);border:1px solid var(--ld);border-radius:3px;padding:11px 13px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);line-height:2}
+.cfg-box strong{display:block;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--t3);margin-bottom:3px}
+.cfg-box code{color:var(--amber);background:var(--amber-lo);padding:1px 5px;border-radius:2px}
 
-.modal::before {
-  content: '';
-  position: absolute; top:0; left:50%; transform: translateX(-50%);
-  width: 55%; height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+/* ═══════════════════════════════════════════════════════════
+   TOASTS & SPINNER
+═══════════════════════════════════════════════════════════ */
+#toasts{position:fixed;bottom:18px;right:18px;z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{
+  background:var(--s2);border:1px solid var(--lm);border-left:3px solid;border-radius:3px;
+  padding:9px 13px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t1);
+  max-width:320px;animation:t-in .3s var(--snap),t-out .25s ease 3s forwards;
+  pointer-events:all;display:flex;align-items:center;gap:9px;box-shadow:var(--sh-md);
 }
+.toast.success{border-left-color:var(--green)}.toast.error{border-left-color:var(--red)}.toast.info{border-left-color:var(--amber)}
+.toast-ico{width:17px;height:17px;border-radius:2px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif}
+.toast.success .toast-ico{background:var(--green-lo);color:var(--green)}
+.toast.error   .toast-ico{background:var(--red-lo);  color:var(--red)}
+.toast.info    .toast-ico{background:var(--amber-lo);color:var(--amber)}
+@keyframes t-in {from{opacity:0;transform:translateX(20px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes t-out{to{opacity:0;transform:translateX(20px)}}
+.spin{width:12px;height:12px;border:2px solid rgba(0,0,0,.2);border-top-color:var(--ink);border-radius:50%;animation:sp .6s linear infinite;display:inline-block;flex-shrink:0}
+.spin-light{border:2px solid rgba(255,255,255,.15);border-top-color:currentColor}
 
-.modal::-webkit-scrollbar { width: 3px; }
-.modal::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 2px; }
-
-@keyframes modal-in {
-  from { opacity: 0; transform: translateY(22px) scale(0.94); }
-  to   { opacity: 1; transform: none; }
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════ */
+@media(max-width:920px){
+  #body-row{grid-template-columns:var(--rail-w) 1fr}
+  #panel{position:fixed;left:var(--rail-w);top:var(--nav-h);bottom:0;width:var(--panel-w);z-index:100;transform:translateX(-100%);transition:transform .3s var(--expo);box-shadow:var(--sh-lg)}
+  #panel.open{transform:none}
+  #panel-toggle-btn{display:flex!important}
 }
-
-.modal-eyebrow {
-  font-family: 'DM Mono', monospace; font-size: 9px;
-  letter-spacing: 0.24em; text-transform: uppercase;
-  color: var(--accent-bright); margin-bottom: 6px;
-  display: flex; align-items: center; gap: 8px;
+@media(max-width:600px){
+  :root{--rail-w:0px}
+  #rail{display:none}
+  .nav-brand{width:auto}
+  .metrics-strip{grid-template-columns:repeat(3,1fr)}
+  .metric-tile:nth-child(n+4){border-top:1px solid var(--ld)}
 }
-.modal-eyebrow::before { content: ''; width: 14px; height: 1px; background: var(--accent); }
-
-.modal-title {
-  font-family: 'Syne', sans-serif; font-weight: 800;
-  font-size: 21px; color: var(--text-primary);
-  margin-bottom: 22px; line-height: 1.15;
-}
-
-.modal-divider {
-  height: 1px; background: var(--border-subtle); margin: 18px 0;
-  position: relative;
-}
-.modal-divider::after {
-  content: ''; position: absolute; left:0; top:0;
-  width: 36px; height: 1px; background: var(--accent);
-}
-
-.field { margin-bottom: 14px; }
-
-.field label {
-  display: block;
-  font-family: 'DM Mono', monospace; font-size: 9px;
-  letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--text-muted); margin-bottom: 7px;
-}
-
-.field input,
-.field select {
-  width: 100%;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  padding: 10px 13px;
-  color: var(--text-primary);
-  font-family: 'DM Mono', monospace; font-size: 12px;
-  outline: none;
-  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
-  appearance: none; -webkit-appearance: none;
-}
-.field input:focus,
-.field select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 18px var(--accent-glow);
-  background: var(--bg-overlay);
-}
-.field input::placeholder { color: var(--text-faint); }
-.field input[readonly]    { cursor: default; color: var(--text-secondary); }
-
-.select-wrapper { position: relative; }
-.select-wrapper::after {
-  content: '▾'; position: absolute; right:12px; top:50%; transform: translateY(-50%);
-  color: var(--text-muted); font-size: 12px; pointer-events: none;
-}
-.select-wrapper select { padding-right: 30px; cursor: pointer; }
-.field select option { background: var(--bg-raised); color: var(--text-primary); }
-
-.custom-input-wrap {
-  margin-top: 8px; overflow: hidden; max-height: 0; opacity: 0;
-  transition: max-height 0.26s var(--ease-out-expo), opacity 0.22s;
-  display: flex; flex-direction: column; gap: 7px;
-}
-.custom-input-wrap.visible { max-height: 120px; opacity: 1; }
-
-.field-hint {
-  font-family: 'DM Mono', monospace; font-size: 9px;
-  color: var(--text-muted); margin-top: 5px; letter-spacing: 0.04em;
-}
-
-.field-error {
-  font-family: 'DM Mono', monospace; font-size: 9px;
-  color: var(--red); margin-top: 5px; display: none;
-}
-.field-error.visible { display: block; animation: shake 0.35s ease; }
-
-@keyframes shake {
-  0%,100% { transform: translateX(0); }
-  20%,60% { transform: translateX(-4px); }
-  40%,80% { transform: translateX(4px); }
-}
-
-.field.has-error input,
-.field.has-error select {
-  border-color: var(--red) !important;
-  box-shadow: 0 0 0 3px var(--red-dim) !important;
-}
-
-.modal-actions { display: flex; gap: 10px; margin-top: 22px; }
-
-.btn-confirm {
-  flex: 1;
-  background: linear-gradient(135deg, var(--accent), var(--teal));
-  color: #fff; border: none; border-radius: 10px; padding: 12px;
-  font-family: 'Syne', sans-serif; font-weight: 700;
-  font-size: 13px; letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: all 0.2s var(--ease-out-expo);
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  box-shadow: 0 3px 14px var(--accent-glow);
-}
-.btn-confirm:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px var(--accent-glow), 0 0 40px var(--teal-glow);
-}
-.btn-confirm:active:not(:disabled) { transform: scale(0.97); }
-.btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.btn-cancel {
-  background: var(--bg-raised); color: var(--text-secondary);
-  border: 1px solid var(--border-soft); border-radius: 10px;
-  padding: 12px 18px;
-  font-family: 'Syne', sans-serif; font-weight: 600; font-size: 13px;
-  cursor: pointer; transition: all 0.18s;
-}
-.btn-cancel:hover {
-  background: var(--bg-hover); border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-
-.config-url-hint {
-  font-family: 'DM Mono', monospace; font-size: 10px;
-  color: var(--text-secondary); margin-top: 14px; line-height: 2;
-  background: var(--bg-raised); border: 1px solid var(--border-subtle);
-  border-radius: 10px; padding: 12px 15px;
-}
-.config-url-hint strong {
-  display: block; font-size: 9px; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
-}
-.config-url-hint code {
-  color: var(--teal); background: var(--teal-dim);
-  padding: 1px 6px; border-radius: 4px; font-size: 10px;
-}
-
-/* ══════════════════════════════════════════════════════
-   TOAST
-══════════════════════════════════════════════════════ */
-#toast-container {
-  position: fixed; bottom: 22px; right: 22px;
-  z-index: 999; display: flex; flex-direction: column;
-  gap: 9px; pointer-events: none;
-}
-
-.toast {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-soft);
-  border-radius: 12px; padding: 11px 16px;
-  font-family: 'DM Mono', monospace; font-size: 11px;
-  color: var(--text-primary); max-width: 300px;
-  animation: toast-in 0.32s var(--ease-spring), toast-out 0.28s ease 2.72s forwards;
-  pointer-events: all;
-  display: flex; align-items: center; gap: 11px;
-  box-shadow: var(--shadow-lg);
-}
-
-.toast-icon {
-  width: 22px; height: 22px; border-radius: 7px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; flex-shrink: 0;
-}
-
-.toast.success { border-color: rgba(34,197,94,0.3); }
-.toast.success .toast-icon { background: var(--green-dim); color: var(--green); }
-.toast.error   { border-color: rgba(244,63,94,0.3); }
-.toast.error   .toast-icon { background: var(--red-dim);   color: var(--red); }
-.toast.info    { border-color: rgba(59,130,246,0.3); }
-.toast.info    .toast-icon { background: var(--accent-dim); color: var(--accent-bright); }
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translateX(28px) scale(0.9); }
-  to   { opacity: 1; transform: none; }
-}
-@keyframes toast-out {
-  to { opacity: 0; transform: translateX(28px); }
-}
-
-/* ══════════════════════════════════════════════════════
-   SPINNER
-══════════════════════════════════════════════════════ */
-.spinner {
-  width: 13px; height: 13px;
-  border: 2px solid rgba(255,255,255,0.2);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.65s linear infinite;
-  display: inline-block; flex-shrink: 0;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+</style>
 </head>
-
 <body>
 <div id="app">
 
-  <!-- TOPBAR -->
-  <div id="topbar">
-    <div class="logo">
-      <div class="logo-icon">
-        <div class="logo-icon-bg"></div>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
-      </div>
-      <div class="logo-text">
-        <span class="logo-name">QC-SCM</span>
-        <span class="logo-tagline">Detection Control</span>
-      </div>
+<!-- ═══════════════════════════════
+     TOP NAVIGATION
+═══════════════════════════════ -->
+<nav id="nav">
+  <div class="nav-brand">
+    <div class="brand-hex">
+      <svg viewBox="0 0 30 30" fill="none">
+        <polygon points="15,2 26,8.5 26,21.5 15,28 4,21.5 4,8.5" fill="none" stroke="#f5a623" stroke-width="1.2"/>
+        <polygon points="15,7 22,11 22,19 15,23 8,19 8,11" fill="rgba(245,166,35,0.1)" stroke="#f5a623" stroke-width="0.8"/>
+        <text x="15" y="19" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="900" font-size="9" fill="#f5a623">QC</text>
+      </svg>
     </div>
-
-    <div class="topbar-divider"></div>
-    <div class="topbar-spacer"></div>
-
-    <div id="health-badge">
-      <span class="health-dot" id="health-dot"></span>
-      <span id="health-text">CONNECTING…</span>
+    <div class="brand-text">
+      <span class="brand-name">QC-SCM</span>
+      <span class="brand-tag">Detection Control</span>
     </div>
+  </div>
 
-    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+  <div class="nav-center">
+    <span class="crumb">Control Room</span>
+    <span class="crumb-sep">/</span>
+    <span id="view-label" class="crumb active">Overview</span>
+  </div>
 
-    <button id="api-base-toggle" onclick="showConfigModal()">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
-      API
+  <div class="nav-right">
+    <span id="clock">--:--:--</span>
+    <div id="health-badge" class="health-pill">
+      <span class="h-dot" id="health-dot"></span>
+      <span id="health-text">CONNECTING</span>
+    </div>
+    <button class="nav-btn amber" onclick="showConfigModal()" data-tip="API CONFIG">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+      </svg>
+    </button>
+    <button class="nav-btn" onclick="toggleTheme()" data-tip="THEME">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
+    <button class="nav-btn" id="panel-toggle-btn" onclick="toggleMobilePanel()" data-tip="SESSIONS">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="6" rx="1"/><rect x="14" y="13" width="7" height="8" rx="1"/>
+      </svg>
     </button>
   </div>
+</nav>
 
-  <!-- MAIN -->
-  <div id="main">
+<!-- ═══════════════════════════════
+     BODY
+═══════════════════════════════ -->
+<div id="body-row">
 
-    <!-- LEFT PANEL -->
-    <div id="left-panel">
-      <div class="panel-header">
-        <div class="panel-title-group">
-          <span class="panel-title">Sessions</span>
-          <span class="sessions-count" id="sessions-count" style="display:none">0</span>
+  <!-- ICON RAIL -->
+  <aside id="rail">
+    <button class="rail-btn active" id="rail-overview" onclick="switchView('overview')" title="Overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+    </button>
+    <button class="rail-btn" id="rail-stream" onclick="switchView('stream')" title="Active Stream" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>
+    </button>
+    <div class="rail-sep"></div>
+    <button class="rail-btn" onclick="showModal()" title="New Session">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>
+    </button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" onclick="triggerMetricsRefresh()" title="Refresh Metrics">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+    </button>
+  </aside>
+
+  <!-- SESSION PANEL -->
+  <section id="panel">
+    <div class="panel-hd">
+      <div class="panel-hd-top">
+        <div class="section-label">
+          Sessions
+          <span id="sess-count"></span>
         </div>
-        <button class="btn-open" onclick="showModal()">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Session
+        <button class="btn-cta" onclick="showModal()" id="new-sess-btn">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New
         </button>
       </div>
-      <div id="session-list">
-        <div class="empty-state">
-          <div class="empty-icon-wrap">
-            <div class="empty-icon-ring"></div>
-            <div class="empty-icon-inner">⬡</div>
-          </div>
-          <div class="empty-label">No Sessions Active</div>
-          <div class="empty-hint">Click New Session<br>to get started</div>
-        </div>
+      <div class="panel-search">
+        <svg class="search-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" placeholder="Filter sessions…" oninput="filterSessions(this.value)" id="sess-filter">
       </div>
     </div>
 
-    <!-- RIGHT PANEL -->
-    <div id="right-panel">
+    <div id="session-list">
+      <div class="empty-state">
+        <div class="empty-ico">⊕</div>
+        <div class="empty-h">No Sessions</div>
+        <div class="empty-p">Press NEW to start<br>a detection session</div>
+      </div>
+    </div>
 
-      <div id="no-session">
-        <div class="no-session-rings">
-          <div class="ring ring-1"></div>
-          <div class="ring ring-2"></div>
-          <div class="ring ring-3"></div>
-          <div class="no-session-center-icon">⬡</div>
+    <div class="panel-ft">
+      <div class="ft-cell"><div class="ft-num" id="ft-sessions">0</div><div class="ft-lbl">Sessions</div></div>
+      <div class="ft-cell"><div class="ft-num" id="ft-streaming">0</div><div class="ft-lbl">Streaming</div></div>
+      <div class="ft-cell"><div class="ft-num" id="ft-factories">—</div><div class="ft-lbl">Factories</div></div>
+    </div>
+  </section>
+
+  <!-- WORKSPACE -->
+  <main id="workspace">
+
+    <!-- ── VIEW: EMPTY (no sessions at all) ── -->
+    <div id="view-empty" class="view active">
+      <div class="ns-glow"></div>
+      <div class="ns-target">
+        <div class="ns-ring-big"></div><div class="ns-ring-big"></div><div class="ns-ring-big"></div>
+        <div class="ns-cross">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+          </svg>
         </div>
-        <div class="no-session-label">Select a Session</div>
-        <div class="no-session-hint">Choose from the panel on the left</div>
+      </div>
+      <div class="ns-hl">No Active Sessions</div>
+      <div class="ns-sub">// SYSTEM AWAITING INITIALIZATION</div>
+      <button class="ns-open-btn" onclick="showModal()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Open Session
+      </button>
+    </div>
+
+    <!-- ── VIEW: OVERVIEW GRID ── -->
+    <div id="view-overview" class="view">
+      <!-- Top bar -->
+      <div class="ov-bar">
+        <div>
+          <div class="ov-title">System Overview</div>
+          <div class="ov-sub" id="ov-sub-text">Loading…</div>
+        </div>
+        <div class="ov-spacer"></div>
+        <button class="ov-refresh-btn" id="refresh-btn" onclick="triggerMetricsRefresh()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Refresh
+        </button>
       </div>
 
-      <div id="session-view">
-        <div id="ctrl-bar">
-          <div id="session-title-wrap">
-            <div id="session-title-label">Active Session</div>
-            <div id="session-title">—</div>
-          </div>
-          <button class="ctrl-btn btn-stream-start" onclick="startStream()">
+      <!-- Metrics strip (from GET /api/metrics) -->
+      <div class="metrics-strip">
+        <div class="metric-tile">
+          <div class="mt-label">Active Sessions</div>
+          <div class="mt-value" id="m-sessions">—</div>
+          <div class="mt-unit">sessions</div>
+          <div class="mt-bar"><div class="mt-bar-fill" id="m-sessions-bar" style="background:var(--amber);width:0%"></div></div>
+        </div>
+        <div class="metric-tile">
+          <div class="mt-label">Active Viewers</div>
+          <div class="mt-value" id="m-viewers">—</div>
+          <div class="mt-unit">viewers</div>
+          <div class="mt-bar"><div class="mt-bar-fill" id="m-viewers-bar" style="background:var(--ice);width:0%"></div></div>
+        </div>
+        <div class="metric-tile">
+          <div class="mt-label">WebRTC Connections</div>
+          <div class="mt-value" id="m-webrtc">—</div>
+          <div class="mt-unit">connections</div>
+          <div class="mt-bar"><div class="mt-bar-fill" id="m-webrtc-bar" style="background:var(--violet);width:0%"></div></div>
+        </div>
+        <div class="metric-tile">
+          <div class="mt-label">Pipeline FPS</div>
+          <div class="mt-value" id="m-pfps">—</div>
+          <div class="mt-unit">frames/sec</div>
+          <div class="mt-bar"><div class="mt-bar-fill" id="m-pfps-bar" style="background:var(--green);width:0%"></div></div>
+        </div>
+        <div class="metric-tile">
+          <div class="mt-label">Camera FPS</div>
+          <div class="mt-value" id="m-cfps">—</div>
+          <div class="mt-unit">frames/sec</div>
+          <div class="mt-bar"><div class="mt-bar-fill" id="m-cfps-bar" style="background:var(--green);width:0%"></div></div>
+        </div>
+        <div class="metric-tile">
+          <div class="mt-label">Queue Latency</div>
+          <div class="mt-value" id="m-latency">—</div>
+          <div class="mt-unit">milliseconds</div>
+          <div class="mt-bar"><div class="mt-bar-fill" id="m-latency-bar" style="background:var(--amber);width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Session grid header -->
+      <div class="grid-header">
+        <div class="grid-title">Camera Feeds</div>
+        <div class="grid-actions">
+          <button class="ov-refresh-btn" onclick="startAllStreams()" id="btn-stream-all">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Start Stream
+            Stream All
           </button>
-          <button class="ctrl-btn btn-stream-stop" onclick="stopStream()">
+          <button class="ov-refresh-btn" onclick="stopAllStreams()" id="btn-stop-all">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-            Stop
+            Stop All
           </button>
-          <button class="ctrl-btn btn-close-session" onclick="closeSession()">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            Close
-          </button>
-        </div>
-
-        <div id="stream-area">
-          <div id="video-wrap">
-            <div class="corner corner-tl"></div>
-            <div class="corner corner-tr"></div>
-            <div class="corner corner-bl"></div>
-            <div class="corner corner-br"></div>
-            <div id="rec-indicator"><span class="rec-dot"></span>LIVE</div>
-            <video id="video" autoplay playsinline muted></video>
-            <div id="video-overlay">
-              <div class="overlay-pulse-ring">
-                <div class="overlay-icon-inner">⬡</div>
-              </div>
-              <div class="overlay-text">Stream not active</div>
-            </div>
-          </div>
-
-          <div id="status-bar">
-            <div class="status-item">
-              <span class="status-dot" id="conn-dot"></span>
-              <span id="status-text">DISCONNECTED</span>
-            </div>
-            <span class="status-sep">│</span>
-            <div class="status-item">
-              <span class="status-label">Cam</span>
-              <span id="status-camera">—</span>
-            </div>
-            <span class="status-sep">│</span>
-            <div class="status-item">
-              <span class="status-label">Line</span>
-              <span id="status-line">—</span>
-            </div>
-          </div>
         </div>
       </div>
 
+      <!-- Camera cards grid -->
+      <div id="session-grid"></div>
     </div>
-  </div>
+
+    <!-- ── VIEW: SINGLE STREAM ── -->
+    <div id="view-stream" class="view">
+      <div id="stream-cmdbar">
+        <div class="stream-info">
+          <span id="stream-sess-id" class="stream-sess-id">—</span>
+          <div class="stream-tags" id="stream-tags"></div>
+        </div>
+        <button class="act-btn btn-back" onclick="switchView('overview')">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Overview
+        </button>
+        <div class="cmd-sep"></div>
+        <button class="act-btn btn-stream-start" id="sv-btn-stream" onclick="startFocusStream()">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Stream
+        </button>
+        <button class="act-btn btn-stream-stop" id="sv-btn-stop" onclick="stopFocusStream()">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          Stop
+        </button>
+        <div class="cmd-sep"></div>
+        <button class="act-btn btn-terminate" id="sv-btn-terminate" onclick="closeFocusSession()">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Terminate
+        </button>
+      </div>
+
+      <div id="stream-stage">
+        <div id="video-frame">
+          <div class="brk tl"></div><div class="brk tr"></div>
+          <div class="brk bl"></div><div class="brk br"></div>
+          <div id="stream-live-badge"><span class="live-dot"></span>LIVE</div>
+          <div id="frame-ts">--/--/---- --:--:--</div>
+          <video id="focus-video" autoplay playsinline muted></video>
+          <div id="stream-offline">
+            <div class="ns-rings">
+              <div class="ns-ring"></div><div class="ns-ring"></div>
+              <div class="ns-icon">◎</div>
+            </div>
+            <div class="ns-txt">// no signal</div>
+          </div>
+        </div>
+
+        <div id="telemetry-bar">
+          <div class="tele-cell">
+            <span class="tele-k">Status</span>
+            <span class="status-dot" id="focus-conn-dot"></span>
+            <span class="tele-v" id="focus-status-text">DISCONNECTED</span>
+          </div>
+          <div class="tele-cell">
+            <span class="tele-k">Camera</span>
+            <span class="tele-v" id="focus-camera">—</span>
+          </div>
+          <div class="tele-cell">
+            <span class="tele-k">Line</span>
+            <span class="tele-v" id="focus-line">—</span>
+          </div>
+          <div class="tele-spacer"></div>
+          <div class="tele-cell">
+            <span class="tele-k">Session</span>
+            <span class="tele-v" id="focus-sess-tele">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
 </div>
 
-<!-- MODAL: OPEN SESSION -->
-<div id="modal-overlay" class="modal-overlay">
+<!-- ═══════════════════════════════
+     MODAL: OPEN SESSION
+═══════════════════════════════ -->
+<div id="modal-overlay" class="overlay">
   <div id="modal" class="modal">
-    <div class="modal-eyebrow">New Session</div>
-    <div class="modal-title">Open Detection Session</div>
-
-    <div class="field" id="field-factory">
-      <label>Factory</label>
-      <div class="select-wrapper">
-        <select id="f-factory" onchange="onFactorySelectChange()">
-          <option value="factory_test">Test Factory</option>
-          <option value="factory_alpha">Alpha Plant</option>
-          <option value="factory_beta">Beta Facility</option>
-          <option value="__custom__">Custom…</option>
-        </select>
-      </div>
-      <div class="custom-input-wrap" id="factory-custom-wrap">
-        <input type="text" id="f-factory-custom" placeholder="Enter factory name…">
-      </div>
-      <div class="field-error" id="factory-error">Factory name is required</div>
+    <div class="modal-hd">
+      <div class="modal-kicker">Initialize</div>
+      <div class="modal-title">New Detection Session</div>
     </div>
-
-    <div class="field" id="field-line">
-      <label>Production Line</label>
-      <div class="select-wrapper">
-        <select id="f-production-line" onchange="onProductionLineChange()">
-          <option value="line1">Production Line 1</option>
-          <option value="line2">Production Line 2</option>
-        </select>
+    <div class="modal-body">
+      <div class="fld" id="field-factory">
+        <label>Factory Unit</label>
+        <div class="sel-wrap">
+          <select id="f-factory" onchange="onFactoryChange()">
+            <option value="factory_test">Test Factory</option>
+            <option value="factory_alpha">Alpha Plant</option>
+            <option value="factory_beta">Beta Facility</option>
+            <option value="__custom__">Custom…</option>
+          </select>
+        </div>
+        <div class="custom-slide" id="factory-wrap">
+          <input type="text" id="f-factory-custom" placeholder="Enter factory name…" autocomplete="off">
+        </div>
+        <div class="fld-err" id="factory-err">Factory name is required</div>
       </div>
-      <div class="field-error" id="line-error">Production line is required</div>
+
+      <div class="fld" id="field-line">
+        <label>Production Line</label>
+        <div class="sel-wrap">
+          <select id="f-line" onchange="onLineChange()">
+            <option value="line1">Production Line 1</option>
+            <option value="line2">Production Line 2</option>
+          </select>
+        </div>
+        <div class="fld-err" id="line-err">Production line is required</div>
+      </div>
+
+      <div class="fld" id="field-station">
+        <label>Station</label>
+        <div class="sel-wrap">
+          <select id="f-station" onchange="onStationChange()">
+            <option value="packaging">Packaging</option>
+            <option value="assembly">Assembly</option>
+            <option value="inspection">Inspection</option>
+            <option value="sorting">Sorting</option>
+            <option value="welding">Welding</option>
+            <option value="__custom__">Custom…</option>
+          </select>
+        </div>
+        <div class="custom-slide" id="station-wrap">
+          <input type="text" id="f-station-custom" placeholder="Enter station name…" autocomplete="off">
+        </div>
+        <div class="fld-err" id="station-err">Station name is required</div>
+      </div>
+
+      <div class="modal-rule"></div>
+
+      <div class="fld" id="field-camera">
+        <label>Camera Source</label>
+        <div class="sel-wrap">
+          <select id="f-camera" onchange="onCameraChange()">
+            <option value="__line__">Auto (from line config)</option>
+            <option value="__custom__">Custom…</option>
+          </select>
+        </div>
+        <div class="custom-slide" id="camera-wrap">
+          <input type="text" id="f-cam-id" placeholder="Camera ID (e.g. cam_01)" autocomplete="off">
+          <input type="text" id="f-cam-src" placeholder="Source: rtsp://… or /dev/video0" autocomplete="off">
+        </div>
+        <div class="fld-note" id="cam-hint">Assigned automatically from production line config</div>
+        <div class="fld-err" id="camera-err">Camera ID and source are both required</div>
+      </div>
     </div>
-
-    <div class="field" id="field-station">
-      <label>Station</label>
-      <div class="select-wrapper">
-        <select id="f-station" onchange="onStationSelectChange()">
-          <option value="packaging">Packaging</option>
-          <option value="assembly">Assembly</option>
-          <option value="inspection">Inspection</option>
-          <option value="sorting">Sorting</option>
-          <option value="welding">Welding</option>
-          <option value="__custom__">Custom…</option>
-        </select>
+    <div class="modal-ft">
+      <div class="modal-acts">
+        <button class="btn-ghost" onclick="hideModal()">Cancel</button>
+        <button class="btn-primary" id="btn-open-confirm" onclick="doOpenSession()">Initialize Session</button>
       </div>
-      <div class="custom-input-wrap" id="station-custom-wrap">
-        <input type="text" id="f-station-custom" placeholder="Enter station name…">
-      </div>
-      <div class="field-error" id="station-error">Station name is required</div>
-    </div>
-
-    <div class="modal-divider"></div>
-
-    <div class="field" id="field-camera">
-      <label>Camera</label>
-      <div class="select-wrapper">
-        <select id="f-camera" onchange="onCameraSelectChange()">
-          <option value="__line__">Auto (from line)</option>
-          <option value="__custom__">Custom…</option>
-        </select>
-      </div>
-      <div class="custom-input-wrap" id="camera-custom-wrap">
-        <input type="text" id="f-camera-id-custom" placeholder="Camera ID (e.g. cam_custom)">
-        <input type="text" id="f-camera-source-custom" placeholder="Source path or rtsp://…">
-      </div>
-      <div class="field-hint" id="camera-hint">Assigned by production line configuration</div>
-      <div class="field-error" id="camera-error">Camera ID and source are both required</div>
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="hideModal()">Cancel</button>
-      <button class="btn-confirm" id="btn-open-confirm" onclick="doOpenSession()">Open Session</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL: API CONFIG -->
-<div id="config-modal-overlay" class="modal-overlay">
-  <div id="config-modal" class="modal" style="width:420px">
-    <div class="modal-eyebrow">Configuration</div>
-    <div class="modal-title">API Endpoint</div>
-    <div class="field">
-      <label>API Base URL</label>
-      <input type="text" id="f-api-base" placeholder="http://localhost:8000">
+<!-- ═══════════════════════════════
+     MODAL: API CONFIG
+═══════════════════════════════ -->
+<div id="cfg-modal-overlay" class="overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-kicker">System</div>
+      <div class="modal-title">API Configuration</div>
     </div>
-    <div class="config-url-hint">
-      <strong>Examples</strong>
-      Local &nbsp;&nbsp;→ <code>http://localhost:8000</code><br>
-      LAN &nbsp;&nbsp;&nbsp;→ <code>http://192.168.1.100:8000</code><br>
-      Server → <code>https://api.example.com</code><br>
-      ngrok &nbsp;→ <code>https://abc123.ngrok-free.dev</code>
+    <div class="modal-body">
+      <div class="fld">
+        <label>Backend Base URL</label>
+        <input type="text" id="f-api-base" placeholder="http://localhost:8000" autocomplete="off">
+      </div>
+      <div class="cfg-box">
+        <strong>Endpoints Used</strong>
+        <code>GET /api/health</code> · <code>GET /api/sessions</code> · <code>GET /api/metrics</code><br>
+        <code>POST /api/sessions/open</code> · <code>POST /api/sessions/close</code><br>
+        <code>GET /api/config</code> · <code>POST /webrtc/offer</code>
+      </div>
     </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="hideConfigModal()">Cancel</button>
-      <button class="btn-confirm" onclick="saveApiBase()">Save &amp; Reload</button>
+    <div class="modal-ft">
+      <div class="modal-acts">
+        <button class="btn-ghost" onclick="hideCfgModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveApiBase()">Save &amp; Reconnect</button>
+      </div>
     </div>
   </div>
 </div>
 
-<div id="toast-container"></div>
+<div id="toasts"></div>
 
 <script>
-"use strict";
+/* ═══════════════════════════════════════════════════════════
+   CONFIGURATION & STATE
+═══════════════════════════════════════════════════════════ */
+let API_BASE = localStorage.getItem('qcscm_api') || '';
 
-/* ── STATE ── */
-let API_BASE = localStorage.getItem("qcscm_api_base") || "http://localhost:8000";
-let ICE_SERVERS = [];
-let WEBRTC_MODE = "auto";
-let currentSession = null, viewedSession = null, pc = null, refreshTimer = null;
-const sessionStore = {};
+// Per-session WebRTC peers: { session_id: RTCPeerConnection }
+const peers = {};
 
-const TEST_CONFIG = {
-  factory_id: "factory_test", factory_name: "Test Factory", station_id: "packaging",
-  production_lines: [
-    { production_line_id:"line1", production_line_name:"Production Line 1", camera_id:"cam_line1",  camera_source:"/dev/v4l/by-id/v4l2loopback-DroidCam-video" },
-    { production_line_id:"line2", production_line_name:"Production Line 2", camera_id:"cam_line2",  camera_source:"/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0" },
-  ],
+// Per-session MediaStream references for track reuse in focus view
+const streamRefs = {};
+
+// All sessions loaded from API
+let allSessions = [];
+let sessionStore = {}; // session_id -> session object
+
+// The session being shown in the single-stream view
+let focusSession = null;
+
+// WebRTC config from GET /api/config — cached, re-fetched after TTL
+let iceServers = [];
+let webrtcMode = 'auto';
+let webrtcConfigLoadedAt = 0;
+const WEBRTC_CFG_TTL = 60_000; // ms — refresh config every 60 s
+
+// ICE gathering timeout: proceed with partial candidates after this many ms
+const ICE_GATHER_TIMEOUT = 5000;
+
+// Polling handles
+let sessionsPollTimer = null;
+let metricsPollTimer  = null;
+let healthPollTimer   = null;
+
+// Current view
+let currentView = 'empty';
+
+// Prevents renderGrid from destroying active peer video elements mid-stream
+let suppressGridRerender = false;
+
+// Line definitions (used in session open modal)
+const CAMERAS = {
+  line1: "/dev/v4l/by-id/v4l2loopback-DroidCam-video",
+  line2: "/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0"
 };
 
-/* ── THEME ── */
-function toggleTheme() {
-  const html = document.documentElement;
-  const isDark = html.getAttribute("data-theme") === "dark";
-  html.setAttribute("data-theme", isDark ? "light" : "dark");
-  document.getElementById("theme-toggle").textContent = isDark ? "🌙" : "☀️";
-  localStorage.setItem("qcscm_theme", isDark ? "light" : "dark");
-}
-(function() {
-  const saved = localStorage.getItem("qcscm_theme") || "dark";
-  document.documentElement.setAttribute("data-theme", saved);
-  document.getElementById("theme-toggle").textContent = saved === "dark" ? "☀️" : "🌙";
+const LINE_DEFS = {
+  line1: {
+    production_line_id: "line1",
+    production_line_name: "Production Line 1",
+    camera_id: "cam_line1",
+    camera_source: CAMERAS.line1
+  },
+  line2: {
+    production_line_id: "line2",
+    production_line_name: "Production Line 2",
+    camera_id: "cam_line2",
+    camera_source: CAMERAS.line2
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   CLOCK
+═══════════════════════════════════════════════════════════ */
+(function clockTick() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toTimeString().slice(0,8);
+  const ts = document.getElementById('frame-ts');
+  if (ts) ts.textContent = now.toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).replace(',','');
+  setTimeout(clockTick, 1000);
 })();
 
-/* ── API (unchanged) ── */
-async function api(path, method = "GET", body = null) {
-  const opts = { method, headers: { "Content-Type":"application/json", "ngrok-skip-browser-warning":"true" }, mode:"cors" };
+/* ═══════════════════════════════════════════════════════════
+   THEME
+═══════════════════════════════════════════════════════════ */
+let isLight = false;
+function toggleTheme() {
+  isLight = !isLight;
+  isLight ? document.body.setAttribute('data-light','') : document.body.removeAttribute('data-light');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE PANEL TOGGLE
+═══════════════════════════════════════════════════════════ */
+function toggleMobilePanel() { document.getElementById('panel').classList.toggle('open'); }
+(function() {
+  const btn = document.getElementById('panel-toggle-btn');
+  const check = () => btn.style.display = window.innerWidth <= 920 ? 'flex' : 'none';
+  check(); window.addEventListener('resize', check);
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   VIEW SWITCHING
+═══════════════════════════════════════════════════════════ */
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.rail-btn[id^=rail-]').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name)?.classList.add('active');
+  document.getElementById('rail-' + name)?.classList.add('active');
+  currentView = name;
+  const labels = { overview:'Overview', stream:'Stream', empty:'No Sessions' };
+  document.getElementById('view-label').textContent = labels[name] || name;
+  document.getElementById('panel').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FETCH HELPER
+═══════════════════════════════════════════════════════════ */
+async function apiFetch(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  let res;
-  try { res = await fetch(`${API_BASE}${path}`, opts); }
-  catch (e) { throw new Error(`Cannot reach backend at ${API_BASE} — check ⚙ API URL (${e.message})`); }
-  const ct = res.headers.get("content-type") || "";
-  if (!res.ok) { const txt = await res.text().catch(()=>"Unknown error"); throw new Error(`${res.status}: ${txt}`); }
-  if (!ct.includes("application/json")) throw new Error(`Backend returned non-JSON — wrong API URL? Check ⚙ API`);
+  const res = await fetch(API_BASE + path, opts);
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); msg = d.detail || d.message || msg; } catch {}
+    throw new Error(msg);
+  }
   return res.json();
 }
 
-/* ── TOAST ── */
-function toast(msg, type = "info") {
-  const el = document.createElement("div");
-  el.className = `toast ${type}`;
-  const icons = { success:"✓", error:"✕", info:"◈" };
-  el.innerHTML = `<div class="toast-icon">${icons[type]||"◈"}</div><span>${msg}</span>`;
-  document.getElementById("toast-container").appendChild(el);
-  setTimeout(() => el.remove(), 3200);
-}
-
-/* ── HEALTH (unchanged) ── */
+/* ═══════════════════════════════════════════════════════════
+   API: HEALTH  →  GET /api/health
+═══════════════════════════════════════════════════════════ */
 async function checkHealth() {
-  const dot = document.getElementById("health-dot"), text = document.getElementById("health-text"), badge = document.getElementById("health-badge");
+  const badge = document.getElementById('health-badge');
+  const text  = document.getElementById('health-text');
   try {
-    const data = await api("/api/health");
-    dot.className = "health-dot ok"; badge.className = "ok";
-    text.textContent = `HEALTHY · ${data.active_sessions} SESSION${data.active_sessions!==1?"S":""}`;
-  } catch(e) { dot.className = "health-dot err"; badge.className = "err"; text.textContent = "UNREACHABLE"; }
-}
-
-/* ── WEBRTC CONFIG (unchanged) ── */
-async function loadWebRTCConfig() {
-  try {
-    const cfg = await api("/api/config");
-    ICE_SERVERS = cfg?.webrtc?.iceServers ?? [];
-    WEBRTC_MODE = (cfg?.webrtc?.webrtc_mode || "auto").toLowerCase();
-  } catch (e) {
-    ICE_SERVERS = [];
-    WEBRTC_MODE = "auto";
+    const data = await apiFetch('/api/health');
+    // { status: "healthy", active_sessions: N }
+    badge.className = 'health-pill ok';
+    text.textContent = `${data.status?.toUpperCase() || 'HEALTHY'} · ${data.active_sessions ?? 0} SESS`;
+    return true;
+  } catch {
+    badge.className = 'health-pill err';
+    text.textContent = 'UNREACHABLE';
+    return false;
   }
 }
 
-/* ── SESSIONS (unchanged) ── */
-async function refreshSessions() {
-  try { const data = await api("/api/sessions"); renderSessions(data.sessions??[]); }
-  catch(e) { console.warn("Refresh failed:", e.message); }
+/* ═══════════════════════════════════════════════════════════
+   API: METRICS  →  GET /api/metrics
+═══════════════════════════════════════════════════════════ */
+async function fetchMetrics() {
+  try {
+    const m = await apiFetch('/api/metrics');
+    // { active_sessions, active_viewers, webrtc_connections, pipeline_fps, camera_fps_estimate, queue_latency_ms }
+    setMetric('m-sessions', m.active_sessions, '', m.active_sessions > 0 ? 'amber' : '', Math.min(m.active_sessions * 10, 100));
+    setMetric('m-viewers',  m.active_viewers,  '', m.active_viewers > 0 ? 'ice' : '', Math.min(m.active_viewers * 15, 100), 'ice');
+    setMetric('m-webrtc',   m.webrtc_connections, '', m.webrtc_connections > 0 ? '' : '', Math.min(m.webrtc_connections * 12, 100), 'violet');
+    const fps = m.pipeline_fps ?? 0;
+    setMetric('m-pfps', fps.toFixed(1), '', fps >= 25 ? 'green' : fps >= 15 ? 'amber' : 'red', Math.min((fps / 30) * 100, 100), 'green');
+    const cfps = m.camera_fps_estimate ?? 0;
+    setMetric('m-cfps', cfps.toFixed(1), '', cfps >= 25 ? 'green' : cfps >= 15 ? 'amber' : 'red', Math.min((cfps / 30) * 100, 100), 'green');
+    const lat = m.queue_latency_ms ?? 0;
+    setMetric('m-latency', lat.toFixed(0), '', lat < 50 ? 'green' : lat < 150 ? 'amber' : 'red', Math.min((lat / 300) * 100, 100), lat < 50 ? 'green' : lat < 150 ? 'amber' : 'red');
+
+    document.getElementById('ov-sub-text').textContent =
+      `${m.active_sessions ?? 0} sessions · ${m.webrtc_connections ?? 0} streams · Updated ${new Date().toLocaleTimeString()}`;
+  } catch {
+    // Metrics endpoint may not exist — soft fail
+    document.getElementById('ov-sub-text').textContent = 'Metrics unavailable';
+  }
 }
 
-function renderSessions(sessions) {
-  const root = document.getElementById("session-list");
-  const badge = document.getElementById("sessions-count");
+function setMetric(id, value, unit, colorClass, barPct, barColor) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value ?? '—';
+  el.className = 'mt-value' + (colorClass ? ' ' + colorClass : '');
+  const bar = document.getElementById(id + '-bar');
+  if (bar) {
+    bar.style.width = (barPct || 0) + '%';
+    if (barColor) bar.style.background = `var(--${barColor})`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   API: SESSIONS LIST  →  GET /api/sessions
+═══════════════════════════════════════════════════════════ */
+async function refreshSessions() {
+  try {
+    const data = await apiFetch('/api/sessions');
+    allSessions = data.sessions || [];
+    allSessions.forEach(s => { sessionStore[s.session_id] = { ...sessionStore[s.session_id], ...s }; });
+    renderPanel(allSessions);
+    // Only re-render the grid if we are NOT currently streaming in a card
+    // (avoids destroying active <video> elements that peers are writing to)
+    if (!suppressGridRerender) renderGrid(allSessions);
+    updatePanelFooter(allSessions);
+    // Auto-switch view only from the empty placeholder — never tear down an active stream view
+    if (allSessions.length === 0 && currentView === 'overview') {
+      switchView('empty');
+    } else if (allSessions.length > 0 && currentView === 'empty') {
+      switchView('overview');
+    }
+  } catch (e) {
+    console.warn('[Sessions] refresh failed:', e.message);
+  }
+}
+
+function filterSessions(q) {
+  const f = q.trim()
+    ? allSessions.filter(s =>
+        s.session_id?.toLowerCase().includes(q.toLowerCase()) ||
+        (s.factory_name || '').toLowerCase().includes(q.toLowerCase()) ||
+        (s.production_line_name || '').toLowerCase().includes(q.toLowerCase()) ||
+        (s.station_id || '').toLowerCase().includes(q.toLowerCase())
+      )
+    : allSessions;
+  renderPanel(f);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RENDER: SESSION PANEL LIST
+═══════════════════════════════════════════════════════════ */
+function renderPanel(sessions) {
+  const list = document.getElementById('session-list');
+  const cnt  = document.getElementById('sess-count');
+
   if (!sessions.length) {
-    badge.style.display = "none";
-    root.innerHTML = `<div class="empty-state"><div class="empty-icon-wrap"><div class="empty-icon-ring"></div><div class="empty-icon-inner">⬡</div></div><div class="empty-label">No Sessions Active</div><div class="empty-hint">Click New Session<br>to get started</div></div>`;
+    list.innerHTML = `<div class="empty-state">
+      <div class="empty-ico">⊕</div>
+      <div class="empty-h">No Sessions</div>
+      <div class="empty-p">Press NEW to start<br>a detection session</div>
+    </div>`;
+    cnt.style.display = 'none';
     return;
   }
-  badge.style.display = "inline-block"; badge.textContent = sessions.length;
-  root.innerHTML = "";
-  sessions.forEach((s,i) => {
-    const div = document.createElement("div");
-    const isActive = currentSession?.session_id === s.session_id;
-    div.className = `session-card${isActive?" active":""}`;
-    div.style.animationDelay = `${i*0.05}s`;
-    div.innerHTML = `
-      <div class="sc-top">
-        <div class="sc-id">${s.session_id}</div>
-        <div class="sc-live"><span class="sc-live-dot"></span>LIVE</div>
+
+  cnt.textContent = allSessions.length;
+  cnt.style.display = 'inline';
+
+  list.innerHTML = sessions.map((s, i) => {
+    const active = focusSession?.session_id === s.session_id;
+    return `<div class="sess-card${active ? ' active' : ''}" onclick="selectSession('${s.session_id}')" tabindex="0" style="animation-delay:${i * 0.04}s" onkeydown="if(event.key==='Enter')selectSession('${s.session_id}')">
+      <div class="sc-row1">
+        <span class="sc-id">${esc(s.session_id)}</span>
+        <span class="sc-live"><span class="sc-dot"></span>LIVE</span>
       </div>
-      <div class="sc-tags">
-        <span class="sc-tag">${s.factory_name||s.factory_id}</span>
-        <span class="sc-tag">${s.production_line_name||s.production_line_id}</span>
+      <div class="sc-chips">
+        ${s.production_line_name ? `<span class="sc-chip">${esc(s.production_line_name)}</span>` : ''}
+        ${s.factory_name         ? `<span class="sc-chip">${esc(s.factory_name)}</span>` : ''}
+        ${s.station_id           ? `<span class="sc-chip">${esc(s.station_id)}</span>` : ''}
       </div>
-      <div class="sc-cam">${s.camera_source}</div>`;
-    div.onclick = () => enterSession(s);
-    root.appendChild(div);
-  });
+      <div class="sc-src">${esc(s.camera_source || '—')}</div>
+    </div>`;
+  }).join('');
 }
 
-/* ── MODAL FIELD HANDLERS ── */
-function onFactorySelectChange() {
-  const sel = document.getElementById("f-factory").value;
-  const wrap = document.getElementById("factory-custom-wrap");
-  sel==="__custom__" ? (wrap.classList.add("visible"), document.getElementById("f-factory-custom").focus()) : wrap.classList.remove("visible");
-  clearFieldError("field-factory","factory-error");
-}
-function onStationSelectChange() {
-  const sel = document.getElementById("f-station").value;
-  const wrap = document.getElementById("station-custom-wrap");
-  sel==="__custom__" ? (wrap.classList.add("visible"), document.getElementById("f-station-custom").focus()) : wrap.classList.remove("visible");
-  clearFieldError("field-station","station-error");
-}
-function getSelectedLine() {
-  const id = document.getElementById("f-production-line").value;
-  return TEST_CONFIG.production_lines.find(l=>l.production_line_id===id) || TEST_CONFIG.production_lines[0];
-}
-function onProductionLineChange() {
-  const line = getSelectedLine();
-  const sel = document.getElementById("f-camera");
-  const prev = sel.value;
-  sel.innerHTML = `<option value="__line__">Auto · ${line.camera_id} (${line.camera_source.split('/').pop()})</option><option value="__custom__">Custom…</option>`;
-  sel.value = prev==="__custom__" ? "__custom__" : "__line__";
-  onCameraSelectChange();
-  document.getElementById("camera-hint").textContent = `Default: ${line.camera_source}`;
-  clearFieldError("field-line","line-error");
-}
-function onCameraSelectChange() {
-  const sel = document.getElementById("f-camera").value;
-  const wrap = document.getElementById("camera-custom-wrap");
-  sel==="__custom__" ? (wrap.classList.add("visible"), document.getElementById("f-camera-id-custom").focus()) : wrap.classList.remove("visible");
-  clearFieldError("field-camera","camera-error");
-}
-function clearFieldError(fId, eId) { document.getElementById(fId)?.classList.remove("has-error"); document.getElementById(eId)?.classList.remove("visible"); }
-function showFieldError(fId, eId)  { document.getElementById(fId)?.classList.add("has-error");    document.getElementById(eId)?.classList.add("visible"); }
+/* ═══════════════════════════════════════════════════════════
+   RENDER: SESSION GRID CARDS
+═══════════════════════════════════════════════════════════ */
+function renderGrid(sessions) {
+  const grid = document.getElementById('session-grid');
+  if (!sessions.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;padding:60px 20px;flex-direction:column;gap:10px">
+      <div class="empty-h" style="color:var(--t3)">No camera sessions to display</div>
+      <div class="empty-p">Open a new session to begin monitoring</div>
+    </div>`;
+    return;
+  }
 
-/* ── MODAL SHOW/HIDE ── */
-function showModal() {
-  document.getElementById("f-factory").value="factory_test";
-  document.getElementById("f-factory-custom").value="";
-  document.getElementById("factory-custom-wrap").classList.remove("visible");
-  document.getElementById("f-station").value="packaging";
-  document.getElementById("f-station-custom").value="";
-  document.getElementById("station-custom-wrap").classList.remove("visible");
-  document.getElementById("f-production-line").value="line1";
-  onProductionLineChange();
-  document.getElementById("f-camera-id-custom").value="";
-  document.getElementById("f-camera-source-custom").value="";
-  document.getElementById("camera-custom-wrap").classList.remove("visible");
-  ["field-factory","field-line","field-station","field-camera"].forEach(id=>document.getElementById(id)?.classList.remove("has-error"));
-  ["factory-error","line-error","station-error","camera-error"].forEach(id=>document.getElementById(id)?.classList.remove("visible"));
-  document.getElementById("modal-overlay").classList.add("show");
+  grid.innerHTML = sessions.map((s, i) => {
+    const sid = s.session_id;
+    const isPeered = !!peers[sid];
+    return `<div class="cam-card${isPeered ? ' streaming' : ''}" id="card-${sid}" style="animation-delay:${i * 0.05}s">
+      <div class="cam-video-wrap">
+        <div class="card-brk tl"></div><div class="card-brk tr"></div>
+        <div class="card-brk bl"></div><div class="card-brk br"></div>
+        <div class="card-live-badge${isPeered ? ' on' : ''}" id="card-live-${sid}">
+          <span class="card-live-dot"></span>LIVE
+        </div>
+        <video id="card-video-${sid}" autoplay playsinline muted style="width:100%;height:100%;object-fit:contain;display:block"></video>
+        <div class="card-offline${isPeered ? ' hidden' : ''}" id="card-offline-${sid}">
+          <div class="offline-rings">
+            <div class="offline-ring"></div><div class="offline-ring"></div>
+            <div class="offline-ico">◎</div>
+          </div>
+          <div class="offline-txt">// no signal</div>
+        </div>
+      </div>
+      <div class="cam-card-info">
+        <div class="cam-card-id">${esc(sid)}</div>
+        <div class="cam-card-meta">
+          ${s.production_line_name ? `<span class="cam-card-chip">${esc(s.production_line_name)}</span>` : ''}
+          ${s.factory_name         ? `<span class="cam-card-chip">${esc(s.factory_name)}</span>` : ''}
+          ${s.station_id           ? `<span class="cam-card-chip">${esc(s.station_id)}</span>` : ''}
+        </div>
+        <div class="cam-card-src">${esc(s.camera_source || '—')}</div>
+      </div>
+      <div class="cam-card-actions">
+        <button class="cta-sm cta-stream" id="card-btn-stream-${sid}" onclick="startCardStream('${sid}')" ${isPeered ? 'disabled' : ''}>
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          ${isPeered ? 'Streaming' : 'Stream'}
+        </button>
+        <button class="cta-sm cta-stop" id="card-btn-stop-${sid}" onclick="stopCardStream('${sid}')" ${!isPeered ? 'disabled' : ''}>
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          Stop
+        </button>
+        <button class="cta-sm cta-view" onclick="openFocusStream('${sid}')">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+          Focus
+        </button>
+        <button class="cta-sm cta-close" onclick="closeCardSession('${sid}')">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Close
+        </button>
+      </div>
+    </div>`;
+  }).join('');
 }
-function hideModal() { document.getElementById("modal-overlay").classList.remove("show"); }
 
-/* ── VALIDATION ── */
-function validateOpenSession() {
-  let valid = true;
-  const fSel = document.getElementById("f-factory").value;
-  if (fSel==="__custom__" && !document.getElementById("f-factory-custom").value.trim()) { showFieldError("field-factory","factory-error"); valid=false; } else clearFieldError("field-factory","factory-error");
-  const sSel = document.getElementById("f-station").value;
-  if (sSel==="__custom__" && !document.getElementById("f-station-custom").value.trim()) { showFieldError("field-station","station-error"); valid=false; } else clearFieldError("field-station","station-error");
-  const cSel = document.getElementById("f-camera").value;
-  if (cSel==="__custom__" && (!document.getElementById("f-camera-id-custom").value.trim() || !document.getElementById("f-camera-source-custom").value.trim())) { showFieldError("field-camera","camera-error"); valid=false; } else clearFieldError("field-camera","camera-error");
-  return valid;
+function updatePanelFooter(sessions) {
+  document.getElementById('ft-sessions').textContent  = sessions.length;
+  const streaming = Object.keys(peers).filter(id => peers[id] && peers[id].connectionState !== 'closed').length;
+  document.getElementById('ft-streaming').textContent = streaming;
+  const facts = [...new Set(sessions.map(s => s.factory_id).filter(Boolean))];
+  document.getElementById('ft-factories').textContent = facts.length || '—';
 }
 
-function generateSessionId() { return "session_" + new Date().toISOString().replace(/[-:T.Z]/g,"").slice(0,14); }
+/* ═══════════════════════════════════════════════════════════
+   SESSION SELECTION (panel click → focus)
+═══════════════════════════════════════════════════════════ */
+function selectSession(sessionId) {
+  const s = sessionStore[sessionId];
+  if (!s) return;
+  openFocusStream(sessionId);
+}
 
-/* ── OPEN SESSION (unchanged payload) ── */
-async function doOpenSession() {
-  if (!validateOpenSession()) return;
-  const line = getSelectedLine();
-  const session_id = generateSessionId();
-  const fSel = document.getElementById("f-factory").value;
-  const factory_id   = fSel==="__custom__" ? document.getElementById("f-factory-custom").value.trim().toLowerCase().replace(/\s+/g,"_") : fSel;
-  const factory_name = fSel==="__custom__" ? document.getElementById("f-factory-custom").value.trim() : document.getElementById("f-factory").options[document.getElementById("f-factory").selectedIndex].text;
-  const sSel = document.getElementById("f-station").value;
-  const station_id   = sSel==="__custom__" ? document.getElementById("f-station-custom").value.trim().toLowerCase().replace(/\s+/g,"_") : sSel;
-  const cSel = document.getElementById("f-camera").value;
-  const camera_id     = cSel==="__custom__" ? document.getElementById("f-camera-id-custom").value.trim()     : line.camera_id;
-  const camera_source = cSel==="__custom__" ? document.getElementById("f-camera-source-custom").value.trim() : line.camera_source;
-  const body = { factory_id, factory_name, production_line_id:line.production_line_id, production_line_name:line.production_line_name, camera_id, camera_source, station_id, session_id };
-  const btn = document.getElementById("btn-open-confirm");
-  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Opening…`;
+/* ═══════════════════════════════════════════════════════════
+   API: WEBRTC CONFIG  →  GET /api/config
+   Cached for WEBRTC_CFG_TTL ms — avoids a round-trip on every
+   negotiation while keeping config fresh after reconnects.
+═══════════════════════════════════════════════════════════ */
+async function loadWebRTCConfig(force = false) {
+  if (!force && Date.now() - webrtcConfigLoadedAt < WEBRTC_CFG_TTL) return;
   try {
-    await api("/api/sessions/open","POST",body);
-    sessionStore[session_id] = {...body, status:"active"};
-    hideModal(); toast(`Session opened: ${session_id}`,"success");
-    await refreshSessions(); enterSession(sessionStore[session_id]);
-  } catch(e) { toast(e.message,"error"); }
-  finally { btn.disabled=false; btn.innerHTML="Open Session"; }
-}
-
-/* ── NAV (unchanged) ── */
-function enterSession(session) {
-  stopStream();
-  if (typeof session==="string") session = sessionStore[session]||{session_id:session,camera_source:"—",production_line_name:"—"};
-  sessionStore[session.session_id]=session; viewedSession=session; currentSession=session;
-  document.getElementById("no-session").style.display="none";
-  document.getElementById("session-view").style.display="flex";
-  document.getElementById("session-title").textContent=session.session_id;
-  document.getElementById("status-camera").textContent=session.camera_source||"—";
-  document.getElementById("status-line").textContent=session.production_line_name||session.production_line_id||"—";
-  setStatus("DISCONNECTED","");
-  document.querySelectorAll(".session-card").forEach(c=>c.classList.toggle("active",c.querySelector(".sc-id")?.textContent.includes(session.session_id)));
-}
-
-/* ── CLOSE SESSION (unchanged) ── */
-async function closeSession() {
-  if (!viewedSession) return;
-  const target={...viewedSession}; stopStream();
-  try { await api("/api/sessions/close","POST",{session_id:target.session_id,camera_source:target.camera_source}); toast(`Session closed: ${target.session_id}`,"success"); }
-  catch(e) { toast(e.message,"error"); }
-  delete sessionStore[target.session_id]; viewedSession=null; currentSession=null;
-  document.getElementById("no-session").style.display="flex";
-  document.getElementById("session-view").style.display="none";
-  await refreshSessions();
-}
-
-/* ── STATUS ── */
-function setStatus(text, dotClass) {
-  document.getElementById("status-text").textContent=text;
-  document.getElementById("conn-dot").className="status-dot"+(dotClass?" "+dotClass:"");
-  dotClass==="streaming" ? document.getElementById("rec-indicator").classList.add("visible") : document.getElementById("rec-indicator").classList.remove("visible");
-}
-
-/* ── WEBRTC START (unchanged) ── */
-async function startStream() {
-  if (!viewedSession) { toast("No session selected","error"); return; }
-  if (pc) { pc.close(); pc=null; }
-  await loadWebRTCConfig(); setStatus("CONNECTING...","");
-  try {
-    const rtcConfig = { iceServers: ICE_SERVERS };
-    if (WEBRTC_MODE === "relay") rtcConfig.iceTransportPolicy = "relay";
-    console.log("[WebRTC] PeerConnection config:",JSON.stringify(rtcConfig,null,2));
-    pc=new RTCPeerConnection(rtcConfig);
-    pc.onconnectionstatechange=()=>{ const s=pc?.connectionState; if(s==="failed"||s==="disconnected"){setStatus("DISCONNECTED","error");document.getElementById("video-overlay").classList.remove("hidden");}else if(s==="closed")setStatus("DISCONNECTED",""); };
-    pc.oniceconnectionstatechange=()=>console.log("[WebRTC] iceConnectionState:",pc.iceConnectionState);
-    pc.onicegatheringstatechange =()=>console.log("[WebRTC] iceGatheringState:",pc.iceGatheringState);
-    pc.onsignalingstatechange    =()=>console.log("[WebRTC] signalingState:",pc.signalingState);
-    pc.onicecandidate=e=>{ if(e.candidate) console.log("[WebRTC] ICE Candidate:",e.candidate.candidate); else console.log("[WebRTC] ICE gathering completed"); };
-    pc.onicecandidateerror=e=>console.error("[WebRTC] ICE Candidate Error:",e);
-    pc.ontrack=e=>{ document.getElementById("video").srcObject=e.streams[0]; document.getElementById("video-overlay").classList.add("hidden"); setStatus("STREAMING","streaming"); };
-    pc.addTransceiver("video",{direction:"recvonly"});
-    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
-    console.log("[WebRTC] Offer created and set as local description");
-    if(pc.iceGatheringState!=="complete"){
-      console.log("[WebRTC] Waiting for ICE gathering to complete...");
-      await new Promise(resolve=>{ const check=()=>{ if(pc.iceGatheringState==="complete"){pc.removeEventListener("icegatheringstatechange",check);resolve();} }; pc.addEventListener("icegatheringstatechange",check); });
-      console.log("[WebRTC] ICE gathering completed (Promise resolved)");
-    }
-    console.log("[WebRTC] Sending offer to backend →",viewedSession.session_id);
-    const ans=await api("/webrtc/offer","POST",{sdp:pc.localDescription.sdp,type:pc.localDescription.type,session_id:viewedSession.session_id});
-    console.log("[WebRTC] Answer received from backend, type:",ans.type);
-    await pc.setRemoteDescription(new RTCSessionDescription(ans));
-    console.log("[WebRTC] Remote description set — waiting for ICE + track");
-    setStatus("CONNECTED — AWAITING TRACK","connected");
-    setTimeout(async()=>{ if(!pc)return; const stats=await pc.getStats(); stats.forEach(r=>{ if(r.type==="candidate-pair"&&r.state==="succeeded"){ const l=stats.get(r.localCandidateId),rm=stats.get(r.remoteCandidateId); console.log("[WebRTC] ICE TYPE:",l?.candidateType,"->",rm?.candidateType); } }); },2000);
-  } catch(e) {
-    console.error("[WebRTC] startStream error:",e);
-    toast("Stream error: "+e.message,"error"); setStatus("ERROR","error");
-    if(pc){pc.close();pc=null;}
+    const cfg = await apiFetch('/api/config');
+    // Backend returns: { "webrtc": { "iceServers": [...], "webrtc_mode": "auto|direct|stun|relay" } }
+    const wrtc = cfg.webrtc || cfg;
+    iceServers  = wrtc.iceServers || wrtc.ice_servers || [];
+    webrtcMode  = wrtc.webrtc_mode || wrtc.mode || 'auto';
+    webrtcConfigLoadedAt = Date.now();
+  } catch {
+    // Soft fail — keep existing values; use empty ICE servers (direct/STUN still works)
+    iceServers = iceServers.length ? iceServers : [];
+    webrtcMode = webrtcMode || 'auto';
   }
 }
 
-/* ── WEBRTC STOP (unchanged) ── */
-function stopStream() {
-  if(pc){pc.close();pc=null;}
-  document.getElementById("video").srcObject=null;
-  document.getElementById("video-overlay").classList.remove("hidden");
-  setStatus("DISCONNECTED","");
+/* ═══════════════════════════════════════════════════════════
+   WEBRTC CORE: build peer connection and negotiate
+   ─ GET /api/config  (cached)
+   ─ POST /webrtc/offer  { sdp, type, session_id }
+   ─ Returns RTCPeerConnection
+═══════════════════════════════════════════════════════════ */
+async function negotiateWebRTC(sessionId, videoEl, onStateChange) {
+  // Refresh config if stale (or first load)
+  await loadWebRTCConfig();
+
+  // Tear down any existing peer for this session cleanly
+  if (peers[sessionId]) {
+    try { peers[sessionId].close(); } catch {}
+    delete peers[sessionId];
+    delete streamRefs[sessionId];
+  }
+
+  // Build RTCConfiguration from backend config
+  const rtcCfg = { iceServers: iceServers.length ? iceServers : [] };
+
+  // Apply webrtc_mode policy
+  // - 'relay'  : force TURN relay only
+  // - 'stun'   : allow STUN + host candidates (default browser behaviour)
+  // - 'direct' : host candidates only — no STUN/TURN
+  // - 'auto'   : unrestricted (browser default)
+  if (webrtcMode === 'relay')  rtcCfg.iceTransportPolicy = 'relay';
+  if (webrtcMode === 'direct') rtcCfg.iceTransportPolicy = 'all'; // host candidates still work with empty ICE servers
+
+  const pc = new RTCPeerConnection(rtcCfg);
+  peers[sessionId] = pc;
+
+  // Connection state → UI state
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState;
+    onStateChange(st);
+    if (['failed', 'disconnected', 'closed'].includes(st)) {
+      if (videoEl) videoEl.srcObject = null;
+      if (peers[sessionId] === pc) {
+        delete peers[sessionId];
+        delete streamRefs[sessionId];
+      }
+    }
+  };
+
+  // Track received → attach to video and save stream ref
+  pc.ontrack = e => {
+    const stream = e.streams[0] || new MediaStream([e.track]);
+    streamRefs[sessionId] = stream;
+    if (videoEl) videoEl.srcObject = stream;
+    onStateChange('streaming');
+  };
+
+  // Receive video only
+  pc.addTransceiver('video', { direction: 'recvonly' });
+
+  // Create offer and set local description
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  // Wait for ICE gathering to complete, with a hard timeout so we
+  // never hang forever if a TURN server is unreachable.
+  await new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') { resolve(); return; }
+    const timer = setTimeout(resolve, ICE_GATHER_TIMEOUT);
+    const onGather = () => {
+      if (pc.iceGatheringState === 'complete') {
+        clearTimeout(timer);
+        pc.removeEventListener('icegatheringstatechange', onGather);
+        resolve();
+      }
+    };
+    pc.addEventListener('icegatheringstatechange', onGather);
+  });
+
+  // POST /webrtc/offer — send offer SDP, receive answer
+  const answer = await apiFetch('/webrtc/offer', 'POST', {
+    sdp:        pc.localDescription.sdp,
+    type:       pc.localDescription.type,  // always "offer"
+    session_id: sessionId,
+  });
+
+  // Set remote description with the server's answer
+  await pc.setRemoteDescription(new RTCSessionDescription({
+    type: answer.type,
+    sdp:  answer.sdp,
+  }));
+
+  return pc;
 }
 
-/* ── CONFIG MODAL ── */
-function showConfigModal() { document.getElementById("f-api-base").value=API_BASE; document.getElementById("config-modal-overlay").classList.add("show"); setTimeout(()=>document.getElementById("f-api-base").focus(),80); }
-function hideConfigModal() { document.getElementById("config-modal-overlay").classList.remove("show"); }
+/* ═══════════════════════════════════════════════════════════
+   CARD STREAM: start WebRTC for a card in the grid
+═══════════════════════════════════════════════════════════ */
+async function startCardStream(sessionId) {
+  const btnStream = document.getElementById(`card-btn-stream-${sessionId}`);
+  const btnStop   = document.getElementById(`card-btn-stop-${sessionId}`);
+  const videoEl   = document.getElementById(`card-video-${sessionId}`);
+  const offEl     = document.getElementById(`card-offline-${sessionId}`);
+  const liveEl    = document.getElementById(`card-live-${sessionId}`);
+  const card      = document.getElementById(`card-${sessionId}`);
+
+  if (!btnStream || !videoEl) return;
+  setCardBtnLoading(btnStream, true, 'Connecting…');
+
+  // Prevent polling-triggered renderGrid from destroying this live <video> element
+  suppressGridRerender = true;
+
+  const onState = (state) => {
+    if (state === 'streaming') {
+      if (offEl) offEl.classList.add('hidden');
+      if (liveEl) liveEl.classList.add('on');
+      if (card) card.classList.add('streaming');
+      setCardBtnLoading(btnStream, false, 'Streaming', true);
+      if (btnStop) btnStop.disabled = false;
+      updatePanelFooter(allSessions);
+      // If this session is open in the focus view, mirror the MediaStream there too
+      if (focusSession?.session_id === sessionId && streamRefs[sessionId]) {
+        document.getElementById('focus-video').srcObject = streamRefs[sessionId];
+        document.getElementById('stream-offline').classList.add('hidden');
+        document.getElementById('stream-live-badge').classList.add('on');
+        updateFocusStatus('STREAMING', 'streaming');
+      }
+    } else if (state === 'connected') {
+      setCardBtnLoading(btnStream, false, 'Connecting…', true);
+    } else if (['failed', 'disconnected', 'closed'].includes(state)) {
+      if (offEl) offEl.classList.remove('hidden');
+      if (liveEl) liveEl.classList.remove('on');
+      if (card) card.classList.remove('streaming');
+      setCardBtnLoading(btnStream, false, 'Stream', false);
+      if (btnStop) btnStop.disabled = true;
+      // Only stay in suppress mode if other sessions are still streaming
+      suppressGridRerender = Object.keys(peers).length > 0;
+      updatePanelFooter(allSessions);
+      if (focusSession?.session_id === sessionId) updateFocusStatus('DISCONNECTED', 'error');
+    }
+  };
+
+  try {
+    await negotiateWebRTC(sessionId, videoEl, onState);
+    onState('connected');
+  } catch (e) {
+    toast(`Stream failed [${sessionId.slice(-6)}]: ${e.message}`, 'error');
+    setCardBtnLoading(btnStream, false, 'Stream', false);
+    if (btnStop) btnStop.disabled = true;
+    delete peers[sessionId];
+    delete streamRefs[sessionId];
+    suppressGridRerender = Object.keys(peers).length > 0;
+  }
+}
+
+function stopCardStream(sessionId) {
+  if (peers[sessionId]) {
+    try { peers[sessionId].close(); } catch {}
+    delete peers[sessionId];
+  }
+  delete streamRefs[sessionId];
+  const videoEl   = document.getElementById(`card-video-${sessionId}`);
+  if (videoEl) videoEl.srcObject = null;
+  const offEl     = document.getElementById(`card-offline-${sessionId}`);
+  const liveEl    = document.getElementById(`card-live-${sessionId}`);
+  const card      = document.getElementById(`card-${sessionId}`);
+  const btnStream = document.getElementById(`card-btn-stream-${sessionId}`);
+  const btnStop   = document.getElementById(`card-btn-stop-${sessionId}`);
+  if (offEl)  offEl.classList.remove('hidden');
+  if (liveEl) liveEl.classList.remove('on');
+  if (card)   card.classList.remove('streaming');
+  if (btnStream) { btnStream.disabled = false; btnStream.innerHTML = `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Stream`; }
+  if (btnStop) btnStop.disabled = true;
+  // Suppress grid re-render only while other peers are still active
+  suppressGridRerender = Object.keys(peers).length > 0;
+  if (focusSession?.session_id === sessionId) {
+    document.getElementById('focus-video').srcObject = null;
+    document.getElementById('stream-offline').classList.remove('hidden');
+    document.getElementById('stream-live-badge').classList.remove('on');
+    updateFocusStatus('DISCONNECTED', '');
+  }
+  updatePanelFooter(allSessions);
+}
+
+function setCardBtnLoading(btn, loading, label, disable) {
+  if (!btn) return;
+  btn.disabled = disable || loading;
+  btn.innerHTML = loading
+    ? `<span class="mini-spin"></span> ${label}`
+    : `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> ${label}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BULK ACTIONS
+═══════════════════════════════════════════════════════════ */
+async function startAllStreams() {
+  const btn = document.getElementById('btn-stream-all');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="mini-spin"></span> Starting…'; }
+  // Fire all negotiations in parallel — much faster than sequential
+  const pending = allSessions
+    .filter(s => !peers[s.session_id])
+    .map(s => startCardStream(s.session_id).catch(() => {}));
+  await Promise.all(pending);
+  if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Stream All'; }
+}
+
+function stopAllStreams() {
+  const ids = Object.keys(peers);
+  ids.forEach(id => stopCardStream(id));
+  suppressGridRerender = false;
+  // Re-render grid now that all peers are gone
+  renderGrid(allSessions);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLOSE A SINGLE SESSION  →  POST /api/sessions/close
+═══════════════════════════════════════════════════════════ */
+async function closeCardSession(sessionId) {
+  const session = sessionStore[sessionId];
+  if (!session) { toast('Session not found in local store', 'error'); return; }
+
+  // Stop local WebRTC peer first so the UI updates immediately
+  stopCardStream(sessionId);
+
+  // Tell the backend to close the session
+  try {
+    await apiFetch('/api/sessions/close', 'POST', {
+      session_id:    sessionId,
+      camera_source: session.camera_source,
+    });
+    toast(`Session closed: …${sessionId.slice(-8)}`, 'success');
+  } catch (e) {
+    toast(`Close failed: ${e.message}`, 'error');
+    // Don't abort — still clean up local state so the UI isn't stuck
+  }
+
+  // Remove from local state
+  delete sessionStore[sessionId];
+  delete streamRefs[sessionId];
+  allSessions = allSessions.filter(s => s.session_id !== sessionId);
+
+  // If the closed session was the focus, go back to overview (or empty)
+  if (focusSession?.session_id === sessionId) {
+    focusSession = null;
+    document.getElementById('rail-stream').style.display = 'none';
+    switchView(allSessions.length ? 'overview' : 'empty');
+  }
+
+  suppressGridRerender = Object.keys(peers).length > 0;
+  renderPanel(allSessions);
+  renderGrid(allSessions);
+  updatePanelFooter(allSessions);
+  if (allSessions.length === 0) switchView('empty');
+
+  // Background sync to pick up any server-side state changes
+  refreshSessions().catch(() => {});
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FOCUS VIEW — open single enlarged stream
+   Reuses existing MediaStream from streamRefs if available.
+   User can then click Stream to start a fresh WebRTC session.
+═══════════════════════════════════════════════════════════ */
+function openFocusStream(sessionId) {
+  const s = sessionStore[sessionId] || allSessions.find(x => x.session_id === sessionId);
+  if (!s) return;
+  focusSession = s;
+
+  // Populate metadata in the stream command bar
+  document.getElementById('stream-sess-id').textContent    = s.session_id;
+  document.getElementById('focus-sess-tele').textContent   = s.session_id;
+  document.getElementById('focus-camera').textContent      = s.camera_source || '—';
+  document.getElementById('focus-line').textContent        = s.production_line_name || s.production_line_id || '—';
+
+  const tags = document.getElementById('stream-tags');
+  tags.innerHTML = [
+    s.factory_name         && `<span class="stream-tag">${esc(s.factory_name)}</span>`,
+    s.production_line_name && `<span class="stream-tag">${esc(s.production_line_name)}</span>`,
+    s.station_id           && `<span class="stream-tag">${esc(s.station_id)}</span>`,
+  ].filter(Boolean).join('');
+
+  // Show the "Stream" rail nav button
+  document.getElementById('rail-stream').style.display = 'flex';
+
+  // Reuse existing stream if peer is active and we have a MediaStream ref
+  const existingStream = streamRefs[sessionId];
+  const existingPeer   = peers[sessionId];
+  const isLive = existingPeer &&
+    !['failed', 'disconnected', 'closed'].includes(existingPeer.connectionState) &&
+    existingStream;
+
+  const focusVideo = document.getElementById('focus-video');
+  if (isLive) {
+    focusVideo.srcObject = existingStream;
+    document.getElementById('stream-offline').classList.add('hidden');
+    document.getElementById('stream-live-badge').classList.add('on');
+    updateFocusStatus('STREAMING', 'streaming');
+  } else {
+    focusVideo.srcObject = null;
+    document.getElementById('stream-offline').classList.remove('hidden');
+    document.getElementById('stream-live-badge').classList.remove('on');
+    updateFocusStatus('DISCONNECTED', '');
+  }
+
+  // Highlight in panel list
+  document.querySelectorAll('.sess-card').forEach(c =>
+    c.classList.toggle('active', c.querySelector('.sc-id')?.textContent.trim() === sessionId)
+  );
+
+  switchView('stream');
+}
+
+async function startFocusStream() {
+  if (!focusSession) { toast('No session selected', 'error'); return; }
+  const sid = focusSession.session_id;
+  const btn     = document.getElementById('sv-btn-stream');
+  const videoEl = document.getElementById('focus-video');
+
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin spin-light" style="border-top-color:var(--green)"></span> Connecting…`;
+  updateFocusStatus('CONNECTING…', '');
+  suppressGridRerender = true;
+
+  const onState = (state) => {
+    if (state === 'streaming') {
+      document.getElementById('stream-offline').classList.add('hidden');
+      document.getElementById('stream-live-badge').classList.add('on');
+      updateFocusStatus('STREAMING', 'streaming');
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Stream`;
+      syncCardState(sid, true);
+      // Also push the stream to the card's <video> element if it exists
+      const cardVideo = document.getElementById(`card-video-${sid}`);
+      if (cardVideo && streamRefs[sid]) cardVideo.srcObject = streamRefs[sid];
+    } else if (['failed', 'disconnected', 'closed'].includes(state)) {
+      document.getElementById('stream-offline').classList.remove('hidden');
+      document.getElementById('stream-live-badge').classList.remove('on');
+      updateFocusStatus('DISCONNECTED', 'error');
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Stream`;
+      syncCardState(sid, false);
+      suppressGridRerender = Object.keys(peers).length > 0;
+    }
+  };
+
+  try {
+    await negotiateWebRTC(sid, videoEl, onState);
+    updateFocusStatus('CONNECTED — AWAITING TRACK', 'connected');
+  } catch (e) {
+    toast('Stream error: ' + e.message, 'error');
+    updateFocusStatus('ERROR', 'error');
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Stream`;
+    suppressGridRerender = Object.keys(peers).length > 0;
+  }
+}
+
+function stopFocusStream() {
+  if (!focusSession) return;
+  const sid = focusSession.session_id;
+  stopCardStream(sid);
+  document.getElementById('focus-video').srcObject = null;
+  document.getElementById('stream-offline').classList.remove('hidden');
+  document.getElementById('stream-live-badge').classList.remove('on');
+  updateFocusStatus('DISCONNECTED', '');
+}
+
+async function closeFocusSession() {
+  if (!focusSession) return;
+  const id = focusSession.session_id;
+  focusSession = null;
+  document.getElementById('rail-stream').style.display = 'none';
+  switchView(allSessions.length > 1 ? 'overview' : 'overview');
+  await closeCardSession(id);
+}
+
+function syncCardState(sessionId, streaming) {
+  const card    = document.getElementById(`card-${sessionId}`);
+  const offEl   = document.getElementById(`card-offline-${sessionId}`);
+  const liveEl  = document.getElementById(`card-live-${sessionId}`);
+  const btnStr  = document.getElementById(`card-btn-stream-${sessionId}`);
+  const btnStop = document.getElementById(`card-btn-stop-${sessionId}`);
+  if (card)   card.classList.toggle('streaming', streaming);
+  if (offEl)  offEl.classList.toggle('hidden', streaming);
+  if (liveEl) liveEl.classList.toggle('on', streaming);
+  if (btnStr) { btnStr.disabled = streaming; btnStr.textContent = streaming ? 'Streaming' : 'Stream'; }
+  if (btnStop) btnStop.disabled = !streaming;
+  updatePanelFooter(allSessions);
+}
+
+function updateFocusStatus(text, dotClass) {
+  document.getElementById('focus-status-text').textContent = text;
+  document.getElementById('focus-conn-dot').className = 'status-dot' + (dotClass ? ' ' + dotClass : '');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   API: OPEN SESSION  →  POST /api/sessions/open
+═══════════════════════════════════════════════════════════ */
+function showModal() { document.getElementById('modal-overlay').classList.add('show'); }
+function hideModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+
+function onFactoryChange() {
+  document.getElementById('factory-wrap').classList.toggle('open', document.getElementById('f-factory').value === '__custom__');
+}
+function onLineChange() { updateCameraOptions(); }
+function onStationChange() {
+  document.getElementById('station-wrap').classList.toggle('open', document.getElementById('f-station').value === '__custom__');
+}
+function onCameraChange() {
+  const v = document.getElementById('f-camera').value;
+  document.getElementById('camera-wrap').classList.toggle('open', v === '__custom__');
+  document.getElementById('cam-hint').style.display = v === '__custom__' ? 'none' : 'block';
+}
+function updateCameraOptions() {
+  const line = LINE_DEFS[document.getElementById('f-line').value] || LINE_DEFS.line1;
+  const opt  = document.querySelector('#f-camera option[value="__line__"]');
+  if (opt) opt.textContent = `Auto — ${line.camera_id}`;
+}
+
+function showFE(fId, eId) { document.getElementById(fId).classList.add('bad');    document.getElementById(eId).classList.add('show'); }
+function clearFE(fId, eId){ document.getElementById(fId).classList.remove('bad'); document.getElementById(eId).classList.remove('show'); }
+
+function validateOpen() {
+  let ok = true;
+  const fv = document.getElementById('f-factory').value;
+  if (fv === '__custom__' && !document.getElementById('f-factory-custom').value.trim()) { showFE('field-factory','factory-err'); ok=false; } else clearFE('field-factory','factory-err');
+  const sv = document.getElementById('f-station').value;
+  if (sv === '__custom__' && !document.getElementById('f-station-custom').value.trim()) { showFE('field-station','station-err'); ok=false; } else clearFE('field-station','station-err');
+  const cv = document.getElementById('f-camera').value;
+  if (cv === '__custom__' && (!document.getElementById('f-cam-id').value.trim() || !document.getElementById('f-cam-src').value.trim())) { showFE('field-camera','camera-err'); ok=false; } else clearFE('field-camera','camera-err');
+  return ok;
+}
+
+function genSessionId() { return 'session_' + new Date().toISOString().replace(/[-:T.Z]/g,'').slice(0,14); }
+
+async function doOpenSession() {
+  if (!validateOpen()) return;
+  const line = LINE_DEFS[document.getElementById('f-line').value] || LINE_DEFS.line1;
+  const session_id = genSessionId();
+
+  const fSel = document.getElementById('f-factory').value;
+  const factory_id   = fSel === '__custom__' ? document.getElementById('f-factory-custom').value.trim().toLowerCase().replace(/\s+/g,'_') : fSel;
+  const factory_name = fSel === '__custom__' ? document.getElementById('f-factory-custom').value.trim()
+    : document.getElementById('f-factory').options[document.getElementById('f-factory').selectedIndex].text;
+
+  const sSel = document.getElementById('f-station').value;
+  const station_id = sSel === '__custom__' ? document.getElementById('f-station-custom').value.trim().toLowerCase().replace(/\s+/g,'_') : sSel;
+
+  const cSel = document.getElementById('f-camera').value;
+  const camera_id     = cSel === '__custom__' ? document.getElementById('f-cam-id').value.trim()  : line.camera_id;
+  const camera_source = cSel === '__custom__' ? document.getElementById('f-cam-src').value.trim() : line.camera_source;
+
+  const payload = {
+    factory_id, factory_name,
+    production_line_id: line.production_line_id,
+    production_line_name: line.production_line_name,
+    camera_id, camera_source, station_id, session_id,
+  };
+
+  const btn = document.getElementById('btn-open-confirm');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin"></span> Initializing…`;
+
+  try {
+    await apiFetch('/api/sessions/open', 'POST', payload);
+    sessionStore[session_id] = { ...payload, status: 'active' };
+    hideModal();
+    toast(`Session initialized: …${session_id.slice(-8)}`, 'success');
+    await refreshSessions();
+    // Auto-open focus view for the new session
+    openFocusStream(session_id);
+  } catch (e) {
+    toast(`Open failed: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Initialize Session';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   API CONFIG MODAL
+═══════════════════════════════════════════════════════════ */
+function showConfigModal() {
+  document.getElementById('f-api-base').value = API_BASE;
+  document.getElementById('cfg-modal-overlay').classList.add('show');
+  setTimeout(() => document.getElementById('f-api-base').focus(), 80);
+}
+function hideCfgModal() { document.getElementById('cfg-modal-overlay').classList.remove('show'); }
+
 async function saveApiBase() {
-  const val=document.getElementById("f-api-base").value.trim().replace(/\/$/,"");
-  if(!val){toast("URL cannot be empty","error");return;}
-  API_BASE=val; localStorage.setItem("qcscm_api_base",val);
-  hideConfigModal(); toast("API base updated","success");
-  stopStream(); viewedSession=null; currentSession=null;
-  document.getElementById("no-session").style.display="flex";
-  document.getElementById("session-view").style.display="none";
+  const val = document.getElementById('f-api-base').value.trim().replace(/\/+$/, '');
+  if (!val) { toast('URL cannot be empty', 'error'); return; }
+  API_BASE = val;
+  localStorage.setItem('qcscm_api', val);
+  hideCfgModal();
+  toast('API endpoint saved — reconnecting…', 'info');
+  // Tear down all active streams cleanly
+  Object.keys(peers).forEach(id => { try { peers[id]?.close(); } catch {} delete peers[id]; });
+  Object.keys(streamRefs).forEach(id => delete streamRefs[id]);
+  suppressGridRerender = false;
+  webrtcConfigLoadedAt = 0; // Force config re-fetch on next stream
+  focusSession = null;
+  allSessions  = [];
+  sessionStore = {};
+  document.getElementById('rail-stream').style.display = 'none';
+  switchView('empty');
   await init();
 }
 
-/* ── KEYBOARD ── */
-document.addEventListener("keydown",e=>{ if(e.key==="Escape"){hideModal();hideConfigModal();} });
-document.getElementById("modal-overlay").addEventListener("click",e=>{ if(e.target===document.getElementById("modal-overlay"))hideModal(); });
-document.getElementById("config-modal-overlay").addEventListener("click",e=>{ if(e.target===document.getElementById("config-modal-overlay"))hideConfigModal(); });
-document.getElementById("modal").addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.tagName!=="TEXTAREA"){e.preventDefault();if(document.getElementById("modal-overlay").classList.contains("show"))doOpenSession();} });
-
-/* ── POLLING (unchanged) ── */
-let lastHealthOk=false;
-const SESSIONS_POLL_MS=8000, HEALTH_POLL_UNHEALTHY_MS=10000, HEALTH_POLL_HEALTHY_MS=30000;
-let healthPollInterval=HEALTH_POLL_UNHEALTHY_MS;
-
-async function scheduledHealthCheck() {
-  const dot=document.getElementById("health-dot"),text=document.getElementById("health-text"),badge=document.getElementById("health-badge");
-  try { const data=await api("/api/health"); dot.className="health-dot ok"; badge.className="ok"; text.textContent=`HEALTHY · ${data.active_sessions} SESSION${data.active_sessions!==1?"S":""}`; lastHealthOk=true; healthPollInterval=HEALTH_POLL_HEALTHY_MS; }
-  catch(e) { dot.className="health-dot err"; badge.className="err"; text.textContent="UNREACHABLE"; lastHealthOk=false; healthPollInterval=HEALTH_POLL_UNHEALTHY_MS; }
+/* ═══════════════════════════════════════════════════════════
+   METRICS REFRESH TRIGGER (bound to UI buttons)
+═══════════════════════════════════════════════════════════ */
+async function triggerMetricsRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  await Promise.all([fetchMetrics(), refreshSessions()]);
+  if (btn) btn.classList.remove('spinning');
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════ */
+function toast(msg, type = 'info') {
+  const icons = { success: '✓', error: '✕', info: '!' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-ico">${icons[type] || '!'}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  el.addEventListener('animationend', e => { if (e.animationName === 't-out') el.remove(); });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+═══════════════════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { hideModal(); hideCfgModal(); }
+  if (e.key === 'n' && !e.target.matches('input,select,textarea')) showModal();
+  if (e.key === 'r' && !e.target.matches('input,select,textarea')) triggerMetricsRefresh();
+});
+document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === document.getElementById('modal-overlay')) hideModal(); });
+document.getElementById('cfg-modal-overlay').addEventListener('click', e => { if (e.target === document.getElementById('cfg-modal-overlay')) hideCfgModal(); });
+document.getElementById('modal').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); doOpenSession(); }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   POLLING
+   - Sessions:  every 8 s
+   - Metrics:   every 5 s
+   - Health:    every 12 s (unhealthy) / 30 s (healthy)
+═══════════════════════════════════════════════════════════ */
+let lastHealthOk = false;
 
 function startPolling() {
-  let nh=0,ns=0;
-  refreshTimer=setInterval(()=>{
-    const now=Date.now();
-    if(now>=ns){ns=now+SESSIONS_POLL_MS;refreshSessions();}
-    if(now>=nh){scheduledHealthCheck().then(()=>{healthPollInterval=lastHealthOk?HEALTH_POLL_HEALTHY_MS:HEALTH_POLL_UNHEALTHY_MS;nh=Date.now()+healthPollInterval;});nh=now+999999;}
-  },2000);
+  sessionsPollTimer = setInterval(refreshSessions, 8000);
+  metricsPollTimer  = setInterval(fetchMetrics, 5000);
+  // Adaptive health polling
+  const healthPoll = async () => {
+    const ok = await checkHealth();
+    lastHealthOk = ok;
+    clearInterval(healthPollTimer);
+    healthPollTimer = setInterval(healthPoll, ok ? 30_000 : 12_000);
+  };
+  healthPollTimer = setInterval(healthPoll, 12_000);
 }
 
-async function init() { await checkHealth(); await loadWebRTCConfig(); await refreshSessions(); }
+/* ═══════════════════════════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════════════════════════ */
+function esc(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-(async()=>{
+/* ═══════════════════════════════════════════════════════════
+   INIT — called on page load and after API base changes
+═══════════════════════════════════════════════════════════ */
+async function init() {
   await checkHealth();
-  lastHealthOk=document.getElementById("health-dot").classList.contains("ok");
-  healthPollInterval=lastHealthOk?HEALTH_POLL_HEALTHY_MS:HEALTH_POLL_UNHEALTHY_MS;
-  await loadWebRTCConfig(); await refreshSessions(); startPolling();
+  await loadWebRTCConfig(true); // Force fresh config on init
+  await refreshSessions();
+  await fetchMetrics();
+}
+
+(async () => {
+  updateCameraOptions();
+  await init();
+  startPolling();
 })();
 </script>
 </body>

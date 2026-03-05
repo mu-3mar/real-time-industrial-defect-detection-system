@@ -1,6 +1,6 @@
 model_path: Boxes/flow/models/defect_box_int8.onnx
 model_version: "1.0"
-conf_thres: 0.3
+conf_thres: 0.2
 iou_thres: 0.6
 device: auto
 
