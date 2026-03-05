@@ -53,17 +53,23 @@ class CamStream:
 
         Args:
             source: Camera device index or file path.
-            width:  Requested frame width (applied via CAP_PROP_FRAME_WIDTH).
-            height: Requested frame height (applied via CAP_PROP_FRAME_HEIGHT).
+            width:  Deprecated. Kept for backwards compatibility; capture always
+                    uses the camera’s native resolution.
+            height: Deprecated. Kept for backwards compatibility; capture always
+                    uses the camera’s native resolution.
         """
         # ── Task 4: Force V4L2 backend + MJPG for maximum Linux camera FPS ──
+        # NOTE (Resolution Policy):
+        #   We deliberately DO NOT set CAP_PROP_FRAME_WIDTH / HEIGHT here.
+        #   The camera is opened at its native resolution and all downstream
+        #   processing (detection + rendering + WebRTC) operates on the
+        #   full‑resolution frames. Any inference-time resizing must be done
+        #   on a copy inside the pipeline, never by downscaling the capture.
         self.cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
         self.cap.set(
             cv2.CAP_PROP_FOURCC,
             cv2.VideoWriter_fourcc(*"MJPG"),
         )
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
         if not self.cap.isOpened():
             logger.error("Failed to open video source: %s", source)
