@@ -1,4 +1,4 @@
 model_path: Boxes/flow/models/detect_box_int8.onnx
 conf_thres: 0.7
 iou_thres: 0.6
-device: 0
+device: auto

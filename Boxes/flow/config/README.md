@@ -21,8 +21,8 @@ Each config file and its keys:
 | Key | Purpose |
 |-----|---------|
 | `stun.urls` | STUN server for NAT traversal |
-| `turn` | TURN server (backend only; not exposed to clients) |
-| `debug_turn_only` | UNUSED (aiortc has no iceTransportPolicy) |
+| `turn` | TURN server (urls + secret for credential generation) |
+| `webrtc_mode` | `auto` (host+STUN+TURN), `direct` (host only), `stun` (host+STUN), `relay` (host+TURN) |
 
 ## stream.yaml (required)
 
@@ -49,7 +49,7 @@ All factory/line/session metadata is provided in POST /api/sessions/open; nothin
 | `model_path` | Path to box detection model |
 | `conf_thres` | Confidence threshold |
 | `iou_thres` | IoU threshold for NMS |
-| `device` | Device (0 = GPU, cpu = CPU) |
+| `device` | `auto` (CUDA→MPS→CPU), `cuda`, `mps`, `cpu`; override with `QC_SCM_FLOW_DEVICE` |
 
 ## defect_detector.yaml (required)
 
@@ -59,7 +59,7 @@ All factory/line/session metadata is provided in POST /api/sessions/open; nothin
 | `model_version` | Optional; version string written to Firestore insights (default "1.0") |
 | `conf_thres` | Confidence threshold |
 | `iou_thres` | IoU threshold |
-| `device` | Device |
+| `device` | Same as box_detector; both use one resolved device |
 | `tracking` | IoU match, bbox smoothing |
 | `stability` | Entry/exit, voting params |
 | `rendering` | Visibility threshold |

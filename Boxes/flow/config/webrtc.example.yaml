@@ -7,4 +7,5 @@ turn:
   urls: "turn:YOUR_TURN_HOST:3478"
   secret: "YOUR_TURN_SECRET"
 
-force_relay: false
+# webrtc_mode: auto | direct | stun | relay
+webrtc_mode: auto

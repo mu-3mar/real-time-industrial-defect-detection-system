@@ -9,6 +9,11 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
+# Repo root for device_manager
+repo_root = current_file.parent.parent.parent.parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+from device_manager import select_device
 
 from configs.config import (
     ROOT, PROJECT_DIR, DATA_YAML, BASE_MODEL, 
@@ -44,12 +49,13 @@ def train():
         model = YOLO(str(BASE_MODEL))
         resume = False
 
+    device = select_device(DEVICE, env_var="QC_SCM_TRAIN_DEVICE", context="training")
     model.train(
         data=str(DATA_YAML),
         epochs=EPOCHS,
         imgsz=IMG_SIZE,
         batch=BATCH_SIZE,
-        device=DEVICE,
+        device=device,
         project=str(PROJECT_DIR),
         name=PROJECT_NAME,
         exist_ok=True,

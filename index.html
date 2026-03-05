@@ -1,1631 +1,1565 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QC-SCM · Detection Control</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link
-    href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap"
-    rel="stylesheet">
-
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
-    /* ═══════════════════════════════════════════
-   ROOT & RESET
-══════════════════════════════════════════════ */
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    :root {
-      --bg: #f5f6f8;
-      --bg2: #fff;
-      --bg3: #e8eaed;
-      --border: #dadce0;
-      --border2: #bdc1c6;
-      --primary: #1a73e8;
-      --primary-hover: #1557b0;
-      --success: #1e8e3e;
-      --danger: #d93025;
-      --text: #202124;
-      --text-dim: #5f6368;
-      --text-faint: #80868b;
-      --mono: 'Share Tech Mono', monospace;
-      --cond: 'Barlow Condensed', sans-serif;
-      --body: 'Barlow', sans-serif;
-    }
-
-    html,
-    body {
-      height: 100%;
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--body);
-      font-size: 14px;
-      line-height: 1.5;
-      overflow: hidden;
-    }
-
-    /* ═══════════════════════════════════════════
-   LAYOUT SHELL
-══════════════════════════════════════════════ */
-    #app {
-      display: grid;
-      grid-template-rows: 52px 1fr;
-      height: 100vh;
-    }
-
-    /* ═══════════════════════════════════════════
-   TOP BAR
-══════════════════════════════════════════════ */
-    #topbar {
-      background: var(--bg2);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 20px;
-      gap: 16px;
-      position: relative;
-      z-index: 100;
-    }
-
-    .logo {
-      font-family: var(--cond);
-      font-weight: 900;
-      font-size: 20px;
-      letter-spacing: 0.1em;
-      color: var(--primary);
-      text-transform: uppercase;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .logo::before {
-      content: '';
-      width: 10px;
-      height: 10px;
-      background: var(--primary);
-      display: inline-block;
-      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-    }
-
-    @keyframes pulse-diamond {
-
-      0%,
-      100% {
-        opacity: 1;
-        transform: rotate(0deg) scale(1);
-      }
-
-      50% {
-        opacity: 0.5;
-        transform: rotate(45deg) scale(0.85);
-      }
-    }
-
-    .logo-sub {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-dim);
-      letter-spacing: 0.15em;
-      margin-left: 2px;
-    }
-
-    .topbar-spacer {
-      flex: 1;
-    }
-
-    #health-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-dim);
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-    }
-
-    .health-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--text-faint);
-      transition: background 0.3s;
-    }
-
-    .health-dot.ok {
-      background: var(--success);
-      box-shadow: 0 0 6px rgba(30, 142, 62, 0.4);
-    }
-
-    .health-dot.err {
-      background: var(--danger);
-      box-shadow: 0 0 6px rgba(217, 48, 37, 0.4);
-    }
-
-    #api-base-toggle {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-dim);
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 4px 10px;
-      cursor: pointer;
-      transition: border-color 0.2s, color 0.2s;
-    }
-
-    #api-base-toggle:hover {
-      border-color: var(--primary);
-      color: var(--primary);
-    }
-
-    /* ═══════════════════════════════════════════
-   MAIN CONTENT AREA
-══════════════════════════════════════════════ */
-    #main {
-      display: grid;
-      grid-template-columns: 320px 1fr;
-      overflow: hidden;
-    }
-
-    /* ═══════════════════════════════════════════
-   LEFT PANEL – SESSION LIST
-══════════════════════════════════════════════ */
-    #left-panel {
-      background: var(--bg2);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .panel-header {
-      padding: 16px 18px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-      gap: 12px;
-    }
-
-    .panel-title {
-      font-family: var(--cond);
-      font-weight: 700;
-      font-size: 13px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--text-dim);
-    }
-
-    .btn-open {
-      font-family: var(--cond);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      background: var(--primary);
-      color: #fff;
-      border: none;
-      padding: 8px 14px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background 0.2s, transform 0.1s;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .btn-open:hover {
-      background: var(--primary-hover);
-    }
-
-    .btn-open:active {
-      transform: scale(0.97);
-    }
-
-    #session-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    #session-list::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    #session-list::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    #session-list::-webkit-scrollbar-thumb {
-      background: var(--border2);
-      border-radius: 2px;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--text-faint);
-      font-family: var(--mono);
-      font-size: 11px;
-      line-height: 2;
-    }
-
-    .session-card {
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px 12px;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .session-card::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 3px;
-      background: var(--accent);
-      opacity: 0;
-      transition: opacity 0.15s;
-    }
-
-    .session-card:hover {
-      border-color: var(--border2);
-      background: #e8eaed;
-    }
-
-    .session-card:hover::before {
-      opacity: 1;
-    }
-
-    .session-card.active {
-      border-color: var(--primary);
-      background: #e8f0fe;
-    }
-
-    .session-card.active::before {
-      opacity: 1;
-      background: var(--primary);
-    }
-
-    .sc-id {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--primary);
-      margin-bottom: 5px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .sc-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: var(--text-dim);
-      margin-bottom: 2px;
-    }
-
-    .sc-row span:last-child {
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 10px;
-    }
-
-    .sc-viewers {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-dim);
-      margin-top: 6px;
-    }
-
-    /* ═══════════════════════════════════════════
-   RIGHT PANEL – SESSION DETAIL / STREAM
-══════════════════════════════════════════════ */
-    #right-panel {
-      background: var(--bg);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    /* NO SESSION placeholder */
-    #no-session {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      color: var(--text-faint);
-    }
-
-    .no-session-icon {
-      font-size: 48px;
-      opacity: 0.3;
-      animation: float 4s ease-in-out infinite;
-    }
-
-    @keyframes float {
-
-      0%,
-      100% {
-        transform: translateY(0);
-      }
-
-      50% {
-        transform: translateY(-8px);
-      }
-    }
-
-    .no-session-label {
-      font-family: var(--cond);
-      font-size: 15px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--text-faint);
-    }
-
-    /* SESSION VIEW */
-    #session-view {
-      display: none;
-      flex-direction: column;
-      height: 100%;
-    }
-
-    /* ── Controls bar ─────────────────────────────── */
-    #ctrl-bar {
-      background: var(--bg2);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 16px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-shrink: 0;
-    }
-
-    #session-title {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--primary);
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .ctrl-btn {
-      font-family: var(--cond);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      border: 1px solid;
-      padding: 5px 12px;
-      border-radius: 3px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s, opacity 0.15s;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .ctrl-btn:active {
-      opacity: 0.75;
-    }
-
-    .btn-stream-start {
-      background: transparent;
-      border-color: var(--primary);
-      color: var(--primary);
-    }
-
-    .btn-stream-start:hover {
-      background: var(--primary);
-      color: #fff;
-    }
-
-    .btn-stream-stop {
-      background: transparent;
-      border-color: var(--border2);
-      color: var(--text-dim);
-    }
-
-    .btn-stream-stop:hover {
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-
-    .btn-close-session {
-      background: transparent;
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-
-    .btn-close-session:hover {
-      background: var(--danger);
-      color: #fff;
-    }
-
-    /* ── Stream area ──────────────────────────────── */
-    #stream-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      padding: 16px;
-      gap: 12px;
-    }
-
-    #video-wrap {
-      flex: 1;
-      background: #1a1a1a;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      position: relative;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: block;
-    }
-
-    #video-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 10px;
-      background: #1a1a1a;
-      transition: opacity 0.3s;
-    }
-
-    #video-overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .overlay-icon {
-      font-size: 40px;
-      opacity: 0.25;
-    }
-
-    .overlay-text {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-faint);
-      letter-spacing: 0.1em;
-    }
-
-    /* scan lines effect on video */
-    #video-wrap::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: repeating-linear-gradient(0deg,
-          transparent,
-          transparent 2px,
-          rgba(0, 0, 0, 0.08) 2px,
-          rgba(0, 0, 0, 0.08) 4px);
-      pointer-events: none;
-      border-radius: 8px;
-    }
-
-    /* corner decorations */
-    #video-wrap::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      pointer-events: none;
-      z-index: 2;
-    }
-
-    .corner {
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      z-index: 3;
-      pointer-events: none;
-    }
-
-    .corner-tl {
-      top: 8px;
-      left: 8px;
-      border-top: 2px solid var(--primary);
-      border-left: 2px solid var(--primary);
-    }
-
-    .corner-tr {
-      top: 8px;
-      right: 8px;
-      border-top: 2px solid var(--primary);
-      border-right: 2px solid var(--primary);
-    }
-
-    .corner-bl {
-      bottom: 8px;
-      left: 8px;
-      border-bottom: 2px solid var(--primary);
-      border-left: 2px solid var(--primary);
-    }
-
-    .corner-br {
-      bottom: 8px;
-      right: 8px;
-      border-bottom: 2px solid var(--primary);
-      border-right: 2px solid var(--primary);
-    }
-
-    /* ── Status bar ───────────────────────────────── */
-    #status-bar {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 8px 14px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-shrink: 0;
-      font-family: var(--mono);
-      font-size: 11px;
-    }
-
-    .status-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: var(--text-dim);
-    }
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--text-faint);
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-
-    .status-dot.streaming {
-      background: var(--primary);
-      box-shadow: 0 0 6px rgba(26, 115, 232, 0.4);
-      animation: blink 1.5s ease-in-out infinite;
-    }
-
-    .status-dot.connected {
-      background: var(--success);
-      box-shadow: 0 0 6px rgba(30, 142, 62, 0.4);
-    }
-
-    .status-dot.error {
-      background: var(--danger);
-      box-shadow: 0 0 6px rgba(217, 48, 37, 0.4);
-    }
-
-    @keyframes blink {
-
-      0%,
-      100% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0.4;
-      }
-    }
-
-    #status-text {
-      color: var(--text);
-    }
-
-    .status-sep {
-      color: var(--text-faint);
-    }
-
-    #status-camera {
-      max-width: 180px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* ═══════════════════════════════════════════
-   MODAL – OPEN SESSION
-══════════════════════════════════════════════ */
-    #modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 500;
-    }
-
-    #modal-overlay.show {
-      display: flex;
-    }
-
-    #modal {
-      background: var(--bg2);
-      border: 1px solid var(--border2);
-      border-radius: 10px;
-      width: 400px;
-      max-height: 90vh;
-      overflow-y: auto;
-      padding: 24px;
-      animation: modal-in 0.2s ease;
-    }
-
-    @keyframes modal-in {
-      from {
-        opacity: 0;
-        transform: translateY(12px) scale(0.97);
-      }
-
-      to {
-        opacity: 1;
-        transform: none;
-      }
-    }
-
-    .modal-title {
-      font-family: var(--cond);
-      font-weight: 900;
-      font-size: 20px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--text);
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .modal-title::before {
-      content: '';
-      display: block;
-      width: 4px;
-      height: 20px;
-      background: var(--primary);
-      border-radius: 2px;
-    }
-
-    .field {
-      margin-bottom: 14px;
-    }
-
-    .field label {
-      display: block;
-      font-family: var(--cond);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      margin-bottom: 5px;
-    }
-
-    .field input,
-    .field select {
-      width: 100%;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 8px 10px;
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 12px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-
-    .field input:focus,
-    .field select:focus {
-      border-color: var(--primary);
-    }
-
-    .field select option {
-      background: var(--bg3);
-    }
-
-    .field-hint {
-      margin-bottom: 4px;
-    }
-
-    .hint-text {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-faint);
-    }
-
-    .modal-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 20px;
-    }
-
-    .btn-confirm {
-      flex: 1;
-      background: var(--primary);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 10px;
-      font-family: var(--cond);
-      font-weight: 700;
-      font-size: 14px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-confirm:hover {
-      background: var(--primary-hover);
-    }
-
-    .btn-confirm:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .btn-cancel {
-      background: transparent;
-      color: var(--text-dim);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 10px 16px;
-      font-family: var(--cond);
-      font-weight: 600;
-      font-size: 13px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-    }
-
-    .btn-cancel:hover {
-      border-color: var(--text-dim);
-      color: var(--text);
-    }
-
-    /* ═══════════════════════════════════════════
-   MODAL – API BASE CONFIG
-══════════════════════════════════════════════ */
-    #config-modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 600;
-    }
-
-    #config-modal-overlay.show {
-      display: flex;
-    }
-
-    #config-modal {
-      background: var(--bg2);
-      border: 1px solid var(--border2);
-      border-radius: 10px;
-      width: 400px;
-      padding: 24px;
-      animation: modal-in 0.2s ease;
-    }
-
-    .config-url-hint {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-dim);
-      margin-top: 12px;
-      line-height: 1.8;
-    }
-
-    .config-url-hint code {
-      color: var(--primary);
-      background: rgba(26, 115, 232, 0.08);
-      padding: 1px 5px;
-      border-radius: 3px;
-    }
-
-    /* ═══════════════════════════════════════════
-   TOAST NOTIFICATIONS
-══════════════════════════════════════════════ */
-    #toast-container {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 999;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      pointer-events: none;
-    }
-
-    .toast {
-      background: var(--bg3);
-      border: 1px solid var(--border2);
-      border-radius: 6px;
-      padding: 10px 14px;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text);
-      max-width: 280px;
-      animation: toast-in 0.25s ease, toast-out 0.25s ease 2.75s forwards;
-      pointer-events: all;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .toast.success {
-      border-color: var(--success);
-    }
-
-    .toast.error {
-      border-color: var(--danger);
-    }
-
-    .toast.info {
-      border-color: var(--primary);
-    }
-
-    @keyframes toast-in {
-      from {
-        opacity: 0;
-        transform: translateX(20px);
-      }
-    }
-
-    @keyframes toast-out {
-      to {
-        opacity: 0;
-        transform: translateX(20px);
-      }
-    }
-
-    /* ═══════════════════════════════════════════
-   LOADING SPINNER
-══════════════════════════════════════════════ */
-    .spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid rgba(26, 115, 232, 0.2);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      display: inline-block;
-      flex-shrink: 0;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
+/* ══════════════════════════════════════════════════════
+   THEME TOKENS
+══════════════════════════════════════════════════════ */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+[data-theme="dark"] {
+  --bg-base:       #070b14;
+  --bg-surface:    #0d1220;
+  --bg-raised:     #131929;
+  --bg-overlay:    #1a2235;
+  --bg-hover:      #1f2a3d;
+  --border-subtle: rgba(99,147,255,0.08);
+  --border-soft:   rgba(99,147,255,0.15);
+  --border-strong: rgba(99,147,255,0.28);
+  --accent:        #3b82f6;
+  --accent-bright: #60a5fa;
+  --accent-glow:   rgba(59,130,246,0.25);
+  --accent-dim:    rgba(59,130,246,0.12);
+  --teal:          #14b8a6;
+  --teal-glow:     rgba(20,184,166,0.2);
+  --teal-dim:      rgba(20,184,166,0.1);
+  --green:         #22c55e;
+  --green-glow:    rgba(34,197,94,0.2);
+  --green-dim:     rgba(34,197,94,0.1);
+  --red:           #f43f5e;
+  --red-glow:      rgba(244,63,94,0.2);
+  --red-dim:       rgba(244,63,94,0.1);
+  --amber:         #f59e0b;
+  --amber-dim:     rgba(245,158,11,0.12);
+  --text-primary:  #e2e8f8;
+  --text-secondary:#8b9bcc;
+  --text-muted:    #4a5578;
+  --text-faint:    #2d3550;
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.4);
+  --shadow-md:  0 4px 24px rgba(0,0,0,0.5);
+  --shadow-lg:  0 8px 40px rgba(0,0,0,0.6);
+  --shadow-accent: 0 0 30px rgba(59,130,246,0.15);
+}
+
+[data-theme="light"] {
+  --bg-base:       #f0f4ff;
+  --bg-surface:    #ffffff;
+  --bg-raised:     #f7f9ff;
+  --bg-overlay:    #eef2ff;
+  --bg-hover:      #e8eeff;
+  --border-subtle: rgba(59,130,246,0.08);
+  --border-soft:   rgba(59,130,246,0.16);
+  --border-strong: rgba(59,130,246,0.3);
+  --accent:        #2563eb;
+  --accent-bright: #3b82f6;
+  --accent-glow:   rgba(37,99,235,0.18);
+  --accent-dim:    rgba(37,99,235,0.08);
+  --teal:          #0d9488;
+  --teal-glow:     rgba(13,148,136,0.15);
+  --teal-dim:      rgba(13,148,136,0.08);
+  --green:         #16a34a;
+  --green-glow:    rgba(22,163,74,0.15);
+  --green-dim:     rgba(22,163,74,0.08);
+  --red:           #e11d48;
+  --red-glow:      rgba(225,29,72,0.15);
+  --red-dim:       rgba(225,29,72,0.08);
+  --amber:         #d97706;
+  --amber-dim:     rgba(217,119,6,0.1);
+  --text-primary:  #0f172a;
+  --text-secondary:#475569;
+  --text-muted:    #94a3b8;
+  --text-faint:    #cbd5e1;
+  --shadow-sm:  0 2px 8px rgba(59,130,246,0.08);
+  --shadow-md:  0 4px 24px rgba(59,130,246,0.1);
+  --shadow-lg:  0 8px 40px rgba(59,130,246,0.12);
+  --shadow-accent: 0 0 30px rgba(37,99,235,0.1);
+}
+
+/* ══════════════════════════════════════════════════════
+   RESET & BASE
+══════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.4s, color 0.4s;
+}
+
+/* noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  opacity: 0.022;
+  pointer-events: none;
+  z-index: 9999;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* ══════════════════════════════════════════════════════
+   APP LAYOUT
+══════════════════════════════════════════════════════ */
+#app {
+  display: grid;
+  grid-template-rows: 60px 1fr;
+  height: 100vh;
+  animation: app-in 0.55s var(--ease-out-expo) both;
+}
+
+@keyframes app-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ══════════════════════════════════════════════════════
+   TOPBAR
+══════════════════════════════════════════════════════ */
+#topbar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  gap: 10px;
+  position: relative;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+  animation: topbar-in 0.5s var(--ease-out-expo) 0.08s both;
+}
+
+@keyframes topbar-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: none; }
+}
+
+.logo { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+
+.logo-icon {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-icon-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent), var(--teal));
+  border-radius: 10px;
+  animation: logo-breathe 3s ease-in-out infinite;
+}
+
+@keyframes logo-breathe {
+  0%,100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50%      { box-shadow: 0 0 20px 4px var(--accent-glow); }
+}
+
+.logo-icon svg { position: relative; z-index: 1; width: 17px; height: 17px; color: #fff; }
+
+.logo-text { display: flex; flex-direction: column; }
+
+.logo-name {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.logo-tagline {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-top: 3px;
+  line-height: 1;
+}
+
+.topbar-divider { width: 1px; height: 26px; background: var(--border-subtle); margin: 0 6px; }
+.topbar-spacer  { flex: 1; }
+
+#health-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding: 5px 13px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  transition: all 0.3s;
+  letter-spacing: 0.04em;
+}
+
+#health-badge.ok  { border-color: rgba(34,197,94,0.3);  background: var(--green-dim); }
+#health-badge.err { border-color: rgba(244,63,94,0.3);   background: var(--red-dim);   }
+
+.health-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-faint);
+  transition: background 0.4s, box-shadow 0.4s;
+  flex-shrink: 0;
+}
+.health-dot.ok  { background: var(--green); box-shadow: 0 0 10px var(--green); }
+.health-dot.err { background: var(--red);   box-shadow: 0 0 10px var(--red); animation: pulse-dot 1s infinite; }
+
+@keyframes pulse-dot {
+  0%,100% { box-shadow: 0 0 6px var(--red); }
+  50%      { box-shadow: 0 0 18px var(--red), 0 0 32px var(--red-glow); }
+}
+
+#theme-toggle {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  transition: all 0.25s;
+  flex-shrink: 0;
+}
+#theme-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  transform: rotate(20deg) scale(1.05);
+}
+
+#api-base-toggle {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 0 14px;
+  height: 36px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; gap: 7px;
+}
+#api-base-toggle:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+/* ══════════════════════════════════════════════════════
+   MAIN
+══════════════════════════════════════════════════════ */
+#main {
+  display: grid;
+  grid-template-columns: 288px 1fr;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════
+   LEFT PANEL
+══════════════════════════════════════════════════════ */
+#left-panel {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: left-in 0.55s var(--ease-out-expo) 0.12s both;
+}
+
+@keyframes left-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.panel-header {
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.panel-title-group { display: flex; align-items: center; gap: 8px; }
+
+.panel-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.sessions-count {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--accent-bright);
+  background: var(--accent-dim);
+  border: 1px solid rgba(59,130,246,0.2);
+  padding: 1px 8px;
+  border-radius: 20px;
+  animation: pop 0.3s var(--ease-spring);
+}
+
+@keyframes pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.btn-open {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, var(--accent), var(--teal));
+  color: #fff;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out-expo);
+  display: flex; align-items: center; gap: 6px;
+  box-shadow: 0 2px 12px var(--accent-glow);
+  position: relative;
+  overflow: hidden;
+}
+.btn-open::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0); transition: background 0.2s; }
+.btn-open:hover { transform: translateY(-1px); box-shadow: 0 4px 22px var(--accent-glow), 0 0 40px var(--teal-glow); }
+.btn-open:hover::after { background: rgba(255,255,255,0.08); }
+.btn-open:active { transform: scale(0.96); }
+
+#session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+#session-list::-webkit-scrollbar { width: 3px; }
+#session-list::-webkit-scrollbar-track { background: transparent; }
+#session-list::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 2px; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 50px 20px;
+}
+
+.empty-icon-wrap {
+  position: relative; width: 54px; height: 54px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.empty-icon-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px dashed var(--border-soft);
+  animation: spin-slow 12s linear infinite;
+}
+
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+
+.empty-icon-inner {
+  font-size: 20px; opacity: 0.18;
+  animation: float-gentle 4s ease-in-out infinite;
+}
+
+@keyframes float-gentle {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+.empty-label { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 12px; color: var(--text-muted); }
+.empty-hint  { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-faint); text-align: center; line-height: 1.8; }
+
+/* Session cards */
+.session-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 13px;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out-expo);
+  position: relative;
+  overflow: hidden;
+  animation: card-in 0.3s var(--ease-out-expo) both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+.session-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, var(--accent-dim), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  border-radius: 12px;
+}
+
+.session-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.session-card:hover::before { opacity: 1; }
+
+.session-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-accent);
+}
+.session-card.active::before { opacity: 1; }
+
+.sc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+
+.sc-id {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--accent-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 175px;
+}
+
+.sc-live {
+  display: flex; align-items: center; gap: 4px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--green);
+  letter-spacing: 0.1em;
+}
+
+.sc-live-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s infinite;
+}
+
+.sc-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+
+.sc-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.sc-cam {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ══════════════════════════════════════════════════════
+   RIGHT PANEL
+══════════════════════════════════════════════════════ */
+#right-panel {
+  background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: right-in 0.55s var(--ease-out-expo) 0.18s both;
+}
+
+@keyframes right-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+#no-session {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+#no-session::before {
+  content: '';
+  position: absolute;
+  width: 480px; height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
+  animation: breathe 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes breathe {
+  0%,100% { transform: scale(0.7); opacity: 0.3; }
+  50%      { transform: scale(1.3); opacity: 0.7; }
+}
+
+.no-session-rings {
+  position: relative; width: 80px; height: 80px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+
+.ring {
+  position: absolute; border-radius: 50%;
+  border: 1px solid var(--border-soft);
+  animation: expand-ring 3s ease-out infinite;
+}
+.ring-1 { width: 80px; height: 80px; animation-delay: 0s; }
+.ring-2 { width: 58px; height: 58px; animation-delay: 0.6s; }
+.ring-3 { width: 38px; height: 38px; animation-delay: 1.2s; }
+
+@keyframes expand-ring {
+  0%   { opacity: 0.5; transform: scale(0.85); }
+  100% { opacity: 0;   transform: scale(1.4); }
+}
+
+.no-session-center-icon { font-size: 22px; z-index: 1; opacity: 0.25; }
+
+.no-session-label {
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 15px; color: var(--text-secondary); z-index: 1;
+}
+
+.no-session-hint {
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  color: var(--text-muted); z-index: 1; letter-spacing: 0.06em;
+}
+
+/* Session view */
+#session-view { display: none; flex-direction: column; height: 100%; }
+
+#ctrl-bar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 11px 18px;
+  display: flex; align-items: center; gap: 9px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+#session-title-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+#session-title-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px; letter-spacing: 0.25em;
+  color: var(--text-muted); text-transform: uppercase;
+}
+
+#session-title {
+  font-family: 'DM Mono', monospace; font-size: 12px;
+  color: var(--accent-bright); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+.ctrl-btn {
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 11px; letter-spacing: 0.05em;
+  border: 1px solid;
+  padding: 7px 13px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.18s var(--ease-out-expo);
+  display: flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+}
+.ctrl-btn:active { transform: scale(0.95); }
+
+.btn-stream-start {
+  background: var(--teal-dim);
+  border-color: rgba(20,184,166,0.3);
+  color: var(--teal);
+}
+.btn-stream-start:hover {
+  background: var(--teal); border-color: var(--teal); color: #fff;
+  box-shadow: 0 4px 18px var(--teal-glow);
+  transform: translateY(-1px);
+}
+
+.btn-stream-stop {
+  background: transparent;
+  border-color: var(--border-soft);
+  color: var(--text-secondary);
+}
+.btn-stream-stop:hover {
+  background: var(--red-dim); border-color: var(--red); color: var(--red);
+  transform: translateY(-1px);
+}
+
+.btn-close-session {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+.btn-close-session:hover {
+  background: var(--red-dim); border-color: var(--red); color: var(--red);
+  transform: translateY(-1px);
+}
+
+#stream-area {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; padding: 14px; gap: 11px;
+}
+
+#video-wrap {
+  flex: 1;
+  background: #030508;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-lg), inset 0 0 60px rgba(0,0,0,0.7);
+}
+
+#video { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+#video-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 14px;
+  background: #030508;
+  transition: opacity 0.5s var(--ease-out-expo);
+  border-radius: 16px;
+}
+#video-overlay.hidden { opacity: 0; pointer-events: none; }
+
+.overlay-pulse-ring {
+  position: relative; width: 60px; height: 60px;
+  display: flex; align-items: center; justify-content: center;
+}
+.overlay-pulse-ring::before,
+.overlay-pulse-ring::after {
+  content: '';
+  position: absolute; border-radius: 50%;
+  border: 1px solid rgba(59,130,246,0.25);
+  animation: expand-ring 2.5s ease-out infinite;
+}
+.overlay-pulse-ring::before { width: 60px; height: 60px; }
+.overlay-pulse-ring::after  { width: 42px; height: 42px; animation-delay: 0.6s; }
+
+.overlay-icon-inner {
+  width: 26px; height: 26px;
+  background: rgba(59,130,246,0.1);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: rgba(99,147,255,0.35);
+}
+
+.overlay-text {
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  letter-spacing: 0.2em; color: rgba(99,147,255,0.25);
+  text-transform: uppercase;
+}
+
+/* scanlines */
+#video-wrap::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px);
+  pointer-events: none; z-index: 2; border-radius: 16px;
+}
+
+.corner {
+  position: absolute; width: 20px; height: 20px;
+  z-index: 3; pointer-events: none;
+}
+.corner-tl { top:12px; left:12px;   border-top:2px solid var(--accent); border-left:2px solid var(--accent);   border-radius:3px 0 0 0; }
+.corner-tr { top:12px; right:12px;  border-top:2px solid var(--accent); border-right:2px solid var(--accent);  border-radius:0 3px 0 0; }
+.corner-bl { bottom:12px; left:12px;  border-bottom:2px solid var(--accent); border-left:2px solid var(--accent);   border-radius:0 0 0 3px; }
+.corner-br { bottom:12px; right:12px; border-bottom:2px solid var(--accent); border-right:2px solid var(--accent);  border-radius:0 0 3px 0; }
+
+#rec-indicator {
+  position: absolute; top:13px; right:13px; z-index: 4;
+  display: none; align-items: center; gap: 7px;
+  background: rgba(3,5,8,0.85);
+  border: 1px solid rgba(244,63,94,0.4);
+  border-radius: 8px; padding: 5px 12px;
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  letter-spacing: 0.16em; color: var(--red);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(244,63,94,0.2);
+}
+#rec-indicator.visible { display: flex; }
+
+.rec-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--red); box-shadow: 0 0 8px var(--red);
+  animation: pulse-dot 1s infinite;
+}
+
+#status-bar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 9px 16px;
+  display: flex; align-items: center; gap: 14px;
+  flex-shrink: 0;
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.status-item { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); min-width: 0; }
+
+.status-label {
+  font-size: 9px; letter-spacing: 0.14em;
+  color: var(--text-muted); text-transform: uppercase; flex-shrink: 0;
+}
+
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-faint);
+  transition: background 0.3s, box-shadow 0.3s;
+  flex-shrink: 0;
+}
+.status-dot.streaming { background: var(--teal); box-shadow: 0 0 10px var(--teal); animation: pulse-dot 1.5s infinite; }
+.status-dot.connected { background: var(--green); box-shadow: 0 0 10px var(--green); }
+.status-dot.error     { background: var(--red);   box-shadow: 0 0 10px var(--red); }
+
+#status-text { color: var(--text-primary); }
+.status-sep  { color: var(--border-soft); font-size: 14px; line-height: 1; }
+#status-camera { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+#status-line   { color: var(--text-primary); }
+
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+/* ══════════════════════════════════════════════════════
+   MODALS
+══════════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(3,5,8,0.82);
+  backdrop-filter: blur(12px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 500;
+}
+.modal-overlay.show { display: flex; }
+
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 20px;
+  width: 440px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 30px;
+  animation: modal-in 0.32s var(--ease-spring);
+  position: relative;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-subtle);
+}
+
+.modal::before {
+  content: '';
+  position: absolute; top:0; left:50%; transform: translateX(-50%);
+  width: 55%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+
+.modal::-webkit-scrollbar { width: 3px; }
+.modal::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 2px; }
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(22px) scale(0.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+.modal-eyebrow {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--accent-bright); margin-bottom: 6px;
+  display: flex; align-items: center; gap: 8px;
+}
+.modal-eyebrow::before { content: ''; width: 14px; height: 1px; background: var(--accent); }
+
+.modal-title {
+  font-family: 'Syne', sans-serif; font-weight: 800;
+  font-size: 21px; color: var(--text-primary);
+  margin-bottom: 22px; line-height: 1.15;
+}
+
+.modal-divider {
+  height: 1px; background: var(--border-subtle); margin: 18px 0;
+  position: relative;
+}
+.modal-divider::after {
+  content: ''; position: absolute; left:0; top:0;
+  width: 36px; height: 1px; background: var(--accent);
+}
+
+.field { margin-bottom: 14px; }
+
+.field label {
+  display: block;
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 7px;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 13px;
+  color: var(--text-primary);
+  font-family: 'DM Mono', monospace; font-size: 12px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  appearance: none; -webkit-appearance: none;
+}
+.field input:focus,
+.field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 18px var(--accent-glow);
+  background: var(--bg-overlay);
+}
+.field input::placeholder { color: var(--text-faint); }
+.field input[readonly]    { cursor: default; color: var(--text-secondary); }
+
+.select-wrapper { position: relative; }
+.select-wrapper::after {
+  content: '▾'; position: absolute; right:12px; top:50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 12px; pointer-events: none;
+}
+.select-wrapper select { padding-right: 30px; cursor: pointer; }
+.field select option { background: var(--bg-raised); color: var(--text-primary); }
+
+.custom-input-wrap {
+  margin-top: 8px; overflow: hidden; max-height: 0; opacity: 0;
+  transition: max-height 0.26s var(--ease-out-expo), opacity 0.22s;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.custom-input-wrap.visible { max-height: 120px; opacity: 1; }
+
+.field-hint {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  color: var(--text-muted); margin-top: 5px; letter-spacing: 0.04em;
+}
+
+.field-error {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  color: var(--red); margin-top: 5px; display: none;
+}
+.field-error.visible { display: block; animation: shake 0.35s ease; }
+
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%,60% { transform: translateX(-4px); }
+  40%,80% { transform: translateX(4px); }
+}
+
+.field.has-error input,
+.field.has-error select {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 3px var(--red-dim) !important;
+}
+
+.modal-actions { display: flex; gap: 10px; margin-top: 22px; }
+
+.btn-confirm {
+  flex: 1;
+  background: linear-gradient(135deg, var(--accent), var(--teal));
+  color: #fff; border: none; border-radius: 10px; padding: 12px;
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 13px; letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out-expo);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 3px 14px var(--accent-glow);
+}
+.btn-confirm:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px var(--accent-glow), 0 0 40px var(--teal-glow);
+}
+.btn-confirm:active:not(:disabled) { transform: scale(0.97); }
+.btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-cancel {
+  background: var(--bg-raised); color: var(--text-secondary);
+  border: 1px solid var(--border-soft); border-radius: 10px;
+  padding: 12px 18px;
+  font-family: 'Syne', sans-serif; font-weight: 600; font-size: 13px;
+  cursor: pointer; transition: all 0.18s;
+}
+.btn-cancel:hover {
+  background: var(--bg-hover); border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.config-url-hint {
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  color: var(--text-secondary); margin-top: 14px; line-height: 2;
+  background: var(--bg-raised); border: 1px solid var(--border-subtle);
+  border-radius: 10px; padding: 12px 15px;
+}
+.config-url-hint strong {
+  display: block; font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+}
+.config-url-hint code {
+  color: var(--teal); background: var(--teal-dim);
+  padding: 1px 6px; border-radius: 4px; font-size: 10px;
+}
+
+/* ══════════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════════ */
+#toast-container {
+  position: fixed; bottom: 22px; right: 22px;
+  z-index: 999; display: flex; flex-direction: column;
+  gap: 9px; pointer-events: none;
+}
+
+.toast {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px; padding: 11px 16px;
+  font-family: 'DM Mono', monospace; font-size: 11px;
+  color: var(--text-primary); max-width: 300px;
+  animation: toast-in 0.32s var(--ease-spring), toast-out 0.28s ease 2.72s forwards;
+  pointer-events: all;
+  display: flex; align-items: center; gap: 11px;
+  box-shadow: var(--shadow-lg);
+}
+
+.toast-icon {
+  width: 22px; height: 22px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
+}
+
+.toast.success { border-color: rgba(34,197,94,0.3); }
+.toast.success .toast-icon { background: var(--green-dim); color: var(--green); }
+.toast.error   { border-color: rgba(244,63,94,0.3); }
+.toast.error   .toast-icon { background: var(--red-dim);   color: var(--red); }
+.toast.info    { border-color: rgba(59,130,246,0.3); }
+.toast.info    .toast-icon { background: var(--accent-dim); color: var(--accent-bright); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(28px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateX(28px); }
+}
+
+/* ══════════════════════════════════════════════════════
+   SPINNER
+══════════════════════════════════════════════════════ */
+.spinner {
+  width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 
 <body>
-  <div id="app">
+<div id="app">
 
-    <!-- ─────────── TOP BAR ─────────── -->
-    <div id="topbar">
-      <div class="logo">
-        QC-SCM
-        <span class="logo-sub">DETECTION CONTROL</span>
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <div class="logo">
+      <div class="logo-icon">
+        <div class="logo-icon-bg"></div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
       </div>
-      <div class="topbar-spacer"></div>
-      <div id="health-badge">
-        <span class="health-dot" id="health-dot"></span>
-        <span id="health-text">—</span>
+      <div class="logo-text">
+        <span class="logo-name">QC-SCM</span>
+        <span class="logo-tagline">Detection Control</span>
       </div>
-      <button id="api-base-toggle" onclick="showConfigModal()">⚙ API</button>
     </div>
 
-    <!-- ─────────── MAIN ─────────── -->
-    <div id="main">
+    <div class="topbar-divider"></div>
+    <div class="topbar-spacer"></div>
 
-      <!-- LEFT: session list -->
-      <div id="left-panel">
-        <div class="panel-header">
+    <div id="health-badge">
+      <span class="health-dot" id="health-dot"></span>
+      <span id="health-text">CONNECTING…</span>
+    </div>
+
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+
+    <button id="api-base-toggle" onclick="showConfigModal()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+      API
+    </button>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- LEFT PANEL -->
+    <div id="left-panel">
+      <div class="panel-header">
+        <div class="panel-title-group">
           <span class="panel-title">Sessions</span>
-          <button class="btn-open" onclick="showModal()">
-            <span>+</span> Open Session
+          <span class="sessions-count" id="sessions-count" style="display:none">0</span>
+        </div>
+        <button class="btn-open" onclick="showModal()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Session
+        </button>
+      </div>
+      <div id="session-list">
+        <div class="empty-state">
+          <div class="empty-icon-wrap">
+            <div class="empty-icon-ring"></div>
+            <div class="empty-icon-inner">⬡</div>
+          </div>
+          <div class="empty-label">No Sessions Active</div>
+          <div class="empty-hint">Click New Session<br>to get started</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="right-panel">
+
+      <div id="no-session">
+        <div class="no-session-rings">
+          <div class="ring ring-1"></div>
+          <div class="ring ring-2"></div>
+          <div class="ring ring-3"></div>
+          <div class="no-session-center-icon">⬡</div>
+        </div>
+        <div class="no-session-label">Select a Session</div>
+        <div class="no-session-hint">Choose from the panel on the left</div>
+      </div>
+
+      <div id="session-view">
+        <div id="ctrl-bar">
+          <div id="session-title-wrap">
+            <div id="session-title-label">Active Session</div>
+            <div id="session-title">—</div>
+          </div>
+          <button class="ctrl-btn btn-stream-start" onclick="startStream()">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Start Stream
+          </button>
+          <button class="ctrl-btn btn-stream-stop" onclick="stopStream()">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            Stop
+          </button>
+          <button class="ctrl-btn btn-close-session" onclick="closeSession()">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Close
           </button>
         </div>
-        <div id="session-list">
-          <div class="empty-state">NO ACTIVE SESSIONS<br>───────────────<br>CLICK + OPEN TO BEGIN</div>
+
+        <div id="stream-area">
+          <div id="video-wrap">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div id="rec-indicator"><span class="rec-dot"></span>LIVE</div>
+            <video id="video" autoplay playsinline muted></video>
+            <div id="video-overlay">
+              <div class="overlay-pulse-ring">
+                <div class="overlay-icon-inner">⬡</div>
+              </div>
+              <div class="overlay-text">Stream not active</div>
+            </div>
+          </div>
+
+          <div id="status-bar">
+            <div class="status-item">
+              <span class="status-dot" id="conn-dot"></span>
+              <span id="status-text">DISCONNECTED</span>
+            </div>
+            <span class="status-sep">│</span>
+            <div class="status-item">
+              <span class="status-label">Cam</span>
+              <span id="status-camera">—</span>
+            </div>
+            <span class="status-sep">│</span>
+            <div class="status-item">
+              <span class="status-label">Line</span>
+              <span id="status-line">—</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- RIGHT: stream view -->
-      <div id="right-panel">
+    </div>
+  </div>
+</div>
 
-        <!-- No session selected -->
-        <div id="no-session">
-          <div class="no-session-icon">◈</div>
-          <div class="no-session-label">Select a session to view stream</div>
-        </div>
+<!-- MODAL: OPEN SESSION -->
+<div id="modal-overlay" class="modal-overlay">
+  <div id="modal" class="modal">
+    <div class="modal-eyebrow">New Session</div>
+    <div class="modal-title">Open Detection Session</div>
 
-        <!-- Session active view -->
-        <div id="session-view">
-
-          <div id="ctrl-bar">
-            <span id="session-title">—</span>
-            <button class="ctrl-btn btn-stream-start" onclick="startStream()">▶ Start Stream</button>
-            <button class="ctrl-btn btn-stream-stop" onclick="stopStream()">■ Stop Stream</button>
-            <button class="ctrl-btn btn-close-session" onclick="closeSession()">✕ Close Session</button>
-          </div>
-
-          <div id="stream-area">
-            <div id="video-wrap">
-              <div class="corner corner-tl"></div>
-              <div class="corner corner-tr"></div>
-              <div class="corner corner-bl"></div>
-              <div class="corner corner-br"></div>
-              <video id="video" autoplay playsinline muted></video>
-              <div id="video-overlay">
-                <div class="overlay-icon">⬡</div>
-                <div class="overlay-text">STREAM NOT ACTIVE</div>
-              </div>
-            </div>
-
-            <div id="status-bar">
-              <div class="status-item">
-                <span class="status-dot" id="conn-dot"></span>
-                <span id="status-text">DISCONNECTED</span>
-              </div>
-              <span class="status-sep">│</span>
-              <div class="status-item">
-                <span>CAM:</span>
-                <span id="status-camera">—</span>
-              </div>
-              <span class="status-sep">│</span>
-              <div class="status-item">
-                <span>LINE:</span>
-                <span id="status-line">—</span>
-              </div>
-            </div>
-          </div>
-
-        </div><!-- /session-view -->
-      </div><!-- /right-panel -->
-    </div><!-- /main -->
-  </div><!-- /app -->
-
-  <!-- ═══════════════════════════════════════════
-     MODAL: OPEN SESSION (test client – predefined factory/line, dropdowns)
-══════════════════════════════════════════════ -->
-  <div id="modal-overlay">
-    <div id="modal">
-      <div class="modal-title">Open Session</div>
-
-      <div class="field">
-        <label>Factory</label>
-        <select id="f-factory">
+    <div class="field" id="field-factory">
+      <label>Factory</label>
+      <div class="select-wrapper">
+        <select id="f-factory" onchange="onFactorySelectChange()">
           <option value="factory_test">Test Factory</option>
+          <option value="factory_alpha">Alpha Plant</option>
+          <option value="factory_beta">Beta Facility</option>
+          <option value="__custom__">Custom…</option>
         </select>
       </div>
-      <div class="field">
-        <label>Production Line</label>
+      <div class="custom-input-wrap" id="factory-custom-wrap">
+        <input type="text" id="f-factory-custom" placeholder="Enter factory name…">
+      </div>
+      <div class="field-error" id="factory-error">Factory name is required</div>
+    </div>
+
+    <div class="field" id="field-line">
+      <label>Production Line</label>
+      <div class="select-wrapper">
         <select id="f-production-line" onchange="onProductionLineChange()">
           <option value="line1">Production Line 1</option>
           <option value="line2">Production Line 2</option>
         </select>
       </div>
-      <div class="field">
-        <label>Camera (read-only)</label>
-        <input type="text" id="f-camera-readonly" readonly style="cursor:default; opacity:0.9; font-size:11px;">
-      </div>
-      <div class="field field-hint">
-        <span class="hint-text">Station: packaging · Session ID: auto-generated</span>
-      </div>
+      <div class="field-error" id="line-error">Production line is required</div>
+    </div>
 
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="hideModal()">Cancel</button>
-        <button class="btn-confirm" id="btn-open-confirm" onclick="doOpenSession()">Open Session</button>
+    <div class="field" id="field-station">
+      <label>Station</label>
+      <div class="select-wrapper">
+        <select id="f-station" onchange="onStationSelectChange()">
+          <option value="packaging">Packaging</option>
+          <option value="assembly">Assembly</option>
+          <option value="inspection">Inspection</option>
+          <option value="sorting">Sorting</option>
+          <option value="welding">Welding</option>
+          <option value="__custom__">Custom…</option>
+        </select>
       </div>
+      <div class="custom-input-wrap" id="station-custom-wrap">
+        <input type="text" id="f-station-custom" placeholder="Enter station name…">
+      </div>
+      <div class="field-error" id="station-error">Station name is required</div>
+    </div>
+
+    <div class="modal-divider"></div>
+
+    <div class="field" id="field-camera">
+      <label>Camera</label>
+      <div class="select-wrapper">
+        <select id="f-camera" onchange="onCameraSelectChange()">
+          <option value="__line__">Auto (from line)</option>
+          <option value="__custom__">Custom…</option>
+        </select>
+      </div>
+      <div class="custom-input-wrap" id="camera-custom-wrap">
+        <input type="text" id="f-camera-id-custom" placeholder="Camera ID (e.g. cam_custom)">
+        <input type="text" id="f-camera-source-custom" placeholder="Source path or rtsp://…">
+      </div>
+      <div class="field-hint" id="camera-hint">Assigned by production line configuration</div>
+      <div class="field-error" id="camera-error">Camera ID and source are both required</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="hideModal()">Cancel</button>
+      <button class="btn-confirm" id="btn-open-confirm" onclick="doOpenSession()">Open Session</button>
     </div>
   </div>
+</div>
 
-  <!-- ═══════════════════════════════════════════
-     MODAL: API CONFIG
-══════════════════════════════════════════════ -->
-  <div id="config-modal-overlay">
-    <div id="config-modal">
-      <div class="modal-title">API Configuration</div>
-
-      <div class="field">
-        <label>API Base URL</label>
-        <input type="text" id="f-api-base" placeholder="http://localhost:8000">
-      </div>
-
-      <div class="config-url-hint">
-        <b>Examples:</b><br>
-        Local: <code>http://localhost:8000</code><br>
-        LAN: <code>http://192.168.1.100:8000</code><br>
-        Server: <code>https://api.example.com</code><br>
-        ngrok: <code>https://abc123.ngrok-free.dev</code>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="hideConfigModal()">Cancel</button>
-        <button class="btn-confirm" onclick="saveApiBase()">Save &amp; Reload Config</button>
-      </div>
+<!-- MODAL: API CONFIG -->
+<div id="config-modal-overlay" class="modal-overlay">
+  <div id="config-modal" class="modal" style="width:420px">
+    <div class="modal-eyebrow">Configuration</div>
+    <div class="modal-title">API Endpoint</div>
+    <div class="field">
+      <label>API Base URL</label>
+      <input type="text" id="f-api-base" placeholder="http://localhost:8000">
+    </div>
+    <div class="config-url-hint">
+      <strong>Examples</strong>
+      Local &nbsp;&nbsp;→ <code>http://localhost:8000</code><br>
+      LAN &nbsp;&nbsp;&nbsp;→ <code>http://192.168.1.100:8000</code><br>
+      Server → <code>https://api.example.com</code><br>
+      ngrok &nbsp;→ <code>https://abc123.ngrok-free.dev</code>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="hideConfigModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveApiBase()">Save &amp; Reload</button>
     </div>
   </div>
+</div>
 
-  <!-- TOAST CONTAINER -->
-  <div id="toast-container"></div>
+<div id="toast-container"></div>
 
-  <!-- ═══════════════════════════════════════════
-     JAVASCRIPT
-══════════════════════════════════════════════ -->
-  <script>
-    "use strict";
+<script>
+"use strict";
 
-    /* ─────────────────────────────────────────────
-       STATE
-    ───────────────────────────────────────────── */
-    let API_BASE = localStorage.getItem("qcscm_api_base") || "http://localhost:8000";
-    let ICE_SERVERS = [];
-    let FORCE_RELAY = false;  // set by backend via /api/config → webrtc.force_relay
-    let currentSession = null;  // highlighted card in the list
-    let viewedSession = null;  // session currently open in the right panel (close/stream act on this)
-    let pc = null;
-    let refreshTimer = null;
+/* ── STATE ── */
+let API_BASE = localStorage.getItem("qcscm_api_base") || "http://localhost:8000";
+let ICE_SERVERS = [];
+let WEBRTC_MODE = "auto";
+let currentSession = null, viewedSession = null, pc = null, refreshTimer = null;
+const sessionStore = {};
 
-    // Local store: session_id → full session object (matches API response shape)
-    const sessionStore = {};
+const TEST_CONFIG = {
+  factory_id: "factory_test", factory_name: "Test Factory", station_id: "packaging",
+  production_lines: [
+    { production_line_id:"line1", production_line_name:"Production Line 1", camera_id:"cam_line1",  camera_source:"/dev/v4l/by-id/v4l2loopback-DroidCam-video" },
+    { production_line_id:"line2", production_line_name:"Production Line 2", camera_id:"cam_line2",  camera_source:"/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0" },
+  ],
+};
 
-    // Predefined test data for simulation (fixed Linux camera paths)
-    const TEST_CONFIG = {
-      factory_id: "factory_test",
-      factory_name: "Test Factory",
-      station_id: "packaging",
-      production_lines: [
-        {
-          production_line_id: "line1",
-          production_line_name: "Production Line 1",
-          camera_id: "cam_line1",
-          camera_source: "/dev/v4l/by-id/v4l2loopback-DroidCam-video",
-        },
-        {
-          production_line_id: "line2",
-          production_line_name: "Production Line 2",
-          camera_id: "cam_line2",
-          camera_source: "/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0",
-        },
-      ],
-    };
+/* ── THEME ── */
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute("data-theme") === "dark";
+  html.setAttribute("data-theme", isDark ? "light" : "dark");
+  document.getElementById("theme-toggle").textContent = isDark ? "🌙" : "☀️";
+  localStorage.setItem("qcscm_theme", isDark ? "light" : "dark");
+}
+(function() {
+  const saved = localStorage.getItem("qcscm_theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+  document.getElementById("theme-toggle").textContent = saved === "dark" ? "☀️" : "🌙";
+})();
 
-    /* ─────────────────────────────────────────────
-       API HELPER
-    ───────────────────────────────────────────── */
-    async function api(path, method = "GET", body = null) {
-      const opts = {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true",   // skip ngrok browser warning page
-        },
-        mode: "cors",
-      };
-      if (body) opts.body = JSON.stringify(body);
+/* ── API (unchanged) ── */
+async function api(path, method = "GET", body = null) {
+  const opts = { method, headers: { "Content-Type":"application/json", "ngrok-skip-browser-warning":"true" }, mode:"cors" };
+  if (body) opts.body = JSON.stringify(body);
+  let res;
+  try { res = await fetch(`${API_BASE}${path}`, opts); }
+  catch (e) { throw new Error(`Cannot reach backend at ${API_BASE} — check ⚙ API URL (${e.message})`); }
+  const ct = res.headers.get("content-type") || "";
+  if (!res.ok) { const txt = await res.text().catch(()=>"Unknown error"); throw new Error(`${res.status}: ${txt}`); }
+  if (!ct.includes("application/json")) throw new Error(`Backend returned non-JSON — wrong API URL? Check ⚙ API`);
+  return res.json();
+}
 
-      let res;
-      try {
-        res = await fetch(`${API_BASE}${path}`, opts);
-      } catch (e) {
-        throw new Error(`Cannot reach backend at ${API_BASE} — check ⚙ API URL (${e.message})`);
-      }
+/* ── TOAST ── */
+function toast(msg, type = "info") {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  const icons = { success:"✓", error:"✕", info:"◈" };
+  el.innerHTML = `<div class="toast-icon">${icons[type]||"◈"}</div><span>${msg}</span>`;
+  document.getElementById("toast-container").appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
 
-      const contentType = res.headers.get("content-type") || "";
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "Unknown error");
-        throw new Error(`${res.status}: ${txt}`);
-      }
-      if (!contentType.includes("application/json")) {
-        throw new Error(`Backend returned non-JSON (got "${contentType}") — wrong API URL? Check ⚙ API`);
-      }
-      return res.json();
+/* ── HEALTH (unchanged) ── */
+async function checkHealth() {
+  const dot = document.getElementById("health-dot"), text = document.getElementById("health-text"), badge = document.getElementById("health-badge");
+  try {
+    const data = await api("/api/health");
+    dot.className = "health-dot ok"; badge.className = "ok";
+    text.textContent = `HEALTHY · ${data.active_sessions} SESSION${data.active_sessions!==1?"S":""}`;
+  } catch(e) { dot.className = "health-dot err"; badge.className = "err"; text.textContent = "UNREACHABLE"; }
+}
+
+/* ── WEBRTC CONFIG (unchanged) ── */
+async function loadWebRTCConfig() {
+  try {
+    const cfg = await api("/api/config");
+    ICE_SERVERS = cfg?.webrtc?.iceServers ?? [];
+    WEBRTC_MODE = (cfg?.webrtc?.webrtc_mode || "auto").toLowerCase();
+  } catch (e) {
+    ICE_SERVERS = [];
+    WEBRTC_MODE = "auto";
+  }
+}
+
+/* ── SESSIONS (unchanged) ── */
+async function refreshSessions() {
+  try { const data = await api("/api/sessions"); renderSessions(data.sessions??[]); }
+  catch(e) { console.warn("Refresh failed:", e.message); }
+}
+
+function renderSessions(sessions) {
+  const root = document.getElementById("session-list");
+  const badge = document.getElementById("sessions-count");
+  if (!sessions.length) {
+    badge.style.display = "none";
+    root.innerHTML = `<div class="empty-state"><div class="empty-icon-wrap"><div class="empty-icon-ring"></div><div class="empty-icon-inner">⬡</div></div><div class="empty-label">No Sessions Active</div><div class="empty-hint">Click New Session<br>to get started</div></div>`;
+    return;
+  }
+  badge.style.display = "inline-block"; badge.textContent = sessions.length;
+  root.innerHTML = "";
+  sessions.forEach((s,i) => {
+    const div = document.createElement("div");
+    const isActive = currentSession?.session_id === s.session_id;
+    div.className = `session-card${isActive?" active":""}`;
+    div.style.animationDelay = `${i*0.05}s`;
+    div.innerHTML = `
+      <div class="sc-top">
+        <div class="sc-id">${s.session_id}</div>
+        <div class="sc-live"><span class="sc-live-dot"></span>LIVE</div>
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">${s.factory_name||s.factory_id}</span>
+        <span class="sc-tag">${s.production_line_name||s.production_line_id}</span>
+      </div>
+      <div class="sc-cam">${s.camera_source}</div>`;
+    div.onclick = () => enterSession(s);
+    root.appendChild(div);
+  });
+}
+
+/* ── MODAL FIELD HANDLERS ── */
+function onFactorySelectChange() {
+  const sel = document.getElementById("f-factory").value;
+  const wrap = document.getElementById("factory-custom-wrap");
+  sel==="__custom__" ? (wrap.classList.add("visible"), document.getElementById("f-factory-custom").focus()) : wrap.classList.remove("visible");
+  clearFieldError("field-factory","factory-error");
+}
+function onStationSelectChange() {
+  const sel = document.getElementById("f-station").value;
+  const wrap = document.getElementById("station-custom-wrap");
+  sel==="__custom__" ? (wrap.classList.add("visible"), document.getElementById("f-station-custom").focus()) : wrap.classList.remove("visible");
+  clearFieldError("field-station","station-error");
+}
+function getSelectedLine() {
+  const id = document.getElementById("f-production-line").value;
+  return TEST_CONFIG.production_lines.find(l=>l.production_line_id===id) || TEST_CONFIG.production_lines[0];
+}
+function onProductionLineChange() {
+  const line = getSelectedLine();
+  const sel = document.getElementById("f-camera");
+  const prev = sel.value;
+  sel.innerHTML = `<option value="__line__">Auto · ${line.camera_id} (${line.camera_source.split('/').pop()})</option><option value="__custom__">Custom…</option>`;
+  sel.value = prev==="__custom__" ? "__custom__" : "__line__";
+  onCameraSelectChange();
+  document.getElementById("camera-hint").textContent = `Default: ${line.camera_source}`;
+  clearFieldError("field-line","line-error");
+}
+function onCameraSelectChange() {
+  const sel = document.getElementById("f-camera").value;
+  const wrap = document.getElementById("camera-custom-wrap");
+  sel==="__custom__" ? (wrap.classList.add("visible"), document.getElementById("f-camera-id-custom").focus()) : wrap.classList.remove("visible");
+  clearFieldError("field-camera","camera-error");
+}
+function clearFieldError(fId, eId) { document.getElementById(fId)?.classList.remove("has-error"); document.getElementById(eId)?.classList.remove("visible"); }
+function showFieldError(fId, eId)  { document.getElementById(fId)?.classList.add("has-error");    document.getElementById(eId)?.classList.add("visible"); }
+
+/* ── MODAL SHOW/HIDE ── */
+function showModal() {
+  document.getElementById("f-factory").value="factory_test";
+  document.getElementById("f-factory-custom").value="";
+  document.getElementById("factory-custom-wrap").classList.remove("visible");
+  document.getElementById("f-station").value="packaging";
+  document.getElementById("f-station-custom").value="";
+  document.getElementById("station-custom-wrap").classList.remove("visible");
+  document.getElementById("f-production-line").value="line1";
+  onProductionLineChange();
+  document.getElementById("f-camera-id-custom").value="";
+  document.getElementById("f-camera-source-custom").value="";
+  document.getElementById("camera-custom-wrap").classList.remove("visible");
+  ["field-factory","field-line","field-station","field-camera"].forEach(id=>document.getElementById(id)?.classList.remove("has-error"));
+  ["factory-error","line-error","station-error","camera-error"].forEach(id=>document.getElementById(id)?.classList.remove("visible"));
+  document.getElementById("modal-overlay").classList.add("show");
+}
+function hideModal() { document.getElementById("modal-overlay").classList.remove("show"); }
+
+/* ── VALIDATION ── */
+function validateOpenSession() {
+  let valid = true;
+  const fSel = document.getElementById("f-factory").value;
+  if (fSel==="__custom__" && !document.getElementById("f-factory-custom").value.trim()) { showFieldError("field-factory","factory-error"); valid=false; } else clearFieldError("field-factory","factory-error");
+  const sSel = document.getElementById("f-station").value;
+  if (sSel==="__custom__" && !document.getElementById("f-station-custom").value.trim()) { showFieldError("field-station","station-error"); valid=false; } else clearFieldError("field-station","station-error");
+  const cSel = document.getElementById("f-camera").value;
+  if (cSel==="__custom__" && (!document.getElementById("f-camera-id-custom").value.trim() || !document.getElementById("f-camera-source-custom").value.trim())) { showFieldError("field-camera","camera-error"); valid=false; } else clearFieldError("field-camera","camera-error");
+  return valid;
+}
+
+function generateSessionId() { return "session_" + new Date().toISOString().replace(/[-:T.Z]/g,"").slice(0,14); }
+
+/* ── OPEN SESSION (unchanged payload) ── */
+async function doOpenSession() {
+  if (!validateOpenSession()) return;
+  const line = getSelectedLine();
+  const session_id = generateSessionId();
+  const fSel = document.getElementById("f-factory").value;
+  const factory_id   = fSel==="__custom__" ? document.getElementById("f-factory-custom").value.trim().toLowerCase().replace(/\s+/g,"_") : fSel;
+  const factory_name = fSel==="__custom__" ? document.getElementById("f-factory-custom").value.trim() : document.getElementById("f-factory").options[document.getElementById("f-factory").selectedIndex].text;
+  const sSel = document.getElementById("f-station").value;
+  const station_id   = sSel==="__custom__" ? document.getElementById("f-station-custom").value.trim().toLowerCase().replace(/\s+/g,"_") : sSel;
+  const cSel = document.getElementById("f-camera").value;
+  const camera_id     = cSel==="__custom__" ? document.getElementById("f-camera-id-custom").value.trim()     : line.camera_id;
+  const camera_source = cSel==="__custom__" ? document.getElementById("f-camera-source-custom").value.trim() : line.camera_source;
+  const body = { factory_id, factory_name, production_line_id:line.production_line_id, production_line_name:line.production_line_name, camera_id, camera_source, station_id, session_id };
+  const btn = document.getElementById("btn-open-confirm");
+  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Opening…`;
+  try {
+    await api("/api/sessions/open","POST",body);
+    sessionStore[session_id] = {...body, status:"active"};
+    hideModal(); toast(`Session opened: ${session_id}`,"success");
+    await refreshSessions(); enterSession(sessionStore[session_id]);
+  } catch(e) { toast(e.message,"error"); }
+  finally { btn.disabled=false; btn.innerHTML="Open Session"; }
+}
+
+/* ── NAV (unchanged) ── */
+function enterSession(session) {
+  stopStream();
+  if (typeof session==="string") session = sessionStore[session]||{session_id:session,camera_source:"—",production_line_name:"—"};
+  sessionStore[session.session_id]=session; viewedSession=session; currentSession=session;
+  document.getElementById("no-session").style.display="none";
+  document.getElementById("session-view").style.display="flex";
+  document.getElementById("session-title").textContent=session.session_id;
+  document.getElementById("status-camera").textContent=session.camera_source||"—";
+  document.getElementById("status-line").textContent=session.production_line_name||session.production_line_id||"—";
+  setStatus("DISCONNECTED","");
+  document.querySelectorAll(".session-card").forEach(c=>c.classList.toggle("active",c.querySelector(".sc-id")?.textContent.includes(session.session_id)));
+}
+
+/* ── CLOSE SESSION (unchanged) ── */
+async function closeSession() {
+  if (!viewedSession) return;
+  const target={...viewedSession}; stopStream();
+  try { await api("/api/sessions/close","POST",{session_id:target.session_id,camera_source:target.camera_source}); toast(`Session closed: ${target.session_id}`,"success"); }
+  catch(e) { toast(e.message,"error"); }
+  delete sessionStore[target.session_id]; viewedSession=null; currentSession=null;
+  document.getElementById("no-session").style.display="flex";
+  document.getElementById("session-view").style.display="none";
+  await refreshSessions();
+}
+
+/* ── STATUS ── */
+function setStatus(text, dotClass) {
+  document.getElementById("status-text").textContent=text;
+  document.getElementById("conn-dot").className="status-dot"+(dotClass?" "+dotClass:"");
+  dotClass==="streaming" ? document.getElementById("rec-indicator").classList.add("visible") : document.getElementById("rec-indicator").classList.remove("visible");
+}
+
+/* ── WEBRTC START (unchanged) ── */
+async function startStream() {
+  if (!viewedSession) { toast("No session selected","error"); return; }
+  if (pc) { pc.close(); pc=null; }
+  await loadWebRTCConfig(); setStatus("CONNECTING...","");
+  try {
+    const rtcConfig = { iceServers: ICE_SERVERS };
+    if (WEBRTC_MODE === "relay") rtcConfig.iceTransportPolicy = "relay";
+    console.log("[WebRTC] PeerConnection config:",JSON.stringify(rtcConfig,null,2));
+    pc=new RTCPeerConnection(rtcConfig);
+    pc.onconnectionstatechange=()=>{ const s=pc?.connectionState; if(s==="failed"||s==="disconnected"){setStatus("DISCONNECTED","error");document.getElementById("video-overlay").classList.remove("hidden");}else if(s==="closed")setStatus("DISCONNECTED",""); };
+    pc.oniceconnectionstatechange=()=>console.log("[WebRTC] iceConnectionState:",pc.iceConnectionState);
+    pc.onicegatheringstatechange =()=>console.log("[WebRTC] iceGatheringState:",pc.iceGatheringState);
+    pc.onsignalingstatechange    =()=>console.log("[WebRTC] signalingState:",pc.signalingState);
+    pc.onicecandidate=e=>{ if(e.candidate) console.log("[WebRTC] ICE Candidate:",e.candidate.candidate); else console.log("[WebRTC] ICE gathering completed"); };
+    pc.onicecandidateerror=e=>console.error("[WebRTC] ICE Candidate Error:",e);
+    pc.ontrack=e=>{ document.getElementById("video").srcObject=e.streams[0]; document.getElementById("video-overlay").classList.add("hidden"); setStatus("STREAMING","streaming"); };
+    pc.addTransceiver("video",{direction:"recvonly"});
+    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+    console.log("[WebRTC] Offer created and set as local description");
+    if(pc.iceGatheringState!=="complete"){
+      console.log("[WebRTC] Waiting for ICE gathering to complete...");
+      await new Promise(resolve=>{ const check=()=>{ if(pc.iceGatheringState==="complete"){pc.removeEventListener("icegatheringstatechange",check);resolve();} }; pc.addEventListener("icegatheringstatechange",check); });
+      console.log("[WebRTC] ICE gathering completed (Promise resolved)");
     }
+    console.log("[WebRTC] Sending offer to backend →",viewedSession.session_id);
+    const ans=await api("/webrtc/offer","POST",{sdp:pc.localDescription.sdp,type:pc.localDescription.type,session_id:viewedSession.session_id});
+    console.log("[WebRTC] Answer received from backend, type:",ans.type);
+    await pc.setRemoteDescription(new RTCSessionDescription(ans));
+    console.log("[WebRTC] Remote description set — waiting for ICE + track");
+    setStatus("CONNECTED — AWAITING TRACK","connected");
+    setTimeout(async()=>{ if(!pc)return; const stats=await pc.getStats(); stats.forEach(r=>{ if(r.type==="candidate-pair"&&r.state==="succeeded"){ const l=stats.get(r.localCandidateId),rm=stats.get(r.remoteCandidateId); console.log("[WebRTC] ICE TYPE:",l?.candidateType,"->",rm?.candidateType); } }); },2000);
+  } catch(e) {
+    console.error("[WebRTC] startStream error:",e);
+    toast("Stream error: "+e.message,"error"); setStatus("ERROR","error");
+    if(pc){pc.close();pc=null;}
+  }
+}
 
-    /* ─────────────────────────────────────────────
-       TOAST
-    ───────────────────────────────────────────── */
-    function toast(msg, type = "info") {
-      const el = document.createElement("div");
-      el.className = `toast ${type}`;
-      const icon = type === "success" ? "✓" : type === "error" ? "✕" : "◈";
-      el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
-      document.getElementById("toast-container").appendChild(el);
-      setTimeout(() => el.remove(), 3200);
-    }
+/* ── WEBRTC STOP (unchanged) ── */
+function stopStream() {
+  if(pc){pc.close();pc=null;}
+  document.getElementById("video").srcObject=null;
+  document.getElementById("video-overlay").classList.remove("hidden");
+  setStatus("DISCONNECTED","");
+}
 
-    /* ─────────────────────────────────────────────
-       HEALTH CHECK
-    ───────────────────────────────────────────── */
-    async function checkHealth() {
-      const dot = document.getElementById("health-dot");
-      const text = document.getElementById("health-text");
-      try {
-        const data = await api("/api/health");
-        dot.className = "health-dot ok";
-        text.textContent = `HEALTHY · ${data.active_sessions} SESSION${data.active_sessions !== 1 ? "S" : ""}`;
-      } catch (e) {
-        dot.className = "health-dot err";
-        text.textContent = "UNREACHABLE — check ⚙ API";
-        console.warn("Health check failed:", e.message);
-      }
-    }
+/* ── CONFIG MODAL ── */
+function showConfigModal() { document.getElementById("f-api-base").value=API_BASE; document.getElementById("config-modal-overlay").classList.add("show"); setTimeout(()=>document.getElementById("f-api-base").focus(),80); }
+function hideConfigModal() { document.getElementById("config-modal-overlay").classList.remove("show"); }
+async function saveApiBase() {
+  const val=document.getElementById("f-api-base").value.trim().replace(/\/$/,"");
+  if(!val){toast("URL cannot be empty","error");return;}
+  API_BASE=val; localStorage.setItem("qcscm_api_base",val);
+  hideConfigModal(); toast("API base updated","success");
+  stopStream(); viewedSession=null; currentSession=null;
+  document.getElementById("no-session").style.display="flex";
+  document.getElementById("session-view").style.display="none";
+  await init();
+}
 
-    /* ─────────────────────────────────────────────
-       LOAD WEBRTC CONFIG  (GET /api/config)
-    ───────────────────────────────────────────── */
-    async function loadWebRTCConfig() {
-      try {
-        const cfg = await api("/api/config");
-        ICE_SERVERS = cfg?.webrtc?.iceServers ?? [];
-        FORCE_RELAY = cfg?.webrtc?.force_relay === true;
-        console.log("WebRTC config loaded — iceServers:", ICE_SERVERS.length, "| force_relay:", FORCE_RELAY);
-      } catch (e) {
-        console.warn("Could not load /api/config, using empty ICE servers:", e.message);
-        ICE_SERVERS = [];
-        FORCE_RELAY = false;
-      }
-    }
+/* ── KEYBOARD ── */
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){hideModal();hideConfigModal();} });
+document.getElementById("modal-overlay").addEventListener("click",e=>{ if(e.target===document.getElementById("modal-overlay"))hideModal(); });
+document.getElementById("config-modal-overlay").addEventListener("click",e=>{ if(e.target===document.getElementById("config-modal-overlay"))hideConfigModal(); });
+document.getElementById("modal").addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.tagName!=="TEXTAREA"){e.preventDefault();if(document.getElementById("modal-overlay").classList.contains("show"))doOpenSession();} });
 
-    /* ─────────────────────────────────────────────
-       SESSION LIST  (GET /api/sessions)
-    ───────────────────────────────────────────── */
-    async function refreshSessions() {
-      try {
-        const data = await api("/api/sessions");
-        renderSessions(data.sessions ?? []);
-      } catch (e) {
-        console.warn("Refresh failed:", e.message);
-      }
-    }
+/* ── POLLING (unchanged) ── */
+let lastHealthOk=false;
+const SESSIONS_POLL_MS=8000, HEALTH_POLL_UNHEALTHY_MS=10000, HEALTH_POLL_HEALTHY_MS=30000;
+let healthPollInterval=HEALTH_POLL_UNHEALTHY_MS;
 
-    function renderSessions(sessions) {
-      const root = document.getElementById("session-list");
+async function scheduledHealthCheck() {
+  const dot=document.getElementById("health-dot"),text=document.getElementById("health-text"),badge=document.getElementById("health-badge");
+  try { const data=await api("/api/health"); dot.className="health-dot ok"; badge.className="ok"; text.textContent=`HEALTHY · ${data.active_sessions} SESSION${data.active_sessions!==1?"S":""}`; lastHealthOk=true; healthPollInterval=HEALTH_POLL_HEALTHY_MS; }
+  catch(e) { dot.className="health-dot err"; badge.className="err"; text.textContent="UNREACHABLE"; lastHealthOk=false; healthPollInterval=HEALTH_POLL_UNHEALTHY_MS; }
+}
 
-      if (!sessions.length) {
-        root.innerHTML = `<div class="empty-state">NO ACTIVE SESSIONS<br>───────────────<br>CLICK + OPEN TO BEGIN</div>`;
-        return;
-      }
+function startPolling() {
+  let nh=0,ns=0;
+  refreshTimer=setInterval(()=>{
+    const now=Date.now();
+    if(now>=ns){ns=now+SESSIONS_POLL_MS;refreshSessions();}
+    if(now>=nh){scheduledHealthCheck().then(()=>{healthPollInterval=lastHealthOk?HEALTH_POLL_HEALTHY_MS:HEALTH_POLL_UNHEALTHY_MS;nh=Date.now()+healthPollInterval;});nh=now+999999;}
+  },2000);
+}
 
-      root.innerHTML = "";
-      sessions.forEach(s => {
-        const div = document.createElement("div");
-        const isActive = currentSession?.session_id === s.session_id;
-        div.className = `session-card${isActive ? " active" : ""}`;
-        div.innerHTML = `
-      <div class="sc-id">${s.session_id}</div>
-      <div class="sc-row"><span>FACTORY</span><span>${s.factory_name || s.factory_id}</span></div>
-      <div class="sc-row"><span>LINE</span><span>${s.production_line_name || s.production_line_id}</span></div>
-      <div class="sc-row"><span>CAM</span><span>${s.camera_source}</span></div>
-    `;
-        div.onclick = () => enterSession(s);
-        root.appendChild(div);
-      });
-    }
+async function init() { await checkHealth(); await loadWebRTCConfig(); await refreshSessions(); }
 
-    /* ─────────────────────────────────────────────
-       OPEN SESSION MODAL (dropdowns + predefined test data)
-    ───────────────────────────────────────────── */
-    function getSelectedLine() {
-      const lineId = document.getElementById("f-production-line").value;
-      return TEST_CONFIG.production_lines.find(l => l.production_line_id === lineId) || TEST_CONFIG.production_lines[0];
-    }
-
-    function onProductionLineChange() {
-      const line = getSelectedLine();
-      document.getElementById("f-camera-readonly").value = line.camera_source;
-    }
-
-    function showModal() {
-      document.getElementById("f-factory").value = "factory_test";
-      document.getElementById("f-production-line").value = "line1";
-      onProductionLineChange();
-      document.getElementById("modal-overlay").classList.add("show");
-    }
-
-    function hideModal() {
-      document.getElementById("modal-overlay").classList.remove("show");
-    }
-
-    function generateSessionId() {
-      const ts = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
-      return "session_" + ts;
-    }
-
-    async function doOpenSession() {
-      const line = getSelectedLine();
-      const session_id = generateSessionId();
-
-      const body = {
-        factory_id: TEST_CONFIG.factory_id,
-        factory_name: TEST_CONFIG.factory_name,
-        production_line_id: line.production_line_id,
-        production_line_name: line.production_line_name,
-        camera_id: line.camera_id,
-        camera_source: line.camera_source,
-        station_id: TEST_CONFIG.station_id,
-        session_id,
-      };
-
-      const btn = document.getElementById("btn-open-confirm");
-      btn.disabled = true;
-      btn.innerHTML = `<span class="spinner"></span> Opening...`;
-
-      try {
-        await api("/api/sessions/open", "POST", body);
-        sessionStore[session_id] = { ...body, status: "active" };
-        hideModal();
-        toast(`Session opened: ${session_id}`, "success");
-        await refreshSessions();
-        enterSession(sessionStore[session_id]);
-      } catch (e) {
-        toast(e.message, "error");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Open Session";
-      }
-    }
-
-    /* ─────────────────────────────────────────────
-       NAV
-    ───────────────────────────────────────────── */
-    function enterSession(session) {
-      stopStream();
-      if (typeof session === "string") {
-        session = sessionStore[session] || { session_id: session, camera_source: "—", production_line_name: "—" };
-      }
-      sessionStore[session.session_id] = session;
-      viewedSession = session;
-      currentSession = session;
-
-      document.getElementById("no-session").style.display = "none";
-      document.getElementById("session-view").style.display = "flex";
-
-      document.getElementById("session-title").textContent = session.session_id;
-      document.getElementById("status-camera").textContent = session.camera_source || "—";
-      document.getElementById("status-line").textContent = session.production_line_name || session.production_line_id || "—";
-
-      setStatus("DISCONNECTED", "");
-
-      document.querySelectorAll(".session-card").forEach(c => {
-        c.classList.toggle("active", c.querySelector(".sc-id")?.textContent === session.session_id);
-      });
-    }
-
-    /* ─────────────────────────────────────────────
-       CLOSE SESSION  (POST /api/sessions/close)
-    ───────────────────────────────────────────── */
-    async function closeSession() {
-      if (!viewedSession) return;
-
-      const target = { ...viewedSession };
-      stopStream();
-
-      try {
-        await api("/api/sessions/close", "POST", {
-          session_id: target.session_id,
-          camera_source: target.camera_source,
-        });
-        toast(`Session closed: ${target.session_id}`, "success");
-      } catch (e) {
-        toast(e.message, "error");
-      }
-
-      delete sessionStore[target.session_id];
-      viewedSession = null;
-      currentSession = null;
-      document.getElementById("no-session").style.display = "flex";
-      document.getElementById("session-view").style.display = "none";
-
-      await refreshSessions();
-    }
-
-    /* ─────────────────────────────────────────────
-       STATUS HELPERS
-    ───────────────────────────────────────────── */
-    function setStatus(text, dotClass) {
-      document.getElementById("status-text").textContent = text;
-      const dot = document.getElementById("conn-dot");
-      dot.className = "status-dot" + (dotClass ? " " + dotClass : "");
-    }
-
-    /* ─────────────────────────────────────────────
-       WEBRTC – START STREAM
-       Follows: GET /api/config  →  POST /webrtc/offer
-    ───────────────────────────────────────────── */
-    async function startStream() {
-      if (!viewedSession) { toast("No session selected", "error"); return; }
-
-      if (pc) { pc.close(); pc = null; }
-
-      // Re-fetch ICE config each time in case it changed
-      await loadWebRTCConfig();
-
-      setStatus("CONNECTING...", "");
-
-      try {
-        const rtcConfig = { iceServers: ICE_SERVERS };
-        if (FORCE_RELAY) {
-          rtcConfig.iceTransportPolicy = "relay";
-        }
-
-        // ── 5) Log final RTCPeerConnection config ──────────────────────────────
-        console.log("[WebRTC] PeerConnection config:", JSON.stringify(rtcConfig, null, 2));
-
-        pc = new RTCPeerConnection(rtcConfig);
-
-        // ── 1) Full state lifecycle listeners ─────────────────────────────────
-        pc.onconnectionstatechange = () => {
-          console.log("[WebRTC] connectionState:", pc.connectionState);
-          const s = pc?.connectionState;
-          if (s === "failed" || s === "disconnected") {
-            setStatus("DISCONNECTED", "error");
-            document.getElementById("video-overlay").classList.remove("hidden");
-          } else if (s === "closed") {
-            setStatus("DISCONNECTED", "");
-          }
-        };
-
-        pc.oniceconnectionstatechange = () => {
-          console.log("[WebRTC] iceConnectionState:", pc.iceConnectionState);
-        };
-
-        pc.onicegatheringstatechange = () => {
-          console.log("[WebRTC] iceGatheringState:", pc.iceGatheringState);
-        };
-
-        pc.onsignalingstatechange = () => {
-          console.log("[WebRTC] signalingState:", pc.signalingState);
-        };
-
-        // ── 2) Log all ICE candidates ──────────────────────────────────────────
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            console.log("[WebRTC] ICE Candidate:", event.candidate.candidate);
-          } else {
-            console.log("[WebRTC] ICE gathering completed");
-          }
-        };
-
-        // ── 4) ICE candidate errors ────────────────────────────────────────────
-        pc.onicecandidateerror = (event) => {
-          console.error("[WebRTC] ICE Candidate Error:", event);
-        };
-
-        // ── 3) Remote track received ───────────────────────────────────────────
-        pc.ontrack = e => {
-          console.log("[WebRTC] Remote track received:", e.streams);
-          const video = document.getElementById("video");
-          video.srcObject = e.streams[0];
-          document.getElementById("video-overlay").classList.add("hidden");
-          setStatus("STREAMING", "streaming");
-        };
-
-        pc.addTransceiver("video", { direction: "recvonly" });
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        console.log("[WebRTC] Offer created and set as local description");
-
-        // Wait for ICE gathering to complete so relay candidates are included in the SDP
-        if (pc.iceGatheringState !== "complete") {
-          console.log("[WebRTC] Waiting for ICE gathering to complete...");
-          await new Promise(resolve => {
-            const checkState = () => {
-              if (pc.iceGatheringState === "complete") {
-                pc.removeEventListener("icegatheringstatechange", checkState);
-                resolve();
-              }
-            };
-            pc.addEventListener("icegatheringstatechange", checkState);
-          });
-          console.log("[WebRTC] ICE gathering completed (Promise resolved)");
-        }
-
-        console.log("[WebRTC] Sending offer to backend →", viewedSession.session_id);
-        const ans = await api("/webrtc/offer", "POST", {
-          sdp: pc.localDescription.sdp,
-          type: pc.localDescription.type,
-          session_id: viewedSession.session_id,
-        });
-        console.log("[WebRTC] Answer received from backend, type:", ans.type);
-
-        await pc.setRemoteDescription(new RTCSessionDescription(ans));
-        console.log("[WebRTC] Remote description set — waiting for ICE + track");
-
-        setStatus("CONNECTED — AWAITING TRACK", "connected");
-
-        // Stats after connection settles — shows relay vs direct
-        setTimeout(async () => {
-          if (!pc) return;
-          const stats = await pc.getStats();
-          stats.forEach(r => {
-            if (r.type === "candidate-pair" && r.state === "succeeded") {
-              const local = stats.get(r.localCandidateId);
-              const remote = stats.get(r.remoteCandidateId);
-              console.log("[WebRTC] ICE TYPE:", local?.candidateType, "->", remote?.candidateType);
-              console.log("[WebRTC] Local candidate:", local?.candidate);
-              console.log("[WebRTC] Remote candidate:", remote?.candidate);
-            }
-          });
-        }, 2000);
-
-      } catch (e) {
-        console.error("[WebRTC] startStream error:", e);
-        toast("Stream error: " + e.message, "error");
-        setStatus("ERROR", "error");
-        if (pc) { pc.close(); pc = null; }
-      }
-    }
-
-    /* ─────────────────────────────────────────────
-       WEBRTC – STOP STREAM
-    ───────────────────────────────────────────── */
-    function stopStream() {
-      if (pc) { pc.close(); pc = null; }
-      const video = document.getElementById("video");
-      video.srcObject = null;
-      document.getElementById("video-overlay").classList.remove("hidden");
-      setStatus("DISCONNECTED", "");
-    }
-
-    /* ─────────────────────────────────────────────
-       API BASE CONFIG MODAL
-    ───────────────────────────────────────────── */
-    function showConfigModal() {
-      document.getElementById("f-api-base").value = API_BASE;
-      document.getElementById("config-modal-overlay").classList.add("show");
-      setTimeout(() => document.getElementById("f-api-base").focus(), 80);
-    }
-
-    function hideConfigModal() {
-      document.getElementById("config-modal-overlay").classList.remove("show");
-    }
-
-    async function saveApiBase() {
-      const val = document.getElementById("f-api-base").value.trim().replace(/\/$/, "");
-      if (!val) { toast("URL cannot be empty", "error"); return; }
-      API_BASE = val;
-      localStorage.setItem("qcscm_api_base", val);
-      hideConfigModal();
-      toast("API base updated", "success");
-      stopStream();
-      viewedSession = null;
-      currentSession = null;
-      document.getElementById("no-session").style.display = "flex";
-      document.getElementById("session-view").style.display = "none";
-      await init();
-    }
-
-    /* ─────────────────────────────────────────────
-       INIT
-    ───────────────────────────────────────────── */
-    async function init() {
-      await checkHealth();
-      await loadWebRTCConfig();
-      await refreshSessions();
-    }
-
-    // Keyboard shortcuts
-    document.addEventListener("keydown", e => {
-      if (e.key === "Escape") { hideModal(); hideConfigModal(); }
-    });
-
-    // Click outside modal to close
-    document.getElementById("modal-overlay").addEventListener("click", e => {
-      if (e.target === document.getElementById("modal-overlay")) hideModal();
-    });
-    document.getElementById("config-modal-overlay").addEventListener("click", e => {
-      if (e.target === document.getElementById("config-modal-overlay")) hideConfigModal();
-    });
-
-    // Enter key in open session modal
-    document.getElementById("modal").addEventListener("keydown", e => {
-      if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
-        e.preventDefault();
-        if (document.getElementById("modal-overlay").classList.contains("show")) doOpenSession();
-      }
-    });
-
-    // Polling: reduce network noise. Sessions every 8s; health every 10s when unhealthy, 30s when healthy.
-    let lastHealthOk = false;
-    const SESSIONS_POLL_MS = 8000;
-    const HEALTH_POLL_UNHEALTHY_MS = 10000;
-    const HEALTH_POLL_HEALTHY_MS = 30000;
-    let healthPollInterval = HEALTH_POLL_UNHEALTHY_MS;
-
-    async function scheduledHealthCheck() {
-      const dot = document.getElementById("health-dot");
-      const text = document.getElementById("health-text");
-      try {
-        const data = await api("/api/health");
-        dot.className = "health-dot ok";
-        text.textContent = `HEALTHY · ${data.active_sessions} SESSION${data.active_sessions !== 1 ? "S" : ""}`;
-        lastHealthOk = true;
-        healthPollInterval = HEALTH_POLL_HEALTHY_MS;
-      } catch (e) {
-        dot.className = "health-dot err";
-        text.textContent = "UNREACHABLE — check ⚙ API";
-        lastHealthOk = false;
-        healthPollInterval = HEALTH_POLL_UNHEALTHY_MS;
-      }
-    }
-
-    function startPolling() {
-      let nextHealth = 0;
-      let nextSessions = 0;
-      refreshTimer = setInterval(() => {
-        const now = Date.now();
-        if (now >= nextSessions) {
-          nextSessions = now + SESSIONS_POLL_MS;
-          refreshSessions();
-        }
-        if (now >= nextHealth) {
-          scheduledHealthCheck().then(() => {
-            healthPollInterval = lastHealthOk ? HEALTH_POLL_HEALTHY_MS : HEALTH_POLL_UNHEALTHY_MS;
-            nextHealth = Date.now() + healthPollInterval;
-          });
-          nextHealth = now + 999999;
-        }
-      }, 2000);
-    }
-
-    // Boot
-    (async () => {
-      await checkHealth();
-      lastHealthOk = document.getElementById("health-dot").classList.contains("ok");
-      healthPollInterval = lastHealthOk ? HEALTH_POLL_HEALTHY_MS : HEALTH_POLL_UNHEALTHY_MS;
-      await loadWebRTCConfig();
-      await refreshSessions();
-      startPolling();
-    })();
-  </script>
-
+(async()=>{
+  await checkHealth();
+  lastHealthOk=document.getElementById("health-dot").classList.contains("ok");
+  healthPollInterval=lastHealthOk?HEALTH_POLL_HEALTHY_MS:HEALTH_POLL_UNHEALTHY_MS;
+  await loadWebRTCConfig(); await refreshSessions(); startPolling();
+})();
+</script>
 </body>
-
 </html>

@@ -6,11 +6,18 @@ import hashlib
 import hmac
 import logging
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
 
 import yaml
+
+# Repo root for shared device_manager
+_repo_root = Path(__file__).resolve().parent.parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+from device_manager import select_device
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -194,6 +201,16 @@ def _load_configs(base: Path) -> None:
             "visibility_threshold": 0.2,
         }
 
+    # Resolve device once for both detectors (config -> QC_SCM_FLOW_DEVICE -> auto)
+    raw_device = configs.get("box", {}).get("device", "0")
+    resolved_device = select_device(
+        str(raw_device).strip() or None,
+        env_var="QC_SCM_FLOW_DEVICE",
+        context="flow",
+    )
+    configs["box"]["device"] = resolved_device
+    configs["defect"]["device"] = resolved_device
+
     # Initialize Firebase Firestore (credentials only; no static factory/line data)
     fb_cfg = configs["firebase"]
     cred_path = base / "config" / fb_cfg.get("credentials_path", "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json")
@@ -349,36 +366,45 @@ def _generate_turn_credentials(secret: str) -> tuple[str, str]:
     return username, credential
 
 
-def _client_webrtc_config() -> Dict[str, Any]:
-    """Build client WebRTC config. Returns both STUN and dynamically generated TURN credentials."""
+def _ice_servers_for_mode(mode: str, for_aiortc: bool = False) -> list:
+    """
+    Build ICE server list from webrtc_mode.
+    - auto:   host + STUN + TURN
+    - direct: host only (empty list)
+    - stun:   host + STUN
+    - relay:  host + TURN only
+    """
     w = configs.get("webrtc") or {}
     stun = w.get("stun") or {}
     turn = w.get("turn") or {}
-    force_relay = w.get("force_relay", False)
-    
-    ice_servers = []
-    
-    # Add STUN if not forcing relay
-    if stun.get("urls") and not force_relay:
-        ice_servers.append({"urls": stun["urls"] if isinstance(stun["urls"], str) else stun["urls"]})
-        
-    # Add TURN
-    if turn.get("urls") and turn.get("secret"):
+    ice_servers: list = []
+    if mode == "direct":
+        return ice_servers
+    if mode in ("auto", "stun") and stun.get("urls"):
+        urls = stun["urls"] if isinstance(stun["urls"], str) else stun["urls"]
+        ice_servers.append(RTCIceServer(urls=urls) if for_aiortc else {"urls": urls})
+    if mode in ("auto", "relay") and turn.get("urls") and turn.get("secret"):
         username, credential = _generate_turn_credentials(turn["secret"])
-        
-        turn_cfg = {
-            "urls": turn["urls"] if isinstance(turn["urls"], str) else turn["urls"],
-            "username": username,
-            "credential": credential
-        }
-        ice_servers.append(turn_cfg)
-        
-    logger.debug("WebRTC config: force_relay=%s, servers=%d", force_relay, len(ice_servers))
-        
+        urls = turn["urls"] if isinstance(turn["urls"], str) else turn["urls"]
+        if for_aiortc:
+            ice_servers.append(RTCIceServer(urls=urls, username=username, credential=credential))
+        else:
+            ice_servers.append({"urls": urls, "username": username, "credential": credential})
+    return ice_servers
+
+
+def _client_webrtc_config() -> Dict[str, Any]:
+    """Build client WebRTC config from webrtc_mode (auto / direct / stun / relay)."""
+    w = configs.get("webrtc") or {}
+    mode = (w.get("webrtc_mode") or "auto").strip().lower() or "auto"
+    if mode not in ("auto", "direct", "stun", "relay"):
+        mode = "auto"
+    ice_servers = _ice_servers_for_mode(mode, for_aiortc=False)
+    logger.debug("WebRTC config: webrtc_mode=%s, servers=%d", mode, len(ice_servers))
     return {
         "webrtc": {
             "iceServers": ice_servers,
-            "force_relay": force_relay,
+            "webrtc_mode": mode,
         }
     }
 
@@ -402,27 +428,11 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
 
     w = configs.get("webrtc") or {}
-    stun = w.get("stun") or {}
-    turn = w.get("turn") or {}
-    force_relay = w.get("force_relay", False)
-
-    ice_servers = []
-    if stun.get("urls") and not force_relay:
-        ice_servers.append(RTCIceServer(urls=stun["urls"]))
-    if turn.get("urls") and turn.get("secret"):
-        username, credential = _generate_turn_credentials(turn["secret"])
-        ice_servers.append(RTCIceServer(
-            urls=turn["urls"],
-            username=username,
-            credential=credential,
-        ))
-        
+    mode = (w.get("webrtc_mode") or "auto").strip().lower() or "auto"
+    if mode not in ("auto", "direct", "stun", "relay"):
+        mode = "auto"
+    ice_servers = _ice_servers_for_mode(mode, for_aiortc=True)
     config = RTCConfiguration(iceServers=ice_servers)
-    if force_relay:
-        # aiortc doesn't strictly obey iceTransportPolicy always, but removing STUN helps.
-        # Adding iceTransportPolicy for front-end compatibility/signaling if exposed anywhere.
-        pass
-        
     pc = RTCPeerConnection(configuration=config)
     pcs.add(pc)
 

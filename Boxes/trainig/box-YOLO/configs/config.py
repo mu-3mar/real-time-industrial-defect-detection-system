@@ -20,7 +20,7 @@ DATA_YAML = DATA_DIR / "data" / "data.yaml"
 EPOCHS = 100
 BATCH_SIZE = 8
 IMG_SIZE = 640
-DEVICE = "0"
+DEVICE = "auto"  # auto | cuda | mps | cpu; override with QC_SCM_TRAIN_DEVICE
 
 # Export Configuration
 ONNX_NAME = "detect_box.onnx"
