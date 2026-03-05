@@ -2,56 +2,66 @@
 # GLOBAL IGNORE RULES
 # ========================
 
-# Ignore all datasets
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+.ipynb_checkpoints/
+
+# Environments
+.env
+.env.*
+env/
+venv/
+.venv/
+
+# Datasets and large data
 data/
 **/data/
 datasets/
 **/datasets/
 
-# Ignore all logs and outputs
+# Logs and outputs
 logs/
 outputs/
+*.log
 
-# Ignore any images / visualizations
-*.jpeg
-*.bmp
-*.gif
-*.webp
-*.mp4
-*.avi
-*.mov
-*.mkv
+# Media and exports (optional; uncomment if you don't want to track)
+# *.jpeg
+# *.bmp
+# *.gif
+# *.webp
+# *.mp4
+# *.avi
+# *.mov
+# *.mkv
 *.tsv
-*.json
 *.parquet
 *.pdf
 *.svg
 *.eps
-# Ignore notebook checkpoints, pycache
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
 
-# Ignore environments
-env/
-venv/
+# Secrets and credentials (do not commit)
+secrets.json
+Boxes/flow/config/*.json
+Boxes/flow/config/*credentials*
+*firebase-adminsdk*.json
 
-# Ignore editor folders
+# Editor and OS
 .vscode/
 .idea/
 .history/
+.DS_Store
 
-# Ignore archives
+# Archives
 *.zip
 *.tar
 *.gz
 
-# Ignore secrets
-.env
-secrets.json
-
-# Ignore base model weights
-*.yaml
+# Model training artifacts (keep Boxes/flow/models/*.onnx for runtime)
 *.tflite
 *.npy
 *.h5

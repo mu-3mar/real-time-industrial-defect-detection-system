@@ -76,7 +76,7 @@ class CamStream:
         fourcc_int = int(self.cap.get(cv2.CAP_PROP_FOURCC))
         fourcc_str = "".join([chr((fourcc_int >> (8 * i)) & 0xFF) for i in range(4)])
 
-        logger.info(
+        logger.debug(
             "CamStream opened: backend=V4L2, fourcc=%s, res=%dx%d, estimated_fps=%.1f",
             fourcc_str, actual_w, actual_h, actual_fps,
         )
@@ -111,7 +111,7 @@ class CamStream:
             daemon=True,
         )
         self._thread.start()
-        logger.info("Camera capture thread started")
+        logger.debug("Camera capture thread started")
         return self
 
     def get_latest_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
@@ -146,7 +146,7 @@ class CamStream:
             self._thread.join(timeout=2.0)
         if self.cap is not None:
             self.cap.release()
-        logger.info("CamStream released")
+        logger.debug("CamStream released")
 
     # ── Legacy compatibility: direct read() for callers that haven't been migrated ──
 
@@ -168,7 +168,7 @@ class CamStream:
         consumer (pipeline) is slower than the camera, old frames are silently
         dropped and only the newest is kept.
         """
-        logger.info("Camera capture loop running (produces to deque maxlen=1)")
+        logger.debug("Camera capture loop running (produces to deque maxlen=1)")
         fps_count = 0
         fps_last_time = time.time()
 
@@ -195,7 +195,7 @@ class CamStream:
                 fps_last_time = now
                 fps_count = 0
 
-        logger.info(
+        logger.debug(
             "Camera capture loop exited. Total frames captured: %d",
             self._capture_frame_count,
         )

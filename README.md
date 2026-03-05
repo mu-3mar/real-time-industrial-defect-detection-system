@@ -1,356 +1,232 @@
-# QC-SCM: Quality Control - Supply Chain Management
+# QC-SCM: Quality Control — Supply Chain Management
 
-A high-performance, AI-driven quality inspection system for real-time defect detection in manufacturing production lines. The system uses advanced computer vision and deep learning models to automatically detect and classify defects in boxes during production.
+AI-driven quality inspection server for real-time defect detection on manufacturing production lines. The system processes live camera feeds, runs a two-stage detection pipeline (box → defect), and publishes events to Firebase Firestore. A factory UI or backend sends session metadata; the AI server does not store static factory or line configuration.
 
-## 🎯 Overview
+---
 
-QC-SCM is an intelligent quality control system designed for supply chain management that leverages state-of-the-art YOLO (You Only Look Once) models for real-time defect detection. The system provides:
+## Project overview
 
-- **Real-time Detection**: Live video stream processing with WebRTC support
-- **Multi-Session Management**: Handle multiple production lines simultaneously
-- **High Accuracy**: Optimized YOLO models with excellent performance metrics
-- **Production-Ready**: RESTful API with FastAPI backend
-- **Scalable Architecture**: Modular design for easy extension and maintenance
+- **Detection**: Two-stage pipeline (box detection → defect classification) using ONNX models.
+- **Sessions**: Each session is opened with full metadata (factory, production line, camera, station, session ID). No hardcoded mappings.
+- **Streaming**: WebRTC video stream from the detection pipeline to clients.
+- **Events**: Every processed box produces one Firestore document under the session’s `insights` subcollection.
 
-## 🏗️ Architecture
+---
 
-The system follows a modular architecture with the following components:
+## Architecture
 
 ```
-QC-SCM/
-├── Boxes/                          # Box inspection module
-│   ├── flow/                       # Runtime detection pipeline (API only)
-│   │   ├── api_server.py          # FastAPI server with WebRTC
-│   │   ├── main.py                 # Entry point
-│   │   ├── config/                # Config (app, api, webrtc, box, defect, stream, mqtt)
-│   │   ├── core/                  # Core detection logic
-│   │   ├── detectors/             # Model inference
-│   │   └── utils/                 # Utility functions
-│   └── trainig/                   # Model training
-│       ├── box-YOLO/              # Box detection model
-│       └── defect-YOLO/           # Defect classification model
-└── pyproject.toml                 # Project dependencies
+┌─────────────────┐     POST /api/sessions/open      ┌──────────────────────┐
+│  Factory Web UI │ ───────────────────────────────►│   AI Detection        │
+│  or Backend     │     (metadata + camera_source)   │   Server (FastAPI)    │
+└─────────────────┘                                  │                      │
+        │                                             │  • Session manager   │
+        │ GET /api/sessions                           │  • Pipeline (box +   │
+        │ POST /api/sessions/close                    │    defect)           │
+        │ POST /webrtc/offer                          │  • WebRTC stream     │
+        ◄────────────────────────────────────────────│  • Firebase client   │
+                                                     └──────────┬───────────┘
+                                                                │
+                                                                │ Firestore writes
+                                                                ▼
+                                                     ┌──────────────────────┐
+                                                     │  Firebase Firestore  │
+                                                     │  insights/ documents │
+                                                     └──────────────────────┘
 ```
 
-## 🤖 AI Models & Performance
+- **Factory Web UI / Backend**: Opens and closes sessions with metadata; may consume WebRTC stream.
+- **AI Server**: Runs the detection pipeline per session, streams video over WebRTC, writes detection events to Firestore.
+- **Firestore**: Stores detection events; structure below.
 
-### Box Detection Model (YOLOv8)
+---
 
-The box detection model identifies boxes in the production line with high precision.
+## AI pipeline
 
-**Model Details:**
-- **Architecture**: YOLOv8n (Nano variant)
-- **Training Epochs**: 31
-- **Input Size**: Standard YOLO input
-- **Model Path**: `Boxes/trainig/box-YOLO/models/exported/best.pt`
+1. **Camera**  
+   Dedicated capture thread reads frames (e.g. V4L2/MJPG). Latest frame only is passed to the pipeline (non-blocking).
 
-**Performance Metrics (Best Epoch - Epoch 31):**
+2. **Box detection**  
+   Detects boxes in the ROI; IoU-based tracking and smoothing.
 
-| Metric | Value |
-|--------|-------|
-| **mAP@50** | **95.87%** |
-| **mAP@50-95** | **83.08%** |
-| **Precision** | **94.61%** |
-| **Recall** | **89.62%** |
-| **Confidence Threshold** | 0.7 |
-| **IoU Threshold** | 0.6 |
+3. **Defect classification**  
+   Crops each tracked box and runs defect detection. Voting over a small window decides DEFECT vs OK.
 
-### Defect Detection Model (YOLOv8)
+4. **Exit**  
+   When a box leaves the ROI, the final decision is published to Firestore and (if registered) passed to the session callback.
 
-The defect detection model classifies defects within detected boxes using a two-stage pipeline.
+Throttling (e.g. box every N frames, defect every M frames) is configurable in `stream.yaml`. All factory/line/camera identity comes from the open-session request.
 
-**Model Details:**
-- **Architecture**: YOLOv8n (Nano variant)
-- **Training Epochs**: 100
-- **Input Size**: Standard YOLO input
-- **Model Path**: `Boxes/trainig/defect-YOLO/models/exported/best.pt`
+---
 
-**Performance Metrics (Best Epoch - Epoch 100):**
+## API endpoints
 
-| Metric | Value |
-|--------|-------|
-| **mAP@50** | **88.82%** |
-| **mAP@50-95** | **63.18%** |
-| **Precision** | **90.41%** |
-| **Recall** | **82.49%** |
-| **Confidence Threshold** | 0.3 |
-| **IoU Threshold** | 0.6 |
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/sessions/open` | Open a detection session (body: factory_id, factory_name, production_line_id, production_line_name, camera_id, camera_source, station_id, session_id). |
+| POST | `/api/sessions/close` | Close a session (body: session_id, optional camera_source). |
+| GET | `/api/sessions` | List active sessions with metadata. |
+| GET | `/api/health` | Health and active session count. |
+| GET | `/api/config` | WebRTC ICE config for clients. |
+| POST | `/webrtc/offer` | Exchange SDP offer/answer and attach video track (body: sdp, type, session_id). |
 
-**Defect Detection Features:**
-- **Single-box tracking** with smooth, stable annotations
-- **Defect voting system** for robust decision-making
-- **Configurable stability parameters**:
-  - Min frames before box is "inside": 4
-  - Max missed frames before exit: 6
-  - Vote window: 9 frames
-  - Vote threshold: 5 defect votes (out of 9) to classify as DEFECT
-- **Visibility-based rendering** (20% threshold)
+**Open session request body (example):**
 
-## 📊 Detection Pipeline
-
-The system uses a **two-stage detection pipeline**:
-
-1. **Stage 1 - Box Detection**: 
-   - Detects boxes in the video frame
-   - Tracks boxes across frames with IoU-based tracking
-   - Applies bounding box smoothing (alpha = 0.6)
-
-2. **Stage 2 - Defect Classification**:
-   - Crops detected boxes
-   - Classifies defects within each box
-   - Uses voting mechanism for stable defect decisions
-   - Tracks defects across frames
-
-## 🚀 Installation
-
-### Prerequisites
-
-- Python 3.10 or higher
-- CUDA-capable GPU (recommended for real-time performance)
-- Webcam or video input device
-
-### Setup
-
-1. **Clone the repository**:
-```bash
-git clone <repository-url>
-cd QC-SCM
-```
-
-2. **Install dependencies**:
-```bash
-pip install -e .
-```
-
-The project uses `pyproject.toml` for dependency management with the following key packages:
-- `ultralytics==8.4.7` - YOLO model framework
-- `torch==2.9.1` - Deep learning framework
-- `opencv-python==4.13.0.90` - Computer vision
-- `fastapi==0.115.6` - API framework
-- `uvicorn[standard]==0.34.0` - ASGI server
-- `onnxruntime-gpu==1.23.2` - Optimized inference
-- `aiortc` - WebRTC support
-
-## 💻 Usage
-
-### Starting the Detection Service
-
-1. **Start the API server** (uses `config/api.yaml` for host/port):
-```bash
-cd Boxes/flow
-python main.py
-```
-   Or with uvicorn directly: `python -m uvicorn api_server:app --host 0.0.0.0 --port 8000`
-
-2. **Use the API**: The backend is a pure API service. Consume it from an external frontend or API client.
-   - API docs: `http://localhost:8000/docs`
-   - Health: `http://localhost:8000/api/health`
-
-### Configuration
-
-**Config files** in `Boxes/flow/config/`:
-- **`app.yaml`**: Optional `cors_origins` list. Empty = allow all origins (works for localhost, LAN, remote).
-- **`api.yaml`**: `host`, `port`, `log_level` for the server.
-- **`webrtc.yaml`**: STUN/TURN for WebRTC (backend only; clients get STUN via `/api/config`).
-
-**Service configs** in `Boxes/flow/config/`:
-
-**Box Detector (`box_detector.yaml`):**
-```yaml
-model_path: Boxes/trainig/box-YOLO/models/exported/best.pt
-conf_thres: 0.7
-iou_thres: 0.6
-device: 0
-```
-
-**Defect Detector (`defect_detector.yaml`):**
-```yaml
-model_path: Boxes/trainig/defect-YOLO/models/exported/best.pt
-conf_thres: 0.3
-iou_thres: 0.6
-device: 0
-
-tracking:
-  iou_threshold: 0.35
-  bbox_smooth_alpha: 0.6
-
-stability:
-  min_frames: 4
-  max_missed: 6
-  vote_window: 9
-  vote_threshold: 5
-
-rendering:
-  visibility_threshold: 0.2
-```
-
-## 🔌 API Documentation
-
-### Base URL
-```
-http://localhost:8000
-```
-
-### Endpoints
-
-#### 1. Open Detection Session
-**POST** `/api/sessions/open`
-
-Opens a new headless detection session for a production line.
-
-**Request Body:**
 ```json
 {
-  "report_id": "line1_abc123",
-  "camera_source": "/dev/v4l/by-id/camera-device"
+  "factory_id": "factory_test",
+  "factory_name": "Test Factory",
+  "production_line_id": "line1",
+  "production_line_name": "Production Line 1",
+  "camera_id": "cam_line1",
+  "camera_source": "/dev/v4l/by-id/camera-line1",
+  "station_id": "packaging",
+  "session_id": "session_20260305120000"
 }
 ```
 
-**Response:**
-```json
-{
-  "status": "success",
-  "report_id": "line1_abc123",
-  "message": "Session started with camera /dev/v4l/by-id/camera-device"
-}
-```
+**List sessions response (example):**
 
-#### 2. Close Detection Session
-**POST** `/api/sessions/close`
-
-Closes an active detection session.
-
-**Request Body:**
-```json
-{
-  "report_id": "line1_abc123",
-  "camera_source": "/dev/v4l/by-id/camera-device"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "report_id": "line1_abc123",
-  "message": "Session closed successfully"
-}
-```
-
-#### 3. List Active Sessions
-**GET** `/api/sessions`
-
-Returns a list of all active detection sessions.
-
-**Response:**
 ```json
 {
   "sessions": [
     {
-      "report_id": "line1_abc123",
-      "camera_source": "/dev/v4l/by-id/camera-device",
+      "session_id": "session_20260305120000",
+      "factory_id": "factory_test",
+      "factory_name": "Test Factory",
+      "production_line_id": "line1",
+      "production_line_name": "Production Line 1",
+      "camera_id": "cam_line1",
+      "camera_source": "/dev/v4l/by-id/camera-line1",
       "status": "active"
     }
   ]
 }
 ```
 
-#### 4. Health Check
-**GET** `/api/health`
+---
 
-Returns service health status and active session count.
+## Firebase Firestore structure
 
-**Response:**
-```json
-{
-  "status": "healthy",
-  "active_sessions": 2
-}
+Detection events are written under:
+
+```
+factories / {factory_id} / production_lines / {production_line_id} / sessions / {session_id} / insights / {event_id}
 ```
 
-#### 5. WebRTC Offer
-**POST** `/webrtc/offer`
+- `factory_id`, `production_line_id`, `session_id`: from the open-session request.
+- `event_id`: auto-generated by Firestore per document.
 
-Establishes a WebRTC connection for real-time video streaming.
+**Each insight document:**
 
-**Request Body:**
-```json
-{
-  "sdp": "<SDP offer string>",
-  "type": "offer",
-  "report_id": "line1_abc123"
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | string | ISO 8601 UTC. |
+| `defect` | boolean | True if defect, false if OK. |
+| `camera_id` | string | From session. |
+| `station_id` | string | From session. |
+| `factory_name` | string | From session. |
+| `production_line_name` | string | From session. |
+| `model_version` | string | From defect config (e.g. `"1.0"`). |
+| `confidence` | number | 0.0–1.0 (e.g. 1.0 for defect, 0.0 for OK). |
 
-**Response:**
-```json
-{
-  "sdp": "<SDP answer string>",
-  "type": "answer"
-}
-```
+Parent documents (factories, production_lines, sessions) are created implicitly by Firestore when the first insight is written.
 
-## 🔧 Training Models
+---
 
-### Box Detection Model
+## HTML test client
 
-Navigate to the box detection training directory:
+The repository includes a single-page HTML test client (`index.html`) that simulates a factory UI for development and testing.
+
+**Usage:**
+
+1. Open `index.html` in a browser (e.g. by serving the project root or opening the file).
+2. Set the API base URL (e.g. `http://localhost:8000`) via the ⚙ API button if needed.
+3. Click **Open Session**. Choose factory and production line from the dropdowns; camera path and station are predefined for testing.
+4. After a session is opened, select it in the list and click **Start Stream** to view the WebRTC video.
+5. Use **Close Session** to end the session.
+
+The client sends the same `POST /api/sessions/open` body shape as above; all metadata is predefined in the page for quick testing. It does not change API behavior.
+
+---
+
+## Session workflow
+
+1. Client sends **POST /api/sessions/open** with factory, line, camera, station, and session IDs.
+2. Server starts a pipeline thread using `camera_source` and stores the metadata for that `session_id`.
+3. Client can call **GET /api/sessions** to list sessions and **POST /webrtc/offer** with `session_id` to receive the video stream.
+4. For each box that exits the ROI, the server writes one document to Firestore under that session’s `insights/` collection.
+5. Client sends **POST /api/sessions/close** with `session_id` to stop the pipeline and remove the session.
+
+---
+
+## Installation
+
+**Requirements:** Python 3.10+, optional CUDA for GPU inference.
+
+1. Clone the repository and enter the project root.
+
+2. Install dependencies (e.g. with pip from the root where `pyproject.toml` is):
+
+   ```bash
+   pip install -e .
+   ```
+
+3. Place the Firebase service account JSON in `Boxes/flow/config/` and set `credentials_path` in `Boxes/flow/config/firebase.yaml` to that filename. Do not commit the JSON (see `.gitignore`).
+
+4. Ensure box and defect ONNX model paths in `Boxes/flow/config/box_detector.yaml` and `Boxes/flow/config/defect_detector.yaml` point to existing files (e.g. under `Boxes/flow/models/`).
+
+---
+
+## Running the server
+
+From the project root:
+
 ```bash
-cd Boxes/trainig/box-YOLO
+cd Boxes/flow
+python main.py
 ```
 
-Run the complete training pipeline:
+Or with uvicorn:
+
 ```bash
-python scripts/run_all.py
+cd Boxes/flow
+python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
 ```
 
-This will:
-1. Train the model
-2. Export to ONNX format
-3. Quantize the model
+- API: `http://localhost:8000`
+- Docs: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/api/health`
 
-### Defect Detection Model
+Host/port and log level can be set in `Boxes/flow/config/api.yaml`.
 
-Navigate to the defect detection training directory:
-```bash
-cd Boxes/trainig/defect-YOLO
-```
+---
 
-Run the complete training pipeline:
-```bash
-python scripts/run_all.py
-```
+## Testing with the HTML client
 
-### Data Management
+1. Start the server (see above).
+2. Open `index.html` (via a static server or file URL).
+3. Confirm the health badge shows the server as reachable.
+4. Open a session (factory + line), start the stream, and confirm video and (if applicable) Firestore insights.
 
-Merge multiple datasets:
-```bash
-python scripts/merge_data.py
-```
+---
 
-## 🌐 Network Configuration
+## Configuration
 
-- **Local**: Run `python main.py`. API at `http://localhost:8000`. Docs at `/docs`.
-- **LAN**: Use `http://<server-ip>:8000` from other machines on the network.
-- **Remote**: Deploy behind a reverse proxy or use ngrok (optional) for public access.
-- **WebRTC**: STUN servers from `GET /api/config`. TURN (backend-only) in `config/webrtc.yaml`.
+Config files live in `Boxes/flow/config/`. See **Boxes/flow/config/README.md** for a full reference. Summary:
 
-**Frontend integration:** See `Boxes/flow/FRONTEND_INTEGRATION.md` for API base URL, endpoints, and examples.
+- **api.yaml**: host, port, log_level.
+- **app.yaml**: optional CORS origins.
+- **webrtc.yaml**: STUN/TURN for WebRTC.
+- **firebase.yaml**: `credentials_path` for the service account JSON.
+- **box_detector.yaml**, **defect_detector.yaml**: model paths, thresholds, device, stability/tracking.
+- **stream.yaml**: resolution and throttle (box/defect every N frames).
 
-## 📈 Performance Optimization
+---
 
-The system is optimized for real-time performance:
+## Technology stack
 
-- **GPU Acceleration**: CUDA support for fast inference
-- **Model Quantization**: INT8 quantization for reduced latency
-- **Frame Skipping**: Configurable frame processing rate
-- **Batch Processing**: Efficient batch inference
-- **WebRTC Streaming**: Low-latency video transmission
-
-## 🛠️ Technology Stack
-
-- **Deep Learning**: PyTorch, Ultralytics YOLO
-- **Computer Vision**: OpenCV
-- **Backend**: FastAPI, Uvicorn (API-only, no built-in frontend)
-- **Real-time Communication**: WebRTC (aiortc)
-- **Model Optimization**: ONNX Runtime
+- **Backend**: FastAPI, Uvicorn  
+- **Detection**: OpenCV, Ultralytics YOLO (exported to ONNX), ONNX Runtime  
+- **Streaming**: WebRTC (aiortc)  
+- **Events**: Firebase Firestore (firebase-admin)

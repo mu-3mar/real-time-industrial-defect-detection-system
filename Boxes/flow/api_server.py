@@ -5,7 +5,6 @@ import base64
 import hashlib
 import hmac
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
@@ -76,7 +75,6 @@ app.add_middleware(
 
 # Global state
 session_manager = SessionManager.get_instance()
-factory_id: str = "default_factory"
 configs: Dict[str, Any] = {}
 
 # WebRTC Peer Connections
@@ -85,24 +83,36 @@ pcs: Set[RTCPeerConnection] = set()
 
 # -----------------------------------------------------------------------------
 # Schema models
-class SessionIdentifiers(BaseModel):
-    """Request body for session operations."""
+class OpenSessionRequest(BaseModel):
+    """Request body for POST /api/sessions/open. All metadata from client."""
 
-    report_id: str
-    production_line: str
+    factory_id: str
+    factory_name: str
+    production_line_id: str
+    production_line_name: str
+    camera_id: str
     camera_source: Union[str, int]
+    station_id: str
+    session_id: str
+
+
+class CloseSessionRequest(BaseModel):
+    """Request body for POST /api/sessions/close."""
+
+    session_id: str
+    camera_source: Optional[Union[str, int]] = None
 
 
 class SessionResponse(BaseModel):
     """Response for session mutation endpoints."""
 
     status: str
-    report_id: str
+    session_id: str
     message: str
 
 
 class SessionListResponse(BaseModel):
-    """Response for list sessions endpoint."""
+    """Response for GET /api/sessions."""
 
     sessions: list
 
@@ -118,7 +128,7 @@ class OfferRequest(BaseModel):
     """WebRTC Offer request."""
     sdp: str
     type: str
-    report_id: str
+    session_id: str
 
 
 class OfferResponse(BaseModel):
@@ -183,10 +193,8 @@ def _load_configs(base: Path) -> None:
             "visibility_threshold": 0.2,
         }
 
-    # Initialize Firebase Firestore
-    global factory_id
+    # Initialize Firebase Firestore (credentials only; no static factory/line data)
     fb_cfg = configs["firebase"]
-    factory_id = os.environ.get("FACTORY_ID", fb_cfg.get("factory_id", "default_factory"))
     cred_path = base / "config" / fb_cfg.get("credentials_path", "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json")
     init_firebase(str(cred_path))
 
@@ -222,31 +230,32 @@ async def shutdown_event() -> None:
 # -----------------------------------------------------------------------------
 # API Endpoints
 @app.post("/api/sessions/open", response_model=SessionResponse)
-async def open_session(body: SessionIdentifiers) -> SessionResponse:
-    """Open a new headless detection session."""
+async def open_session(body: OpenSessionRequest) -> SessionResponse:
+    """Open a new headless detection session. All metadata comes from the request."""
     try:
         logger.info(
-            "Opening session: report_id=%s production_line=%s camera_source=%s",
-            body.report_id,
-            body.production_line,
-            body.camera_source,
+            "Opening session: session_id=%s factory=%s line=%s camera=%s",
+            body.session_id, body.factory_id, body.production_line_id, body.camera_source,
         )
-        # Capture the current event loop to pass to the worker
         loop = asyncio.get_running_loop()
 
         session_manager.create_session(
-            report_id=body.report_id,
-            production_line=body.production_line,
+            session_id=body.session_id,
             camera_source=body.camera_source,
+            factory_id=body.factory_id,
+            factory_name=body.factory_name,
+            production_line_id=body.production_line_id,
+            production_line_name=body.production_line_name,
+            camera_id=body.camera_id,
+            station_id=body.station_id,
             box_cfg=configs["box"],
             defect_cfg=configs["defect"],
             stream_cfg=configs["stream"],
-            factory_id=factory_id,
             loop=loop,
         )
         return SessionResponse(
             status="success",
-            report_id=body.report_id,
+            session_id=body.session_id,
             message=f"Session started with camera {body.camera_source}",
         )
     except ValueError as e:
@@ -258,26 +267,22 @@ async def open_session(body: SessionIdentifiers) -> SessionResponse:
 
 
 @app.post("/api/sessions/close", response_model=SessionResponse)
-async def close_session(body: SessionIdentifiers) -> SessionResponse:
-    """Close an active detection session."""
+async def close_session(body: CloseSessionRequest) -> SessionResponse:
+    """Close an active detection session by session_id."""
     try:
-        logger.info(
-            "Closing session: report_id=%s camera_source=%s",
-            body.report_id,
-            body.camera_source,
-        )
+        logger.info("Closing session: session_id=%s", body.session_id)
         ok = session_manager.close_session(
-            report_id=body.report_id,
+            session_id=body.session_id,
             camera_source=body.camera_source,
         )
         if not ok:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session not found or camera mismatch: report_id={body.report_id}",
+                detail=f"Session not found or camera mismatch: session_id={body.session_id}",
             )
         return SessionResponse(
             status="success",
-            report_id=body.report_id,
+            session_id=body.session_id,
             message="Session closed successfully",
         )
     except HTTPException:
@@ -367,7 +372,7 @@ def _client_webrtc_config() -> Dict[str, Any]:
         }
         ice_servers.append(turn_cfg)
         
-    logger.info("Generated client WebRTC config (force_relay=%s, servers=%d)", force_relay, len(ice_servers))
+    logger.debug("WebRTC config: force_relay=%s, servers=%d", force_relay, len(ice_servers))
         
     return {
         "webrtc": {
@@ -389,7 +394,7 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
     Handle WebRTC SDP offer and establish connection.
     Attach the detection stream as a video track.
     """
-    worker = session_manager.get_session(params.report_id)
+    worker = session_manager.get_session(params.session_id)
     if worker is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -439,7 +444,7 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
                 if hasattr(gatherer, "getLocalCandidates"):
                     for c in gatherer.getLocalCandidates():
                         ctype = getattr(c, "type", "unknown")
-                        logger.info("ICE candidate gathered: type=%s", ctype)
+                        logger.debug("ICE candidate gathered: type=%s", ctype)
         except Exception as e:
             logger.debug("ICE candidate logging skipped: %s", e)
 
@@ -486,13 +491,11 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
                         transport = "direct"
 
         except Exception as e:
-            logger.info("WebRTC connected; transport detection failed: %s", e)
+            logger.debug("WebRTC transport detection failed: %s", e)
 
-        logger.info(
-            "WebRTC Connected via: %s (connectionState=%s, iceConnectionState=%s)",
-            transport,
-            pc.connectionState,
-            pc.iceConnectionState,
+        logger.debug(
+            "WebRTC connected via %s (connectionState=%s, iceConnectionState=%s)",
+            transport, pc.connectionState, pc.iceConnectionState,
         )
 
     @pc.on("connectionstatechange")
@@ -501,16 +504,13 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
         if state == "connected":
             await _log_selected_transport()
         elif state in {"failed", "disconnected", "closed"}:
-            logger.info(
-                "WebRTC state=%s, ICE=%s", state, pc.iceConnectionState
-            )
+            logger.debug("WebRTC state=%s, ICE=%s", state, pc.iceConnectionState)
         if state == "failed":
             await pc.close()
             pcs.discard(pc)
         elif state == "closed":
             pcs.discard(pc)
 
-    # Create video track from session
     video_track = VideoTransformTrack()
     worker.add_track(video_track)
 

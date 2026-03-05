@@ -36,7 +36,7 @@ def initialize(credentials_path: str) -> firestore.Client:
     cred = credentials.Certificate(str(path))
     firebase_admin.initialize_app(cred)
     _db = firestore.client()
-    logger.info("Firebase initialized; Firestore client ready")
+    logger.debug("Firebase initialized; Firestore client ready")
     return _db
 
 
@@ -47,22 +47,34 @@ def get_client() -> Optional[firestore.Client]:
 
 def publish_detection(
     factory_id: str,
-    line_id: str,
+    production_line_id: str,
     session_id: str,
     timestamp: str,
     defect: bool,
+    camera_id: str,
+    station_id: str,
+    factory_name: str,
+    production_line_name: str,
+    model_version: str,
+    confidence: float,
 ) -> bool:
     """
     Write a detection event to Firestore. Each call creates a new document
-    under factories/{factory_id}/production_lines/{line_id}/sessions/{session_id}/insights/.
+    under factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/{event_id}.
     Parent documents are auto-created by Firestore if they do not exist.
 
     Args:
         factory_id: Factory identifier.
-        line_id: Production line identifier.
-        session_id: Session identifier (e.g. report_id).
-        timestamp: ISO timestamp string for the detection.
+        production_line_id: Production line identifier.
+        session_id: Session identifier.
+        timestamp: ISO 8601 UTC timestamp string.
         defect: True if defect detected, False otherwise.
+        camera_id: Camera identifier.
+        station_id: Station identifier.
+        factory_name: Human-readable factory name.
+        production_line_name: Human-readable production line name.
+        model_version: Detection model version string.
+        confidence: Detection confidence (0.0–1.0).
 
     Returns:
         True if write succeeded, False otherwise. Does not raise; logs errors.
@@ -78,7 +90,7 @@ def publish_detection(
             db.collection("factories")
             .document(factory_id)
             .collection("production_lines")
-            .document(line_id)
+            .document(production_line_id)
             .collection("sessions")
             .document(session_id)
             .collection("insights")
@@ -86,16 +98,22 @@ def publish_detection(
         ref.add({
             "timestamp": timestamp,
             "defect": defect,
+            "camera_id": camera_id,
+            "station_id": station_id,
+            "factory_name": factory_name,
+            "production_line_name": production_line_name,
+            "model_version": model_version,
+            "confidence": confidence,
         })
         logger.info(
             "Detection sent → factory=%s line=%s session=%s defect=%s",
-            factory_id, line_id, session_id, defect,
+            factory_id, production_line_id, session_id, defect,
         )
         return True
     except Exception as e:
         logger.error(
             "Firestore write failed: factory=%s line=%s session=%s error=%s",
-            factory_id, line_id, session_id, e,
+            factory_id, production_line_id, session_id, e,
             exc_info=True,
         )
         return False

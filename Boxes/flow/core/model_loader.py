@@ -34,17 +34,15 @@ class ModelLoader:
             defect_model_path: Path to defect detection model
         """
         if self._loaded:
-            logger.info("Models already loaded")
+            logger.debug("Models already loaded")
             return
 
-        logger.info("Loading box detection model from %s", box_model_path)
+        logger.info("Loading box model: %s", box_model_path)
         self.box_model = YOLO(box_model_path, task="detect")
-
-        logger.info("Loading defect detection model from %s", defect_model_path)
+        logger.info("Loading defect model: %s", defect_model_path)
         self.defect_model = YOLO(defect_model_path, task="detect")
-
         self._loaded = True
-        logger.info("Models loaded successfully")
+        logger.info("Models loaded")
 
     def warmup(self, device: str = "0") -> None:
         """Run dummy inference to warm up GPU/cache. Reduces first-frame latency."""
@@ -55,7 +53,7 @@ class ModelLoader:
             dummy = np.zeros((480, 640, 3), dtype=np.uint8)
             self.box_model(dummy, verbose=False, device=device)
             self.defect_model(dummy, verbose=False, device=device)
-            logger.info("Model warmup complete")
+            logger.debug("Model warmup complete")
         except Exception as e:
             logger.warning("Model warmup failed (non-fatal): %s", e)
 

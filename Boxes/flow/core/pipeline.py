@@ -117,11 +117,11 @@ class Pipeline:
         self.fps = 0.0
 
         # ── Task 6: Runtime metrics (read by api_server /api/metrics) ──
-        # Written by pipeline thread only; read by API route (lightweight).
-        # Floats are GIL-safe for single reads — no explicit lock needed.
         self.pipeline_fps: float = 0.0
         self.camera_fps_estimate: float = 0.0
         self.queue_latency_ms: float = 0.0
+        self._last_diag_log_time: float = time.time()
+        self._diag_log_interval: float = 30.0
 
     def run(self, stop_event: Optional[threading.Event] = None):
         """
@@ -175,6 +175,13 @@ class Pipeline:
 
                 self.frame_count += 1
                 self.update_fps()
+                now = time.time()
+                if now - self._last_diag_log_time >= self._diag_log_interval:
+                    logger.info(
+                        "Pipeline diagnostics: pipeline_fps=%.1f camera_fps=%.1f queue_latency_ms=%.1f",
+                        self.pipeline_fps, self.camera_fps_estimate, self.queue_latency_ms,
+                    )
+                    self._last_diag_log_time = now
                 h, w = frame.shape[:2]
 
                 # Prepare Canvas
@@ -265,7 +272,7 @@ class Pipeline:
             logger.error("Pipeline error: %s", e, exc_info=True)
         finally:
             self.cleanup()
-            logger.info("Session pipeline ended. Total frames: %d", self.frame_count)
+            logger.info("Session pipeline ended (frames=%d)", self.frame_count)
 
     def _match_track(self, boxes_roi: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
         """

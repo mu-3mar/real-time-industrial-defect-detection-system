@@ -38,10 +38,9 @@ Source comes from `camera_source` in POST /api/sessions/open.
 | Key | Purpose |
 |-----|---------|
 | `credentials_path` | Filename of Firebase service account JSON in `config/` |
-| `factory_id` | Default factory identifier (override with env `FACTORY_ID`) |
 
-Insights are written to Firestore at:
-`factories/{factory_id}/production_lines/{line_id}/sessions/{session_id}/insights/`.
+All factory/line/session metadata is provided in POST /api/sessions/open; nothing is hardcoded. Insights are written to:
+`factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/`.
 
 ## box_detector.yaml (required)
 
@@ -57,6 +56,7 @@ Insights are written to Firestore at:
 | Key | Purpose |
 |-----|---------|
 | `model_path` | Path to defect detection model |
+| `model_version` | Optional; version string written to Firestore insights (default "1.0") |
 | `conf_thres` | Confidence threshold |
 | `iou_thres` | IoU threshold |
 | `device` | Device |

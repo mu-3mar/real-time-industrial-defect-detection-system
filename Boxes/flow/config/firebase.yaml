@@ -1,0 +1,3 @@
+# Firebase Firestore for detection insights.
+# All factory/line/session metadata comes from the open-session request; nothing is hardcoded here.
+credentials_path: "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json"
