@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
@@ -152,11 +153,11 @@ def _load_configs(base: Path) -> None:
                 configs[key] = yaml.safe_load(f) or {}
         else:
             configs[key] = {}
-    # Defaults for optional central config
+    # Defaults when webrtc.yaml is missing (e.g. not committed; use env TURN_SECRET or add webrtc.yaml)
     if "webrtc" not in configs or not configs["webrtc"]:
         configs["webrtc"] = {
             "stun": {"urls": "stun:20.51.117.96:3478"},
-            "turn": {"urls": "turn:20.51.117.96:3478", "username": "turnuser", "credential": "Sup3r$tr0ngP@ssw0rd"},
+            "turn": {"urls": "turn:20.51.117.96:3478", "secret": os.environ.get("TURN_SECRET", "")},
         }
 
     # Service configs (now co-located in config/ alongside environment configs)

@@ -46,9 +46,26 @@ outputs/
 
 # Secrets and credentials (do not commit)
 secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Firebase service account keys (private keys inside)
 Boxes/flow/config/*.json
 Boxes/flow/config/*credentials*
 *firebase-adminsdk*.json
+**/firebase*adminsdk*.json
+
+# WebRTC TURN secret (webrtc.yaml contains secret)
+Boxes/flow/config/webrtc.yaml
+
+# Local overrides that may contain secrets
+*local*.yaml
+*local*.yml
+*secrets*.yaml
+*secrets*.yml
+config.local.*
 
 # Editor and OS
 .vscode/

@@ -1,0 +1,10 @@
+# WebRTC ICE configuration. Copy to webrtc.yaml and set your TURN secret.
+# webrtc.yaml is gitignored (contains secret).
+stun:
+  urls: "stun:YOUR_STUN_HOST:3478"
+
+turn:
+  urls: "turn:YOUR_TURN_HOST:3478"
+  secret: "YOUR_TURN_SECRET"
+
+force_relay: false
