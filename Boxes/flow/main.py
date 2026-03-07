@@ -41,7 +41,7 @@ def main():
     print("=" * 60)
 
     uvicorn.run(
-        "api_server:app",
+        "api.api_server:app",
         host=api_cfg["host"],
         port=api_cfg["port"],
         log_level=api_cfg["log_level"],

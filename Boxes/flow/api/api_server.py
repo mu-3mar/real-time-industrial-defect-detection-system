@@ -4,20 +4,26 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import logging
 import os
-import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
 
 import yaml
+from dotenv import load_dotenv
 
-# Repo root for shared device_manager
-_repo_root = Path(__file__).resolve().parent.parent.parent
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
-from device_manager import select_device
+# Base path: Boxes/flow (parent of api/)
+_base_flow = Path(__file__).resolve().parent.parent
+_repo_root = _base_flow.parent.parent
+# Load environment secrets: Boxes/flow/config/.env then flow dir .env then repo root .env then cwd
+load_dotenv(_base_flow / "config" / ".env")
+load_dotenv(_base_flow / ".env")
+load_dotenv(_repo_root / ".env")
+load_dotenv()
+
+from core.device_manager import select_device
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -48,7 +54,7 @@ def _get_cors_config() -> tuple:
     - If config/app.yaml has cors_origins (non-empty list): use those with credentials=True.
     - Else: use ["*"] with credentials=False (works for localhost, LAN, remote out-of-the-box).
     """
-    base = Path(__file__).resolve().parent
+    base = _base_flow
     app_cfg_path = base / "config" / "app.yaml"
     if app_cfg_path.exists():
         try:
@@ -211,24 +217,39 @@ def _load_configs(base: Path) -> None:
     configs["box"]["device"] = resolved_device
     configs["defect"]["device"] = resolved_device
 
-    # Initialize Firebase Firestore (credentials only; no static factory/line data)
+    # Initialize Firebase Realtime Database (credentials + database URL from env/config)
     fb_cfg = configs["firebase"]
     cred_path = base / "config" / fb_cfg.get("credentials_path", "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json")
-    init_firebase(str(cred_path))
+    database_url = os.environ.get("FIREBASE_DATABASE_URL", "").strip()
+    if not database_url:
+        config_json_path = base / "config" / "firebase_config.json"
+        if config_json_path.exists():
+            with open(config_json_path) as f:
+                fb_secrets = json.load(f)
+                database_url = (fb_secrets.get("FIREBASE_DATABASE_URL") or fb_secrets.get("database_url") or "").strip()
+    if not database_url:
+        raise ValueError(
+            "FIREBASE_DATABASE_URL must be set. Use Boxes/flow/config/.env or firebase_config.json "
+            "(see Boxes/flow/config/.env.example)."
+        )
+    init_firebase(str(cred_path), database_url)
 
 
 @app.on_event("startup")
 async def startup_event() -> None:
     """Initialize configs, models, and Firebase client."""
-    base = Path(__file__).resolve().parent
+    base = _base_flow
     logger.info("Starting QC-SCM Detection Service...")
     try:
         _load_configs(base)
         model_loader = ModelLoader.get_instance()
-        model_loader.load_models(
-            configs["box"]["model_path"],
-            configs["defect"]["model_path"],
-        )
+        box_path = configs["box"]["model_path"]
+        defect_path = configs["defect"]["model_path"]
+        if not Path(box_path).is_absolute():
+            box_path = str(base / box_path)
+        if not Path(defect_path).is_absolute():
+            defect_path = str(base / defect_path)
+        model_loader.load_models(box_path, defect_path)
         device = str(configs.get("box", {}).get("device", "0"))
         model_loader.warmup(device=device)
         logger.info("Service startup complete")
@@ -529,7 +550,7 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
     def on_track(track):
         # We don't handle incoming tracks (audio/video from client)
         pass
-    
+
     # We add track to PC to send video to client
     pc.addTrack(video_track)
 

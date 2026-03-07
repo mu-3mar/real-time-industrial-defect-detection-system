@@ -9,11 +9,12 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
-# Repo root for device_manager
-repo_root = current_file.parent.parent.parent.parent.parent
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-from device_manager import select_device
+# Boxes/flow for device_manager
+_boxes = current_file.parent.parent.parent.parent
+_flow = _boxes / "flow"
+if str(_flow) not in sys.path:
+    sys.path.insert(0, str(_flow))
+from core.device_manager import select_device
 
 from configs.config import (
     ROOT, PROJECT_DIR, DATA_YAML, BASE_MODEL, 

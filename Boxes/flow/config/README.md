@@ -39,7 +39,9 @@ Source comes from `camera_source` in POST /api/sessions/open.
 |-----|---------|
 | `credentials_path` | Filename of Firebase service account JSON in `config/` |
 
-All factory/line/session metadata is provided in POST /api/sessions/open; nothing is hardcoded. Insights are written to:
+**Database URL (required):** Set `FIREBASE_DATABASE_URL` in `.env` (copy from `.env.example`) or in `config/firebase_config.json` (e.g. `{"FIREBASE_DATABASE_URL": "https://..."}`). Do not hardcode in source.
+
+All factory/line/session metadata is provided in POST /api/sessions/open; nothing is hardcoded. Insights are written to Firebase Realtime Database at:
 `factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/`.
 
 ## box_detector.yaml (required)
@@ -56,7 +58,7 @@ All factory/line/session metadata is provided in POST /api/sessions/open; nothin
 | Key | Purpose |
 |-----|---------|
 | `model_path` | Path to defect detection model |
-| `model_version` | Optional; version string written to Firestore insights (default "1.0") |
+| `model_version` | Optional; version string written to Realtime Database insights (default "1.0") |
 | `conf_thres` | Confidence threshold |
 | `iou_thres` | IoU threshold |
 | `device` | Same as box_detector; both use one resolved device |

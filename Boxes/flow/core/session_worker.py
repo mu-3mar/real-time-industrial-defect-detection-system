@@ -56,7 +56,7 @@ class SessionWorker(threading.Thread):
         self._tracks_lock = threading.Lock()
 
     def _on_result(self, is_defect: bool) -> None:
-        """Callback when box exits; publish result to Firestore."""
+        """Callback when box exits; publish result to Firebase Realtime Database."""
         logger.info(
             "Publishing detection → session=%s line=%s defect=%s",
             self.session_id, self.production_line_id, is_defect,

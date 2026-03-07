@@ -1,6 +1,6 @@
 # QC-SCM: Quality Control — Supply Chain Management
 
-AI-driven quality inspection system for manufacturing: **train** YOLO models (box + defect), then **run** a real-time detection server that streams video over WebRTC and writes detection events to Firebase Firestore. All factory and production-line metadata is provided by the client; the server does not store static configuration.
+AI-driven quality inspection system for manufacturing: **train** YOLO models (box + defect), then **run** a real-time detection server that streams video over WebRTC and writes detection events to Firebase Realtime Database. All factory and production-line metadata is provided by the client; the server does not store static configuration.
 
 ---
 
@@ -8,7 +8,7 @@ AI-driven quality inspection system for manufacturing: **train** YOLO models (bo
 
 | Part | Purpose |
 |------|--------|
-| **Boxes/flow** | Detection server: FastAPI, two-stage pipeline (box → defect), WebRTC streaming, Firestore publishing. |
+| **Boxes/flow** | Detection server: FastAPI, two-stage pipeline (box → defect), WebRTC streaming, Firebase Realtime Database publishing. |
 | **Boxes/trainig** | Model training: box-YOLO (detect boxes) and defect-YOLO (classify defects). Train → export ONNX → quantize → use in flow. |
 | **index.html** | Single-page HTML test client to open sessions, stream video, and test the API. |
 | **pyproject.toml** | Python dependencies for the whole project. |
@@ -27,9 +27,13 @@ QC-SCM/
 ├── Boxes/
 │   ├── flow/                     # Detection server (runtime)
 │   │   ├── main.py               # Entry point: loads api.yaml, runs uvicorn
-│   │   ├── api_server.py         # FastAPI app: sessions, health, WebRTC, config
-│   │   ├── config/               # YAML configs (api, app, webrtc, firebase, box, defect, stream)
-│   │   ├── core/                 # Pipeline, session worker, stream, state, Firebase client
+│   │   ├── api/                  # API layer
+│   │   │   └── api_server.py     # FastAPI app: sessions, health, WebRTC, config
+│   │   ├── config/               # YAML configs, .env.example, firebase_config.json.example
+│   │   ├── core/                 # Pipeline, session worker, stream, state, Firebase client, device_manager
+│   │   ├── docs/                 # Service docs (endpoints.md, README.md)
+│   │   ├── scripts/              # run_dev.sh
+│   │   ├── requirements/         # requirements.txt for flow runtime
 │   │   ├── detectors/            # YOLO/ONNX detector wrapper
 │   │   ├── utils/                # Visualizer, geometry
 │   │   └── models/               # ONNX models (e.g. detect_box_int8.onnx, defect_box_int8.onnx)
@@ -65,7 +69,7 @@ QC-SCM/
 
 ## Boxes/flow — Detection server (full details)
 
-The **flow** folder is the runtime: it loads ONNX models, runs the two-stage pipeline per session, streams video over WebRTC, and writes each box result to Firestore.
+The **flow** folder is the runtime: it loads ONNX models, runs the two-stage pipeline per session, streams video over WebRTC, and writes each box result to Firebase Realtime Database.
 
 ### Entry point and API
 
@@ -74,7 +78,7 @@ The **flow** folder is the runtime: it loads ONNX models, runs the two-stage pip
 
 - **api_server.py**  
   - Loads configs from `config/` (app, webrtc, box, defect, stream, firebase).  
-  - Initializes Firebase with the path from `firebase.yaml`.  
+  - Initializes Firebase Realtime Database using credentials from `firebase.yaml` and database URL from `.env` or `config/firebase_config.json`.  
   - Endpoints:  
     - `POST /api/sessions/open` — open session (body: factory_id, factory_name, production_line_id, production_line_name, camera_id, camera_source, station_id, session_id).  
     - `POST /api/sessions/close` — close session (body: session_id, optional camera_source).  
@@ -90,7 +94,7 @@ The **flow** folder is the runtime: it loads ONNX models, runs the two-stage pip
 - **core/pipeline.py** — Camera → box detection → defect detection → entry/exit and voting; updates FPS/latency; calls `on_result_callback` when a box exits.  
 - **core/stream.py** — `CamStream`: dedicated capture thread, deque(maxlen=1), non-blocking `get_latest_frame()`.  
 - **core/state.py** — Per-track state: voting, defect lock, entry/exit, recovery.  
-- **core/firebase_client.py** — Initializes Firebase from credentials path; `publish_detection(...)` writes one document per detection to Firestore.  
+- **core/firebase_client.py** — Initializes Firebase from credentials path and database URL; `publish_detection(...)` pushes one record per detection to Realtime Database.  
 - **core/model_loader.py** — Singleton: loads box and defect ONNX models from paths in config.  
 - **core/webrtc_track.py** — Video track for WebRTC; receives frames from the pipeline.  
 - **detectors/detector.py** — Wrapper around YOLO/ONNX inference.  
@@ -103,22 +107,22 @@ The **flow** folder is the runtime: it loads ONNX models, runs the two-stage pip
 | **api.yaml** | host, port, log_level (used by main.py / uvicorn). |
 | **app.yaml** | Optional CORS origins. |
 | **webrtc.yaml** | STUN/TURN URLs and **secret** (gitignored; use webrtc.example.yaml as template). |
-| **firebase.yaml** | `credentials_path`: filename of Firebase service account JSON in this folder (JSON is gitignored). |
+| **firebase.yaml** | `credentials_path`: filename of Firebase service account JSON in this folder (JSON is gitignored). Database URL via `FIREBASE_DATABASE_URL` in `.env` or `firebase_config.json`. |
 | **box_detector.yaml** | model_path, conf_thres, iou_thres, device. |
 | **defect_detector.yaml** | model_path, model_version, conf_thres, iou_thres, device, tracking, stability, rendering. |
 | **stream.yaml** | width, height; throttle (e.g. box/defect every N frames). |
 
 See **Boxes/flow/config/README.md** for a full config reference.
 
-### Firebase Firestore structure
+### Firebase Realtime Database structure
 
 Events are written under:
 
 ```
-factories / {factory_id} / production_lines / {production_line_id} / sessions / {session_id} / insights / {event_id}
+factories / {factory_id} / production_lines / {production_line_id} / sessions / {session_id} / insights / {auto_generated_event_id}
 ```
 
-Each insight document: `timestamp`, `defect`, `camera_id`, `station_id`, `factory_name`, `production_line_name`, `model_version`, `confidence`.
+Each insight record: `timestamp`, `defect`, `camera_id`, `station_id`, `factory_name`, `production_line_name`, `model_version`, `confidence`.
 
 ### HTML test client (index.html)
 
@@ -190,6 +194,7 @@ Ensure `data/data/data.yaml` and (if used) `models/pretrained/yolo26n.pt` exist.
 
 3. **Flow server:**  
    - Put Firebase service account JSON in `Boxes/flow/config/` and set `credentials_path` in `Boxes/flow/config/firebase.yaml`.  
+   - Set `FIREBASE_DATABASE_URL` in `Boxes/flow/config/.env` (copy from `Boxes/flow/config/.env.example`) or in `Boxes/flow/config/firebase_config.json` (copy from `firebase_config.json.example`). Do not commit `.env`.  
    - Optionally copy `Boxes/flow/config/webrtc.example.yaml` to `webrtc.yaml` and set your TURN secret (or set `TURN_SECRET` env var).  
    - Ensure `Boxes/flow/config/box_detector.yaml` and `defect_detector.yaml` point to existing ONNX files under `Boxes/flow/models/`.
 
@@ -200,18 +205,31 @@ Ensure `data/data/data.yaml` and (if used) `models/pretrained/yolo26n.pt` exist.
 
 ## Running the detection server
 
-From project root:
+Activate the `qc` conda environment (lowercase), then run from `Boxes/flow`:
 
 ```bash
-cd Boxes/flow
-python main.py
+source ~/anaconda3/etc/profile.d/conda.sh && conda activate qc && cd Boxes/flow && python main.py
 ```
 
-Or:
+Or from project root:
+
+Or from repo root with conda:
+
+```bash
+source ~/anaconda3/etc/profile.d/conda.sh && conda activate qc && cd Boxes/flow && python main.py
+```
+
+Or run the script:
+
+```bash
+./Boxes/flow/scripts/run_dev.sh
+```
+
+Or uvicorn directly from `Boxes/flow`:
 
 ```bash
 cd Boxes/flow
-python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
+python -m uvicorn api.api_server:app --host 0.0.0.0 --port 8000
 ```
 
 - API: `http://localhost:8000`  
@@ -225,7 +243,7 @@ python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
 1. Start the server (see above).  
 2. Open `index.html` in a browser (or serve the repo root).  
 3. Set API base URL if needed (e.g. `http://localhost:8000`).  
-4. Open a session (factory + line), start stream, check video and (if configured) Firestore insights.
+4. Open a session (factory + line), start stream, check video and (if configured) Realtime Database insights.
 
 ---
 
@@ -242,9 +260,9 @@ python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
 
 ---
 
-## Firestore insight document
+## Realtime Database insight record
 
-Each detection event is one document in  
+Each detection event is one record (auto-generated key) in  
 `factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/`.
 
 | Field | Type | Description |
@@ -265,4 +283,4 @@ Each detection event is one document in
 - **Backend:** FastAPI, Uvicorn  
 - **Detection:** OpenCV, Ultralytics YOLO (training), ONNX Runtime (inference)  
 - **Streaming:** WebRTC (aiortc)  
-- **Events:** Firebase Firestore (firebase-admin)
+- **Events:** Firebase Realtime Database (firebase-admin)

@@ -1,3 +1,4 @@
-# Firebase Firestore for detection insights.
+# Firebase Realtime Database for detection insights.
 # All factory/line/session metadata comes from the open-session request; nothing is hardcoded here.
+# Database URL must be set via FIREBASE_DATABASE_URL (e.g. in .env) or firebase_config.json (see .env.example).
 credentials_path: "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json"

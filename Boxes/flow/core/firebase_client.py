@@ -1,31 +1,32 @@
-"""Firebase Firestore client for publishing detection events."""
+"""Firebase Realtime Database client for publishing detection events."""
 
 import logging
 from pathlib import Path
 from typing import Optional
 
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, db
 
 logger = logging.getLogger(__name__)
 
-_db: Optional[firestore.Client] = None
+_initialized: bool = False
 
 
-def initialize(credentials_path: str) -> firestore.Client:
+def initialize(credentials_path: str, database_url: str) -> bool:
     """
-    Initialize Firebase Admin SDK and return Firestore client.
-    Idempotent: if already initialized, returns existing client.
+    Initialize Firebase Admin SDK with Realtime Database and return success.
+    Idempotent: if already initialized, returns True.
 
     Args:
         credentials_path: Path to service account JSON file.
+        database_url: Firebase Realtime Database URL (e.g. from FIREBASE_DATABASE_URL).
 
     Returns:
-        Firestore client instance.
+        True if initialized successfully.
     """
-    global _db
-    if _db is not None:
-        return _db
+    global _initialized
+    if _initialized:
+        return True
 
     path = Path(credentials_path)
     if not path.is_absolute():
@@ -33,16 +34,19 @@ def initialize(credentials_path: str) -> firestore.Client:
     if not path.exists():
         raise FileNotFoundError(f"Firebase credentials not found: {path}")
 
+    if not database_url or not database_url.strip():
+        raise ValueError("Firebase Realtime Database URL is required (e.g. FIREBASE_DATABASE_URL)")
+
     cred = credentials.Certificate(str(path))
-    firebase_admin.initialize_app(cred)
-    _db = firestore.client()
-    logger.debug("Firebase initialized; Firestore client ready")
-    return _db
+    firebase_admin.initialize_app(cred, {"databaseURL": database_url.strip()})
+    _initialized = True
+    logger.debug("Firebase initialized; Realtime Database client ready")
+    return True
 
 
-def get_client() -> Optional[firestore.Client]:
-    """Return the Firestore client if initialized, else None."""
-    return _db
+def get_initialized() -> bool:
+    """Return True if Firebase has been initialized."""
+    return _initialized
 
 
 def publish_detection(
@@ -59,9 +63,9 @@ def publish_detection(
     confidence: float,
 ) -> bool:
     """
-    Write a detection event to Firestore. Each call creates a new document
-    under factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/{event_id}.
-    Parent documents are auto-created by Firestore if they do not exist.
+    Write a detection event to Firebase Realtime Database. Each call pushes a new
+    record under factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/
+    with an auto-generated key.
 
     Args:
         factory_id: Factory identifier.
@@ -79,32 +83,28 @@ def publish_detection(
     Returns:
         True if write succeeded, False otherwise. Does not raise; logs errors.
     """
-    client = get_client()
-    if client is None:
-        logger.error("Firestore not initialized; cannot publish detection")
+    if not _initialized:
+        logger.error("Firebase not initialized; cannot publish detection")
         return False
 
+    path = (
+        f"factories/{factory_id}/production_lines/{production_line_id}"
+        f"/sessions/{session_id}/insights"
+    )
+    result = {
+        "timestamp": timestamp,
+        "defect": defect,
+        "camera_id": camera_id,
+        "station_id": station_id,
+        "factory_name": factory_name,
+        "production_line_name": production_line_name,
+        "model_version": model_version,
+        "confidence": confidence,
+    }
+
     try:
-        db = client
-        ref = (
-            db.collection("factories")
-            .document(factory_id)
-            .collection("production_lines")
-            .document(production_line_id)
-            .collection("sessions")
-            .document(session_id)
-            .collection("insights")
-        )
-        ref.add({
-            "timestamp": timestamp,
-            "defect": defect,
-            "camera_id": camera_id,
-            "station_id": station_id,
-            "factory_name": factory_name,
-            "production_line_name": production_line_name,
-            "model_version": model_version,
-            "confidence": confidence,
-        })
+        ref = db.reference(path)
+        ref.push(result)
         logger.info(
             "Detection sent → factory=%s line=%s session=%s defect=%s",
             factory_id, production_line_id, session_id, defect,
@@ -112,7 +112,7 @@ def publish_detection(
         return True
     except Exception as e:
         logger.error(
-            "Firestore write failed: factory=%s line=%s session=%s error=%s",
+            "Realtime Database write failed: factory=%s line=%s session=%s error=%s",
             factory_id, production_line_id, session_id, e,
             exc_info=True,
         )
