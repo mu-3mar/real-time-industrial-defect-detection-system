@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import Optional, Callable, Dict, Any, List, Tuple
+from typing import Optional, Callable, Dict, Any, List, Tuple, Union
 
 import cv2
 import numpy as np
@@ -122,6 +122,111 @@ class Pipeline:
         self.queue_latency_ms: float = 0.0
         self._last_diag_log_time: float = time.time()
         self._diag_log_interval: float = 30.0
+
+    def run_step(
+        self,
+        frame: np.ndarray,
+        enqueue_time: Optional[float] = None,
+        camera_fps: Optional[float] = None,
+    ) -> Tuple[np.ndarray, Optional[bool]]:
+        """
+        Process one frame: detection, tracking, drawing. Used by the single
+        inference thread in a producer-consumer setup. Does NOT call
+        on_result_callback or on_frame_callback; caller routes results via queues.
+
+        Args:
+            frame: BGR frame from camera.
+            enqueue_time: Optional time.time() when frame was enqueued (for latency metrics).
+            camera_fps: Optional camera FPS estimate.
+
+        Returns:
+            (canvas, exit_event): canvas is the annotated frame; exit_event is None
+            normally, or is_defect (bool) when a box just exited and a result should be published.
+        """
+        if enqueue_time is not None and enqueue_time > 0:
+            self.queue_latency_ms = (time.time() - enqueue_time) * 1000.0
+        if camera_fps is not None:
+            self.camera_fps_estimate = camera_fps
+
+        try:
+            self.state.tick_recent_lost_track()
+        except Exception:
+            logger.debug("tick_recent_lost_track() encountered an error", exc_info=False)
+
+        self.frame_count += 1
+        self.update_fps()
+        now = time.time()
+        if now - self._last_diag_log_time >= self._diag_log_interval:
+            logger.info(
+                "Pipeline diagnostics: pipeline_fps=%.1f camera_fps=%.1f queue_latency_ms=%.1f",
+                self.pipeline_fps, self.camera_fps_estimate, self.queue_latency_ms,
+            )
+            self._last_diag_log_time = now
+
+        h, w = frame.shape[:2]
+        canvas = cv2.copyMakeBorder(
+            frame, 0, 0, self.visualizer.info_width, 0,
+            cv2.BORDER_CONSTANT, value=(235, 235, 235),
+        )
+        self.visualizer.draw_layout(canvas)
+        self.visualizer.draw_stats(canvas, self.state, self.fps)
+        roi_offset = self.visualizer.info_width
+        roi = frame[:, self.LEFT_X - roi_offset : self.RIGHT_X - roi_offset]
+
+        if self.frame_count % self.box_detect_every_n == 0:
+            box_result = self.box_detector.detect(roi)
+            self._last_boxes_roi = (
+                box_result.boxes.xyxy.cpu().numpy()
+                if box_result.boxes is not None
+                else np.zeros((0, 4))
+            )
+        boxes_roi = self._last_boxes_roi
+
+        matched_box, detected = self._match_track(boxes_roi)
+        label, color, final_code = "—", (128, 128, 128), "OK"
+        defect_boxes: List[np.ndarray] = []
+
+        if detected and matched_box is not None:
+            x1, y1, x2, y2 = matched_box[0], matched_box[1], matched_box[2], matched_box[3]
+            frame_x1 = int(x1) + (self.LEFT_X - roi_offset)
+            frame_x2 = int(x2) + (self.LEFT_X - roi_offset)
+            crop = frame[int(y1):int(y2), frame_x1:frame_x2]
+            is_defect, defect_boxes = self._check_defect_track(crop)
+            self.state.update_history(is_defect)
+            if defect_boxes:
+                boxes_relative = [
+                    (float(d[0]), float(d[1]), float(d[2]), float(d[3]))
+                    for d in defect_boxes
+                ]
+                self.state.add_defect_boxes_relative(boxes_relative)
+            label, color, final_code = self.state.get_status()
+            box_for_draw = matched_box.astype(np.float32)
+            self.visualizer.draw_box(canvas, box_for_draw, label, color)
+            accumulated = self.state.get_accumulated_defect_boxes()
+            is_early_phase = self.state.is_early_detection_phase()
+            if accumulated and is_early_phase:
+                self.visualizer.draw_defects(
+                    canvas,
+                    (int(x1), int(y1)),
+                    accumulated,
+                    is_early_phase=is_early_phase,
+                    visibility_threshold=self.defect_visibility_threshold,
+                )
+
+        self.state.increment_defect_lock_frame()
+        just_exited, final_decision = self.state.process_entry_exit(detected)
+        exit_event: Optional[bool] = None
+        if just_exited:
+            self._current_track = None
+            is_defect = final_decision == "DEFECT"
+            logger.info(
+                "Box processed: decision=%s total=%d defect=%d ok=%d",
+                final_decision, self.state.total_count,
+                self.state.defect_count, self.state.ok_count,
+            )
+            exit_event = is_defect
+
+        return canvas, exit_event
 
     def run(self, stop_event: Optional[threading.Event] = None):
         """

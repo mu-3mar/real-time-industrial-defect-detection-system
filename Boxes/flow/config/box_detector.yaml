@@ -1,4 +1,4 @@
-model_path: models/detect_box_int8.onnx
+model_path: models/detect_box.onnx
 conf_thres: 0.8
 iou_thres: 0.6
 device: auto

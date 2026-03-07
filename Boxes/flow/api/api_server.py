@@ -37,6 +37,7 @@ from aiortc import (
 
 from core.model_loader import ModelLoader
 from core.firebase_client import initialize as init_firebase
+from core.pipeline_manager import PipelineManager
 from core.session_manager import SessionManager
 from core.webrtc_track import VideoTransformTrack
 
@@ -252,6 +253,13 @@ async def startup_event() -> None:
         model_loader.load_models(box_path, defect_path)
         device = str(configs.get("box", {}).get("device", "0"))
         model_loader.warmup(device=device)
+        # Diagnostics: log GPU availability for FPS bottleneck analysis
+        try:
+            import torch
+            gpu_available = torch.cuda.is_available()
+            logger.info("[DIAG] inference device=%s | torch.cuda.is_available()=%s", device, gpu_available)
+        except ImportError:
+            logger.info("[DIAG] inference device=%s | torch not imported", device)
         logger.info("Service startup complete")
     except Exception as e:
         logger.error("Startup error: %s", e, exc_info=True)
@@ -260,7 +268,8 @@ async def startup_event() -> None:
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
-    """Clean up WebRTC connections."""
+    """Clean up WebRTC connections and pipeline manager workers."""
+    PipelineManager.get_instance().shutdown()
     coros = [pc.close() for pc in pcs]
     await asyncio.gather(*coros)
     pcs.clear()

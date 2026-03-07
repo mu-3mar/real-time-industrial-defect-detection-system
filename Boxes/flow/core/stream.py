@@ -104,6 +104,10 @@ class CamStream:
         # Track when a frame was enqueued (for latency measurement by consumer)
         self._last_enqueue_time: float = 0.0
 
+        # Diagnostics: periodic log of camera_capture_fps
+        self._diag_last_log: float = 0.0
+        self._diag_log_interval: float = 10.0
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def start(self) -> "CamStream":
@@ -200,6 +204,15 @@ class CamStream:
                     self._camera_fps = fps_count / elapsed
                 fps_last_time = now
                 fps_count = 0
+
+            # ── Diagnostics: log camera_capture_fps periodically ──
+            now = time.time()
+            if now - self._diag_last_log >= self._diag_log_interval:
+                self._diag_last_log = now
+                logger.info(
+                    "[DIAG] camera_capture_fps=%.1f (capture thread, %d frames total)",
+                    self._camera_fps, self._capture_frame_count,
+                )
 
         logger.debug(
             "Camera capture loop exited. Total frames captured: %d",

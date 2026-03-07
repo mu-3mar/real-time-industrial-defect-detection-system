@@ -3,21 +3,24 @@
 import asyncio
 import logging
 import threading
+import time
 from datetime import datetime
 from typing import Any, Optional, Union, Set
 
 import numpy as np
 
-from core.firebase_client import publish_detection
 from core.pipeline import Pipeline
+from core.pipeline_diagnostics import get_diagnostics
+from core.pipeline_manager import PipelineManager
 
 logger = logging.getLogger(__name__)
 
 
 class SessionWorker(threading.Thread):
     """
-    Runs a detection session in a background thread.
-    All factory/line/camera metadata is provided at creation; no static mappings.
+    Runs a detection session: starts camera, feeds frames to the single
+    inference thread via PipelineManager, and registers pipeline/tracks/Firebase meta.
+    Firebase and WebRTC updates are handled by manager workers; inference never waits on them.
     """
 
     def __init__(
@@ -54,42 +57,31 @@ class SessionWorker(threading.Thread):
         self._pipeline_ref: Optional[Pipeline] = None
         self._tracks: Set[Any] = set()
         self._tracks_lock = threading.Lock()
+        self._feeder_thread: Optional[threading.Thread] = None
+        self._manager = PipelineManager.get_instance()
 
-    def _on_result(self, is_defect: bool) -> None:
-        """Callback when box exits; publish result to Firebase Realtime Database."""
-        logger.info(
-            "Publishing detection → session=%s line=%s defect=%s",
-            self.session_id, self.production_line_id, is_defect,
-        )
-        timestamp = datetime.utcnow().isoformat() + "Z"
-        model_version = str(self._defect_cfg.get("model_version", "1.0"))
-        confidence = 1.0 if is_defect else 0.0
-        publish_detection(
-            factory_id=self.factory_id,
-            production_line_id=self.production_line_id,
-            session_id=self.session_id,
-            timestamp=timestamp,
-            defect=is_defect,
-            camera_id=self.camera_id,
-            station_id=self.station_id,
-            factory_name=self.factory_name,
-            production_line_name=self.production_line_name,
-            model_version=model_version,
-            confidence=confidence,
-        )
-
-    def _on_frame(self, frame: np.ndarray) -> None:
-        """Callback from pipeline; update all active WebRTC tracks."""
-        with self._tracks_lock:
-            tracks = list(self._tracks)
-        for track in tracks:
-            try:
-                track.update_frame(frame)
-            except Exception as e:
-                logger.error("Error updating track for session %s: %s", self.session_id, e)
+    def _camera_feeder_loop(self) -> None:
+        """Feed frames from this session's stream into the shared frame queue (non-blocking for inference)."""
+        stream = self._pipeline_ref.stream if self._pipeline_ref else None
+        if stream is None:
+            return
+        diag = get_diagnostics()
+        while not self._stop_event.is_set():
+            ret, frame = stream.get_latest_frame()
+            if not ret or frame is None:
+                time.sleep(0.001)
+                continue
+            enqueue_time = stream.last_enqueue_time
+            camera_fps = stream.camera_fps
+            diag.set_camera_capture_fps(camera_fps)
+            ok = self._manager.put_frame(self.session_id, frame, enqueue_time, camera_fps)
+            diag.record_frame_enqueue(ok)
+            if not ok:
+                pass  # Queue full; drop frame to avoid blocking camera
+            time.sleep(0)
 
     def run(self) -> None:
-        """Entry point for worker thread."""
+        """Start camera, register with PipelineManager, run camera feeder until stop."""
         self._started_at = datetime.utcnow()
         try:
             self._pipeline_ref = Pipeline(
@@ -97,20 +89,50 @@ class SessionWorker(threading.Thread):
                 defect_cfg=self._defect_cfg,
                 stream_cfg=self._stream_cfg,
                 headless=True,
-                on_result_callback=self._on_result,
-                on_frame_callback=self._on_frame,
+                on_result_callback=None,
+                on_frame_callback=None,
             )
-            self._pipeline_ref.run(stop_event=self._stop_event)
+            self._pipeline_ref.stream.start()
+
+            firebase_meta = {
+                "factory_id": self.factory_id,
+                "production_line_id": self.production_line_id,
+                "session_id": self.session_id,
+                "camera_id": self.camera_id,
+                "station_id": self.station_id,
+                "factory_name": self.factory_name,
+                "production_line_name": self.production_line_name,
+                "model_version": str(self._defect_cfg.get("model_version", "1.0")),
+            }
+            self._manager.register_session(
+                self.session_id,
+                self._pipeline_ref,
+                (self._tracks, self._tracks_lock),
+                firebase_meta,
+            )
+
+            self._feeder_thread = threading.Thread(
+                target=self._camera_feeder_loop,
+                name=f"CameraFeeder-{self.session_id}",
+                daemon=True,
+            )
+            self._feeder_thread.start()
+
+            while not self._stop_event.is_set():
+                self._stop_event.wait(timeout=0.5)
         except Exception as e:
             logger.exception("Session %s pipeline error: %s", self.session_id, e)
+        finally:
+            self._manager.unregister_session(self.session_id)
+            logger.info("Session %s ended", self.session_id)
 
     def stop(self) -> None:
         """Signal the worker to stop."""
         self._stop_event.set()
 
     def get_info(self) -> dict:
-        """Return session metadata for GET /api/sessions."""
-        return {
+        """Return session metadata for GET /api/sessions (includes pipeline metrics when available)."""
+        info = {
             "session_id": self.session_id,
             "factory_id": self.factory_id,
             "factory_name": self.factory_name,
@@ -120,6 +142,14 @@ class SessionWorker(threading.Thread):
             "camera_source": str(self.camera_source),
             "status": "active",
         }
+        if self._pipeline_ref is not None:
+            try:
+                info["pipeline_fps"] = getattr(self._pipeline_ref, "pipeline_fps", 0.0)
+                info["camera_fps_estimate"] = getattr(self._pipeline_ref, "camera_fps_estimate", 0.0)
+                info["queue_latency_ms"] = getattr(self._pipeline_ref, "queue_latency_ms", 0.0)
+            except Exception:
+                pass
+        return info
 
     def add_track(self, track: Any) -> None:
         """Add a WebRTC video track to receive frames."""
