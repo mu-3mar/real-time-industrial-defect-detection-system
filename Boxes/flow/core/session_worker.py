@@ -77,8 +77,8 @@ class SessionWorker(threading.Thread):
             ok = self._manager.put_frame(self.session_id, frame, enqueue_time, camera_fps)
             diag.record_frame_enqueue(ok)
             if not ok:
-                pass  # Queue full; drop frame to avoid blocking camera
-            time.sleep(0)
+                time.sleep(0.001)
+            # Single attempt only; no retry loop
 
     def run(self) -> None:
         """Start camera, register with PipelineManager, run camera feeder until stop."""

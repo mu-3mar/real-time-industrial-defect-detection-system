@@ -6,6 +6,12 @@ from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+
 
 class Detector:
     """Wrapper for YOLO inference with consistent parameters."""
@@ -36,11 +42,21 @@ class Detector:
         Returns:
             First result object from ultralytics Results
         """
-        results = self.model(
-            frame,
-            conf=self.conf,
-            iou=self.iou,
-            device=self.device,
-            verbose=verbose,
-        )
+        if _TORCH_AVAILABLE and hasattr(torch, "inference_mode"):
+            with torch.inference_mode():
+                results = self.model(
+                    frame,
+                    conf=self.conf,
+                    iou=self.iou,
+                    device=self.device,
+                    verbose=verbose,
+                )
+        else:
+            results = self.model(
+                frame,
+                conf=self.conf,
+                iou=self.iou,
+                device=self.device,
+                verbose=verbose,
+            )
         return results[0]

@@ -112,6 +112,10 @@ class Pipeline:
         # Cached box detection result (reused between throttled frames)
         self._last_boxes_roi: np.ndarray = np.zeros((0, 4))
 
+        # Reusable canvas double-buffer to avoid per-frame allocation (same thread, no copy on return)
+        self._canvas_bufs: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        self._canvas_buf_index: int = 0
+
         self.frame_count = 0
         self.last_time = time.time()
         self.fps = 0.0
@@ -164,10 +168,19 @@ class Pipeline:
             self._last_diag_log_time = now
 
         h, w = frame.shape[:2]
-        canvas = cv2.copyMakeBorder(
-            frame, 0, 0, self.visualizer.info_width, 0,
-            cv2.BORDER_CONSTANT, value=(235, 235, 235),
-        )
+        info_width = self.visualizer.info_width
+        expected_shape = (h, w + info_width, 3)
+        if self._canvas_bufs is None or self._canvas_bufs[0].shape != expected_shape:
+            self._canvas_bufs = (
+                np.zeros((h, w + info_width, 3), dtype=np.uint8),
+                np.zeros((h, w + info_width, 3), dtype=np.uint8),
+            )
+            self._canvas_buf_index = 0
+        buf = self._canvas_bufs[self._canvas_buf_index]
+        self._canvas_buf_index = 1 - self._canvas_buf_index
+        buf[:, :info_width, :] = 235
+        buf[:, info_width:, :] = frame
+        canvas = buf
         self.visualizer.draw_layout(canvas)
         self.visualizer.draw_stats(canvas, self.state, self.fps)
         roi_offset = self.visualizer.info_width

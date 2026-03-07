@@ -59,6 +59,7 @@ class PipelineManager:
         self._result_consumer_thread: Optional[threading.Thread] = None
         self._firebase_thread: Optional[threading.Thread] = None
         self._started = False
+        self._inference_frame_count: int = 0
 
     @classmethod
     def get_instance(cls) -> "PipelineManager":
@@ -169,12 +170,13 @@ class PipelineManager:
                     self._result_queue.put_nowait((session_id, canvas, exit_event))
                 except queue.Full:
                     get_diagnostics().record_result_queue_drop()
-                    logger.debug("Result queue full, dropping frame for session %s", session_id)
-                get_diagnostics().maybe_log(
-                    self._frame_queue.qsize(),
-                    self._result_queue.qsize(),
-                    self._firebase_queue.qsize(),
-                )
+                if self._inference_frame_count % 30 == 0:
+                    get_diagnostics().maybe_log(
+                        self._frame_queue.qsize(),
+                        self._result_queue.qsize(),
+                        self._firebase_queue.qsize(),
+                    )
+                self._inference_frame_count += 1
             except queue.Empty:
                 continue
         logger.debug("Inference worker stopped")
@@ -206,7 +208,7 @@ class PipelineManager:
                     try:
                         self._firebase_queue.put_nowait((session_id, exit_event, firebase_meta))
                     except queue.Full:
-                        logger.warning("Firebase queue full, dropping insight for session %s", session_id)
+                        pass
             except queue.Empty:
                 continue
         logger.debug("Result consumer worker stopped")
