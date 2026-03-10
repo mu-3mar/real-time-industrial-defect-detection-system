@@ -3,9 +3,29 @@
 import logging
 from typing import Optional
 
-from ultralytics import YOLO
-
 logger = logging.getLogger(__name__)
+
+
+def _silence_tensorrt() -> None:
+    """Monkey-patch trt.Logger default to ERROR so TensorRT C++ runtime is quiet."""
+    try:
+        import tensorrt as trt
+
+        _OrigLogger = trt.Logger
+        _ERROR = trt.Logger.ERROR
+
+        class _QuietLogger(_OrigLogger):
+            def __init__(self, severity=None):
+                super().__init__(_ERROR)
+
+        trt.Logger = _QuietLogger
+    except ImportError:
+        pass
+
+
+_silence_tensorrt()
+
+from ultralytics import YOLO
 
 
 class ModelLoader:
@@ -37,12 +57,10 @@ class ModelLoader:
             logger.debug("Models already loaded")
             return
 
-        logger.info("Loading box model: %s", box_model_path)
         self.box_model = YOLO(box_model_path, task="detect")
-        logger.info("Loading defect model: %s", defect_model_path)
         self.defect_model = YOLO(defect_model_path, task="detect")
         self._loaded = True
-        logger.info("Models loaded")
+        logger.info("[Service] models loaded")
 
     def warmup(self, device: str = "0") -> None:
         """Run dummy inference to warm up GPU/cache. Reduces first-frame latency."""

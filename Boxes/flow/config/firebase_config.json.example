@@ -1,3 +1,4 @@
 {
-  "FIREBASE_DATABASE_URL": "https://qc-scm-default-rtdb.europe-west1.firebasedatabase.app"
+  "FIREBASE_DATABASE_URL": "https://YOUR-PROJECT-default-rtdb.YOUR-REGION.firebasedatabase.app"
 }
+

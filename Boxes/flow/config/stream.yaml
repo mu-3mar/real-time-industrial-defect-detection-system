@@ -1,4 +1,4 @@
-# Default frame dimensions. Source comes from POST /api/sessions/open (camera_source).
+# Default frame dimensions. Source comes from POST /api/reports/open (camera_source).
 width: 1280
 height: 720
 

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import threading
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Tuple, Union
 
 from core.session_worker import SessionWorker
 
@@ -17,8 +17,9 @@ class SessionManager:
     _lock = threading.Lock()
 
     def __init__(self):
-        self.sessions: Dict[str, SessionWorker] = {}  # session_id -> worker
-        self.camera_locks: Dict[str, str] = {}  # camera_source -> session_id
+        self.sessions: Dict[str, SessionWorker] = {}  # report_id -> worker
+        self.camera_locks: Dict[str, str] = {}  # camera_source -> report_id
+        self.production_line_to_report: Dict[str, str] = {}  # production_line_id -> report_id
         self.sessions_lock = threading.Lock()
 
     @classmethod
@@ -32,27 +33,36 @@ class SessionManager:
 
     def create_session(
         self,
-        session_id: str,
+        report_id: str,
         camera_source: Union[str, int],
-        factory_id: str,
-        factory_name: str,
         production_line_id: str,
-        production_line_name: str,
-        camera_id: str,
-        station_id: str,
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
         loop: asyncio.AbstractEventLoop,
-    ) -> SessionWorker:
+    ) -> Tuple[SessionWorker, bool]:
         """
-        Create and start a new headless detection session.
-        All metadata is provided by the caller (backend/client); nothing is hardcoded.
+        Create and start a new headless detection session, or return existing if
+        this production line is already open. Uses report_id as the session identifier.
+
+        Returns:
+            (worker, already_open): worker is the SessionWorker; already_open is True
+            if the production line had an open session and we did not create a new one.
         """
         camera_key = str(camera_source)
         with self.sessions_lock:
-            if session_id in self.sessions:
-                raise ValueError(f"Session {session_id} already exists")
+            if production_line_id in self.production_line_to_report:
+                existing_report_id = self.production_line_to_report[production_line_id]
+                worker = self.sessions.get(existing_report_id)
+                if worker is not None:
+                    logger.debug(
+                        "Production line %s already open as %s",
+                        production_line_id, existing_report_id,
+                    )
+                    return worker, True
+
+            if report_id in self.sessions:
+                raise ValueError(f"Session {report_id} already exists")
             if camera_key in self.camera_locks:
                 locked_by = self.camera_locks[camera_key]
                 raise ValueError(
@@ -60,58 +70,50 @@ class SessionManager:
                 )
 
             worker = SessionWorker(
-                session_id=session_id,
+                report_id=report_id,
                 camera_source=camera_source,
-                factory_id=factory_id,
-                factory_name=factory_name,
                 production_line_id=production_line_id,
-                production_line_name=production_line_name,
-                camera_id=camera_id,
-                station_id=station_id,
                 box_cfg=box_cfg,
                 defect_cfg=defect_cfg,
                 stream_cfg=stream_cfg,
                 loop=loop,
             )
-            self.sessions[session_id] = worker
-            self.camera_locks[camera_key] = session_id
+            self.sessions[report_id] = worker
+            self.camera_locks[camera_key] = report_id
+            self.production_line_to_report[production_line_id] = report_id
             worker.start()
-            logger.info("Session started: session_id=%s camera=%s", session_id, camera_source)
-            return worker
+            logger.info("[Session] opened: %s", report_id)
+            return worker, False
 
-    def close_session(
-        self,
-        session_id: str,
-        camera_source: Optional[Union[str, int]] = None,
-    ) -> bool:
-        """Close a session by session_id. Optionally validate camera_source."""
+    def close_session(self, report_id: str) -> Tuple[bool, bool]:
+        """
+        Close a session by report_id.
+
+        Returns:
+            (closed, already_closed): closed is True if we closed the session;
+            already_closed is True if the session was not found (already closed).
+        """
         with self.sessions_lock:
-            worker = self.sessions.get(session_id)
+            worker = self.sessions.get(report_id)
             if worker is None:
-                logger.warning("Session %s not found", session_id)
-                return False
-            if (
-                camera_source is not None
-                and str(worker.camera_source) != str(camera_source)
-            ):
-                logger.warning(
-                    "Session %s camera mismatch: expected %s, got %s",
-                    session_id, camera_source, worker.camera_source,
-                )
-                return False
+                logger.debug("Session %s not found (already closed)", report_id)
+                return False, True
 
             worker.stop()
             camera_key = str(worker.camera_source)
+            production_line_id = worker.production_line_id
             if camera_key in self.camera_locks:
                 del self.camera_locks[camera_key]
-            del self.sessions[session_id]
-            logger.info("Session stopped: session_id=%s", session_id)
-            return True
+            if production_line_id in self.production_line_to_report:
+                del self.production_line_to_report[production_line_id]
+            del self.sessions[report_id]
+            logger.info("[Session] closed: %s", report_id)
+            return True, False
 
-    def get_session(self, session_id: str) -> Optional[SessionWorker]:
-        """Get session by session_id."""
+    def get_session(self, report_id: str) -> Optional[SessionWorker]:
+        """Get session by report_id."""
         with self.sessions_lock:
-            return self.sessions.get(session_id)
+            return self.sessions.get(report_id)
 
     def is_camera_in_use(self, camera_source: Union[str, int]) -> bool:
         """Check if camera is currently in use by any session."""
@@ -120,6 +122,6 @@ class SessionManager:
             return camera_key in self.camera_locks
 
     def list_active_sessions(self) -> list:
-        """Return list of session metadata for GET /api/sessions."""
+        """Return list of active report summaries: report_id, viewers_count."""
         with self.sessions_lock:
             return [w.get_info() for w in self.sessions.values()]

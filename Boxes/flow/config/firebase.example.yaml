@@ -1,0 +1,8 @@
+# Firebase Realtime Database for detection events (example).
+#
+# Copy to: Boxes/flow/config/firebase.yaml
+# Put the real service account JSON in this folder (gitignored) and set its filename here.
+
+service_account_path: "firebase-service-account.json"
+database_url: "https://YOUR-PROJECT-default-rtdb.YOUR-REGION.firebasedatabase.app"
+

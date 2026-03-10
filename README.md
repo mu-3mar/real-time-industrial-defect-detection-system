@@ -1,6 +1,14 @@
-# QC-SCM: Quality Control — Supply Chain Management
+# QC-SCM — Quality Control (Flow + Training)
 
-AI-driven quality inspection system for manufacturing: **train** YOLO models (box + defect), then **run** a real-time detection server that streams video over WebRTC and writes detection events to Firebase Realtime Database. All factory and production-line metadata is provided by the client; the server does not store static configuration.
+QC-SCM is an AI-driven quality inspection system for manufacturing:
+
+- **Training**: train two YOLO models (box detection + defect detection), export to ONNX, and (optionally) quantize.
+- **Flow runtime**: run a FastAPI service that opens **reports** (`report_id`), streams annotated video over **WebRTC**, and publishes detection events to **Firebase Realtime Database**.
+
+Detection events are minimal by design: under each `report_id`, every event contains only:
+
+- `defect` (boolean)
+- `timestamp` (ISO 8601 UTC string)
 
 ---
 
@@ -8,279 +16,1298 @@ AI-driven quality inspection system for manufacturing: **train** YOLO models (bo
 
 | Part | Purpose |
 |------|--------|
-| **Boxes/flow** | Detection server: FastAPI, two-stage pipeline (box → defect), WebRTC streaming, Firebase Realtime Database publishing. |
-| **Boxes/trainig** | Model training: box-YOLO (detect boxes) and defect-YOLO (classify defects). Train → export ONNX → quantize → use in flow. |
-| **index.html** | Single-page HTML test client to open sessions, stream video, and test the API. |
-| **pyproject.toml** | Python dependencies for the whole project. |
+| `Boxes/flow/` | Runtime detection service (FastAPI + WebRTC + Firebase publishing). |
+| `Boxes/training/` | Training pipelines (box-YOLO + defect-YOLO): train → export ONNX → quantize → metrics. |
 
 ---
 
-## Repository structure
+## Quick start (Flow)
 
-```
-QC-SCM/
-├── README.md
-├── index.html                    # HTML test client (open session, WebRTC stream)
-├── pyproject.toml                # Dependencies
-├── .gitignore
-│
-├── Boxes/
-│   ├── flow/                     # Detection server (runtime)
-│   │   ├── main.py               # Entry point: loads api.yaml, runs uvicorn
-│   │   ├── api/                  # API layer
-│   │   │   └── api_server.py     # FastAPI app: sessions, health, WebRTC, config
-│   │   ├── config/               # YAML configs, .env.example, firebase_config.json.example
-│   │   ├── core/                 # Pipeline, session worker, stream, state, Firebase client, device_manager
-│   │   ├── docs/                 # Service docs (endpoints.md, README.md)
-│   │   ├── scripts/              # run_dev.sh
-│   │   ├── requirements/         # requirements.txt for flow runtime
-│   │   ├── detectors/            # YOLO/ONNX detector wrapper
-│   │   ├── utils/                # Visualizer, geometry
-│   │   └── models/               # ONNX models (e.g. detect_box_int8.onnx, defect_box_int8.onnx)
-│   │
-│   └── trainig/                  # Model training (note: folder name is "trainig")
-│       ├── box-YOLO/             # Box detection model
-│       │   ├── configs/config.py    # Paths, epochs, batch, export names
-│       │   ├── training/train.py    # Ultralytics YOLO training
-│       │   ├── export/export_onnx.py
-│       │   ├── export/quantize_onnx.py
-│       │   ├── scripts/run_all.py   # Train → export ONNX → quantize → metrics
-│       │   ├── scripts/merge_data.py
-│       │   ├── inference/infer.py
-│       │   ├── data/                # Dataset (data.yaml, train/valid/test)
-│       │   ├── models/pretrained/   # e.g. yolo26n.pt
-│       │   ├── models/exported/     # best.pt, *.onnx after export
-│       │   └── runs/                # train outputs, metrics
-│       │
-│       └── defect-YOLO/          # Defect classification model
-│           ├── configs/config.py
-│           ├── training/train.py
-│           ├── export/export_onnx.py
-│           ├── export/quantize_onnx.py
-│           ├── scripts/run_all.py
-│           ├── scripts/merge_data.py
-│           ├── inference/infer.py
-│           ├── data/
-│           ├── models/
-│           └── runs/
-```
-
----
-
-## Boxes/flow — Detection server (full details)
-
-The **flow** folder is the runtime: it loads ONNX models, runs the two-stage pipeline per session, streams video over WebRTC, and writes each box result to Firebase Realtime Database.
-
-### Entry point and API
-
-- **main.py**  
-  Reads `config/api.yaml` (host, port, log_level), sets ONNX logging level, then runs `uvicorn` with `api_server:app`. Default: `http://0.0.0.0:8000`.
-
-- **api_server.py**  
-  - Loads configs from `config/` (app, webrtc, box, defect, stream, firebase).  
-  - Initializes Firebase Realtime Database using credentials from `firebase.yaml` and database URL from `.env` or `config/firebase_config.json`.  
-  - Endpoints:  
-    - `POST /api/sessions/open` — open session (body: factory_id, factory_name, production_line_id, production_line_name, camera_id, camera_source, station_id, session_id).  
-    - `POST /api/sessions/close` — close session (body: session_id, optional camera_source).  
-    - `GET /api/sessions` — list active sessions with metadata.  
-    - `GET /api/health` — health and active session count.  
-    - `GET /api/config` — WebRTC ICE config for clients.  
-    - `POST /webrtc/offer` — SDP offer/answer and attach video track (body: sdp, type, session_id).
-
-### Core components
-
-- **core/session_manager.py** — Singleton: creates/closes sessions by `session_id`, locks camera per session.  
-- **core/session_worker.py** — Thread per session: runs the pipeline with the session’s metadata, calls Firebase on each box result.  
-- **core/pipeline.py** — Camera → box detection → defect detection → entry/exit and voting; updates FPS/latency; calls `on_result_callback` when a box exits.  
-- **core/stream.py** — `CamStream`: dedicated capture thread, deque(maxlen=1), non-blocking `get_latest_frame()`.  
-- **core/state.py** — Per-track state: voting, defect lock, entry/exit, recovery.  
-- **core/firebase_client.py** — Initializes Firebase from credentials path and database URL; `publish_detection(...)` pushes one record per detection to Realtime Database.  
-- **core/model_loader.py** — Singleton: loads box and defect ONNX models from paths in config.  
-- **core/webrtc_track.py** — Video track for WebRTC; receives frames from the pipeline.  
-- **detectors/detector.py** — Wrapper around YOLO/ONNX inference.  
-- **utils/visualizer.py**, **utils/geometry.py** — Drawing and IoU/smoothing helpers.
-
-### Config (Boxes/flow/config)
-
-| File | Purpose |
-|------|--------|
-| **api.yaml** | host, port, log_level (used by main.py / uvicorn). |
-| **app.yaml** | Optional CORS origins. |
-| **webrtc.yaml** | STUN/TURN URLs and **secret** (gitignored; use webrtc.example.yaml as template). |
-| **firebase.yaml** | `credentials_path`: filename of Firebase service account JSON in this folder (JSON is gitignored). Database URL via `FIREBASE_DATABASE_URL` in `.env` or `firebase_config.json`. |
-| **box_detector.yaml** | model_path, conf_thres, iou_thres, device. |
-| **defect_detector.yaml** | model_path, model_version, conf_thres, iou_thres, device, tracking, stability, rendering. |
-| **stream.yaml** | width, height; throttle (e.g. box/defect every N frames). |
-
-See **Boxes/flow/config/README.md** for a full config reference.
-
-### Firebase Realtime Database structure
-
-Events are written under:
-
-```
-factories / {factory_id} / production_lines / {production_line_id} / sessions / {session_id} / insights / {auto_generated_event_id}
-```
-
-Each insight record: `timestamp`, `defect`, `camera_id`, `station_id`, `factory_name`, `production_line_name`, `model_version`, `confidence`.
-
-### HTML test client (index.html)
-
-Single-page UI at repo root: set API base URL, open session (factory + production line from dropdowns), start WebRTC stream, close session. Uses predefined test metadata and does not change API behavior.
-
----
-
-## Boxes/trainig — Training folder (full details)
-
-The **trainig** folder contains two YOLO projects: **box-YOLO** (detect boxes in the frame) and **defect-YOLO** (classify defect inside a box). Each follows the same layout and pipeline: train → export ONNX → quantize INT8 → (optionally) copy to `Boxes/flow/models/` for the detection server.
-
-### Directory layout (each of box-YOLO and defect-YOLO)
-
-- **configs/config.py** — Defines `ROOT`, `MODELS_DIR`, `PRETRAINED_DIR`, `EXPORTED_DIR`, `DATA_DIR`, `RUNS_DIR`, `PROJECT_NAME`, `PROJECT_DIR`, `BASE_MODEL`, `DATA_YAML`, epochs, batch, image size, device, ONNX names, opset, metrics dir.  
-- **training/train.py** — Uses Ultralytics YOLO: loads base or last.pt, trains on `DATA_YAML`, saves to `runs/train/{PROJECT_NAME}/weights/` (best.pt, last.pt).  
-- **export/export_onnx.py** — Exports `best.pt` to ONNX (dynamic, opset from config).  
-- **export/quantize_onnx.py** — Quantizes ONNX to INT8 (e.g. detect_box_int8.onnx / defect_box_int8.onnx).  
-- **scripts/run_all.py** — Full pipeline: (1) train, (2) export ONNX, (3) quantize, (4) collect metrics. Run from project root (e.g. `Boxes/trainig/box-YOLO`).  
-- **scripts/merge_data.py** — Merges multiple dataset folders into one `data/data` with train/valid/test and unified class IDs.  
-- **inference/infer.py** — Inference script (e.g. run trained model on images).  
-- **data/** — Dataset: `data/data.yaml` and train/valid/test with images and labels.  
-- **models/pretrained/** — Base weights (e.g. yolo26n.pt).  
-- **models/exported/** — best.pt and ONNX after export/quantize.  
-- **runs/train/** — Training runs; **runs/metrics/** — Collected metrics.
-
-### Box-YOLO (box detection)
-
-- **PROJECT_NAME**: `detect_box`.  
-- **Output**: Box detections in the ROI; used by the flow pipeline as the first stage.  
-- **Typical use**: Place dataset in `data/`, set `DATA_YAML` and paths in `configs/config.py`, run `scripts/run_all.py`. Copy `models/exported/detect_box_int8.onnx` to `Boxes/flow/models/` and set `box_detector.yaml` model_path.
-
-### Defect-YOLO (defect classification)
-
-- **PROJECT_NAME**: `defect_box`.  
-- **Output**: Defect (e.g. hole) inside a cropped box; used by the flow pipeline as the second stage.  
-- **Typical use**: Same as box-YOLO; copy `defect_box_int8.onnx` to `Boxes/flow/models/` and set `defect_detector.yaml` model_path.
-
-### Running the training pipeline
-
-From the **box-YOLO** or **defect-YOLO** directory:
+1. Configure Firebase + WebRTC secrets (see **Configuration (`Boxes/flow/config/`)** below).
+2. Start the server:
 
 ```bash
-cd Boxes/trainig/box-YOLO
-python scripts/run_all.py
+cd Boxes/flow
+python3 main.py
 ```
-
-or
-
-```bash
-cd Boxes/trainig/defect-YOLO
-python scripts/run_all.py
-```
-
-Ensure `data/data/data.yaml` and (if used) `models/pretrained/yolo26n.pt` exist. After quantize, copy the generated `*_int8.onnx` into `Boxes/flow/models/` and point the flow configs to them.
 
 ---
 
 ## Installation
 
-**Requirements:** Python 3.10+, optional CUDA for GPU.
+### Prerequisites
 
-1. Clone the repository and go to the project root.
+- **Python**: 3.10+
+- **Optional GPU**: CUDA-capable GPU (training/inference may still run on CPU)
+- **Linux camera access**: if using `/dev/video*`, ensure permissions are correct
 
-2. Install dependencies:
+### Install options
 
-   ```bash
-   pip install -e .
-   ```
+- **Full dev install (repo root)**:
 
-3. **Flow server:**  
-   - Put Firebase service account JSON in `Boxes/flow/config/` and set `credentials_path` in `Boxes/flow/config/firebase.yaml`.  
-   - Set `FIREBASE_DATABASE_URL` in `Boxes/flow/config/.env` (copy from `Boxes/flow/config/.env.example`) or in `Boxes/flow/config/firebase_config.json` (copy from `firebase_config.json.example`). Do not commit `.env`.  
-   - Optionally copy `Boxes/flow/config/webrtc.example.yaml` to `webrtc.yaml` and set your TURN secret (or set `TURN_SECRET` env var).  
-   - Ensure `Boxes/flow/config/box_detector.yaml` and `defect_detector.yaml` point to existing ONNX files under `Boxes/flow/models/`.
+```bash
+pip install -e .
+```
 
-4. **Training:**  
-   - Add dataset under `Boxes/trainig/box-YOLO/data/` and `Boxes/trainig/defect-YOLO/data/` as needed; adjust `configs/config.py` and (for merge) `scripts/merge_data.py`.
+- **Minimal Flow runtime install**:
+
+```bash
+pip install -r Boxes/flow/requirements/requirements.txt
+```
 
 ---
 
-## Running the detection server
+## Repository structure (high level)
 
-Activate the `qc` conda environment (lowercase), then run from `Boxes/flow`:
-
-```bash
-source ~/anaconda3/etc/profile.d/conda.sh && conda activate qc && cd Boxes/flow && python main.py
+```
+QC-SCM/
+├── README.md
+├── pyproject.toml
+├── .gitignore
+├── assets/
+└── Boxes/
+    ├── flow/                     # Runtime detection service
+    └── training/                 # Training pipelines (box-YOLO + defect-YOLO)
 ```
 
-Or from project root:
+---
 
-Or from repo root with conda:
+## Boxes/flow — Runtime detection service
 
-```bash
-source ~/anaconda3/etc/profile.d/conda.sh && conda activate qc && cd Boxes/flow && python main.py
-```
+### What it does
 
-Or run the script:
+- Opens/closes **reports** via REST (`report_id`)
+- Runs a two-stage pipeline (box → defect) per report
+- Streams annotated frames via **aiortc/WebRTC**
+- Pushes detection events to **Firebase Realtime Database**
+
+### Run
+
+From repo root:
 
 ```bash
 ./Boxes/flow/scripts/run_dev.sh
 ```
 
-Or uvicorn directly from `Boxes/flow`:
+Or directly:
 
 ```bash
 cd Boxes/flow
-python -m uvicorn api.api_server:app --host 0.0.0.0 --port 8000
+python3 main.py
 ```
 
-- API: `http://localhost:8000`  
-- Docs: `http://localhost:8000/docs`  
-- Health: `http://localhost:8000/api/health`
+Endpoints:
+
+- **API**: `http://localhost:8000`
+- **OpenAPI docs**: `http://localhost:8000/docs`
+- **Health**: `http://localhost:8000/api/health`
+
+### Configuration (`Boxes/flow/config/`)
+
+| File | Purpose |
+|------|--------|
+| `api.yaml` | Uvicorn host/port/log level (used by `main.py`). |
+| `app.yaml` | Optional CORS configuration. |
+| `webrtc.yaml` | STUN/TURN + TURN **secret** + `webrtc_mode` (**gitignored**). |
+| `webrtc.example.yaml` | Template for `webrtc.yaml`. |
+| `firebase.yaml` | Firebase `service_account_path` + `database_url`. |
+| `firebase.example.yaml` | Template for `firebase.yaml`. |
+| `firebase-service-account.json` | Firebase service account key (**gitignored**). |
+| `firebase-service-account.example.json` | Template JSON structure. |
+| `firebase_config.json` | Optional fallback secrets file (**gitignored**). |
+| `firebase_config.json.example` | Template for the fallback file. |
+| `.env` | Optional environment fallback (**gitignored**). |
+| `.env.example` | Template for `.env`. |
+| `box_detector.yaml` | box model path + thresholds. |
+| `defect_detector.yaml` | defect model path + thresholds + stability settings. |
+| `stream.yaml` | frame size + detection throttling. |
+
+#### Secrets & gitignore
+
+The repo is configured to ignore sensitive files (Firebase service account, TURN secret, `.env`). Keep secrets only in:
+
+- `Boxes/flow/config/firebase-service-account.json`
+- `Boxes/flow/config/webrtc.yaml`
+- `Boxes/flow/config/.env` (optional)
+
+### Flow API (current contract)
+
+#### Open a report
+
+`POST /api/reports/open`
+
+Body:
+
+```json
+{ "report_id": "r-123", "camera_source": 0, "production_line_id": "line-1" }
+```
+
+Notes:
+
+- **Idempotent per `production_line_id`**: if a report is already open for the line, the API returns success (does not error).
+
+Example:
+
+```bash
+curl -sS -X POST "http://localhost:8000/api/reports/open" \
+  -H "content-type: application/json" \
+  -d '{"report_id":"r-123","camera_source":0,"production_line_id":"line-1"}'
+```
+
+#### Close a report
+
+`POST /api/reports/close`
+
+Body:
+
+```json
+{ "report_id": "r-123" }
+```
+
+Notes:
+
+- **Idempotent**: closing an already-closed report returns success.
+
+Example:
+
+```bash
+curl -sS -X POST "http://localhost:8000/api/reports/close" \
+  -H "content-type: application/json" \
+  -d '{"report_id":"r-123"}'
+```
+
+#### List active reports
+
+`GET /api/reports`
+
+Response:
+
+```json
+[{ "report_id": "r-123", "viewers_count": 1 }]
+```
+
+Example:
+
+```bash
+curl -sS "http://localhost:8000/api/reports"
+```
+
+#### Health
+
+`GET /api/health` → `{ "status": "healthy", "active_reports": 1 }`
+
+#### WebRTC client config
+
+`GET /api/config`
+
+Returns:
+
+- `webrtc.iceServers`: includes STUN and **temporary TURN credentials**
+- `webrtc.webrtc_mode`: `auto | direct | stun | relay`
+
+#### WebRTC offer/answer
+
+`POST /webrtc/offer` with `{ sdp, type, report_id }`
+
+### Firebase Realtime Database structure (current)
+
+Events are written to:
+
+```
+{report_id}/{detection_id}
+```
+
+Payload:
+
+```json
+{ "defect": true, "timestamp": "2026-03-09T14:21:00Z" }
+```
+
+### Models
+
+Flow reads model paths from:
+
+- `Boxes/flow/config/box_detector.yaml`
+- `Boxes/flow/config/defect_detector.yaml`
+
+Artifacts typically live in `Boxes/flow/models/` and can be:
+
+- `.engine` (TensorRT)
+- `.onnx`
+- `.pt` (Ultralytics)
 
 ---
 
-## Testing with the HTML client
+## Boxes/training — Training pipelines (box-YOLO + defect-YOLO)
 
-1. Start the server (see above).  
-2. Open `index.html` in a browser (or serve the repo root).  
-3. Set API base URL if needed (e.g. `http://localhost:8000`).  
-4. Open a session (factory + line), start stream, check video and (if configured) Realtime Database insights.
+There are two separate projects:
+
+- `Boxes/training/box-YOLO` → `PROJECT_NAME = detect_box`
+- `Boxes/training/defect-YOLO` → `PROJECT_NAME = defect_box`
+
+Both follow the same pipeline:
+
+1. **Train** (`training/train.py`)
+2. **Export ONNX** (`export/export_onnx.py`)
+3. **Quantize** (`export/quantize_onnx.py`) using ONNX Runtime dynamic quantization
+4. **Collect metrics** (`utils/utils.py`)
+
+### Dataset layout (required)
+
+Training expects:
+
+```
+data/
+  data/
+    data.yaml
+    train/images, train/labels
+    valid/images, valid/labels
+    test/images,  test/labels
+```
+
+You must create `data/data/data.yaml` (it is not committed in this repo). Example:
+
+```yaml
+path: data/data
+train: train/images
+val: valid/images
+test: test/images
+
+names:
+  0: box
+```
+
+### Merge datasets helper
+
+Both projects include `scripts/merge_data.py` which merges multiple dataset folders like:
+
+- `data/data 1`
+- `data/data 2`
+- `data/data 3`
+
+into `data/data/` and can **force all labels to class 0** (see `CLASS_ID` inside the script).
+
+### Run the full pipeline
+
+Box model:
+
+```bash
+cd Boxes/training/box-YOLO
+python3 scripts/run_all.py
+```
+
+Defect model:
+
+```bash
+cd Boxes/training/defect-YOLO
+python3 scripts/run_all.py
+```
+
+### Outputs
+
+After a successful run, artifacts are placed in:
+
+- `models/exported/best.pt`
+- `models/exported/<name>.onnx` (e.g. `detect_box.onnx`)
+- `models/exported/<name>_int8.onnx` (e.g. `detect_box_int8.onnx`)
+
+### Using trained models in Flow
+
+Copy exported artifacts into the flow models folder and update flow configs:
+
+```bash
+cp Boxes/training/box-YOLO/models/exported/detect_box_int8.onnx   Boxes/flow/models/
+cp Boxes/training/defect-YOLO/models/exported/defect_box_int8.onnx Boxes/flow/models/
+```
+
+Then set `model_path` in:
+
+- `Boxes/flow/config/box_detector.yaml`
+- `Boxes/flow/config/defect_detector.yaml`
 
 ---
 
-## API summary (flow)
+## Troubleshooting
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/sessions/open` | Open session; body includes factory_id, factory_name, production_line_id, production_line_name, camera_id, camera_source, station_id, session_id. |
-| POST | `/api/sessions/close` | Close session; body: session_id, optional camera_source. |
-| GET | `/api/sessions` | List active sessions with metadata. |
-| GET | `/api/health` | Health and active session count. |
-| GET | `/api/config` | WebRTC ICE config. |
-| POST | `/webrtc/offer` | WebRTC offer/answer; body: sdp, type, session_id. |
-
----
-
-## Realtime Database insight record
-
-Each detection event is one record (auto-generated key) in  
-`factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/`.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| timestamp | string | ISO 8601 UTC. |
-| defect | boolean | True = defect, false = OK. |
-| camera_id | string | From session. |
-| station_id | string | From session. |
-| factory_name | string | From session. |
-| production_line_name | string | From session. |
-| model_version | string | From defect_detector config. |
-| confidence | number | 0.0–1.0. |
+- **Firebase init fails**:
+  - Verify `Boxes/flow/config/firebase-service-account.json` exists (and is valid).
+  - Verify `Boxes/flow/config/firebase.yaml` has a correct `database_url`.
+- **WebRTC can't connect**:
+  - Configure `Boxes/flow/config/webrtc.yaml` (TURN secret required for many NATs).
+  - Client reads ICE servers from `GET /api/config`.
+- **Device selection**:
+  - Flow: set `QC_SCM_FLOW_DEVICE` (or use YAML device settings).
+  - Training: set `QC_SCM_TRAIN_DEVICE` (overrides config `DEVICE`).
 
 ---
 
-## Technology stack
+## Backend API & Integration Documentation
 
-- **Backend:** FastAPI, Uvicorn  
-- **Detection:** OpenCV, Ultralytics YOLO (training), ONNX Runtime (inference)  
-- **Streaming:** WebRTC (aiortc)  
-- **Events:** Firebase Realtime Database (firebase-admin)
+This section documents the backend (Flow) APIs, report lifecycle, WebRTC integration, Firebase writes, and configuration so that any developer can integrate a client without reading the code.
+
+### 1. Project Overview
+
+- **Purpose**: provide a headless detection service that:
+  - opens *reports* for specific production lines and camera sources,
+  - streams annotated video via WebRTC, and
+  - writes minimal detection events to Firebase Realtime Database.
+- **Main components**:
+  - **API server** (`Boxes/flow/api/api_server.py`) — FastAPI app, REST endpoints, WebRTC offer handling.
+  - **Pipeline** (`Boxes/flow/core/`) — camera stream, YOLO box + defect models, tracking and decision logic.
+  - **Firebase integration** (`Boxes/flow/core/firebase_client.py`, `_firebase_worker` in `pipeline_manager.py`) — writes detection events.
+  - **WebRTC streaming** (`Boxes/flow/core/webrtc_track.py`, `/webrtc/offer`) — delivers annotated frames to browsers.
+- **High-level architecture**:
+
+```
+Client (any WebRTC-capable app)
+→ Backend API (/api/reports/*, /api/health, /api/config, /webrtc/offer)
+→ Pipeline (camera → box detector → defect detector)
+→ WebRTC stream (annotated frames to client)
+→ Firebase events ({report_id}/{detection_id} with defect, timestamp)
+```
+
+### 2. API Endpoints Documentation
+
+All endpoints are defined in `Boxes/flow/api/api_server.py`.
+
+#### 2.1 `POST /api/reports/open`
+
+- **Description**:  
+  Open (or reuse) a headless detection report for a given production line and camera source.
+  - If a report for the given `production_line_id` is already open, returns **success** and reuses the existing report.
+  - If the camera is already locked by another report, returns a 400 error.
+
+- **Request body**:
+
+```json
+{
+  "report_id": "string",
+  "camera_source": "0",
+  "production_line_id": "line-1"
+}
+```
+
+`camera_source` can be a string (e.g. RTSP URL) or integer (device index).
+
+- **Successful response (new report)**:
+
+```json
+{
+  "status": "success",
+  "report_id": "r-123",
+  "message": "Report started with camera 0"
+}
+```
+
+- **Successful response (already open for line)**:
+
+```json
+{
+  "status": "success",
+  "report_id": "r-123",
+  "message": "Report is already open for this production line"
+}
+```
+
+- **Error cases**:
+  - **400 Bad Request** (ValueError raised in `SessionManager.create_session`):
+    - Report already exists with the same `report_id`.
+    - Camera is already in use by another report:
+      - Message similar to:  
+        `Camera {camera_source} in use by session {other_report_id}`.
+  - **500 Internal Server Error**:
+    - Any unexpected exception starting the pipeline.
+
+- **Notes**:
+  - Idempotency is enforced **per production line**: repeated opens for the same `production_line_id` are safe.
+  - `report_id` is controlled by the client.
+
+#### 2.2 `POST /api/reports/close`
+
+- **Description**:  
+  Close an active report identified by `report_id`. If the report is already closed or does not exist, the call is still treated as success.
+
+- **Request body**:
+
+```json
+{
+  "report_id": "r-123"
+}
+```
+
+- **Successful response (closed now)**:
+
+```json
+{
+  "status": "success",
+  "report_id": "r-123",
+  "message": "Report closed"
+}
+```
+
+- **Successful response (already closed)**:
+
+```json
+{
+  "status": "success",
+  "report_id": "r-123",
+  "message": "Report is already closed"
+}
+```
+
+- **Error cases**:
+  - **500 Internal Server Error**:
+    - Any unexpected exception while stopping the worker or cleaning resources.
+
+- **Notes**:
+  - Explicitly idempotent: the client can safely call close multiple times without tracking local state.
+
+#### 2.3 `GET /api/reports`
+
+- **Description**:  
+  List all currently active (open) reports.
+
+- **Response**:
+
+```json
+[
+  {
+    "report_id": "r-123",
+    "viewers_count": 1
+  },
+  {
+    "report_id": "r-456",
+    "viewers_count": 0
+  }
+]
+```
+
+- **Error cases**:
+  - **500 Internal Server Error**:
+    - Unexpected problems when querying the in-memory session registry.
+
+- **Notes**:
+  - `viewers_count` is the number of active WebRTC subscribers (video tracks) for that report.
+
+#### 2.4 `GET /api/health`
+
+- **Description**:  
+  Lightweight health check and report count.
+
+- **Response**:
+
+```json
+{
+  "status": "healthy",
+  "active_reports": 2
+}
+```
+
+- **Error cases**:
+  - **500 Internal Server Error**:
+    - Any unexpected exception while reading the active sessions map.
+
+#### 2.5 `GET /api/config`
+
+- **Description**:  
+  Returns client-side WebRTC configuration, including:
+  - `webrtc.iceServers`: STUN/TURN servers.
+  - Temporary TURN credentials (username/password) generated from the TURN secret.
+  - `webrtc_mode`: connection strategy (`auto`, `direct`, `stun`, `relay`).
+
+- **Response example**:
+
+```json
+{
+  "webrtc": {
+    "iceServers": [
+      { "urls": "stun:20.51.117.96:3478" },
+      {
+        "urls": "turn:20.51.117.96:3478",
+        "username": "1709999999:stream",
+        "credential": "base64-hmac"
+      }
+    ],
+    "webrtc_mode": "auto"
+  }
+}
+```
+
+- **Error cases**:
+  - This endpoint is simple and normally does not error unless configuration is completely missing; in that case a generic 500 may be returned.
+
+- **Notes**:
+  - TURN credentials are short-lived (e.g. 5 minutes) and generated via `HMAC(secret, username)` in `_generate_turn_credentials`.
+
+#### 2.6 `POST /webrtc/offer`
+
+- **Description**:  
+  Exchange WebRTC SDP offer/answer for a given report and attach a `VideoStreamTrack` that receives frames from the detection pipeline.
+
+- **Request body**:
+
+```json
+{
+  "sdp": "v=0...",
+  "type": "offer",
+  "report_id": "r-123"
+}
+```
+
+- **Successful response**:
+
+```json
+{
+  "sdp": "v=0...",
+  "type": "answer"
+}
+```
+
+- **Error cases**:
+  - **404 Not Found**:
+    - No active report with that `report_id`:
+      - Detail: `"Report not found"`.
+  - **500 Internal Server Error**:
+    - Any unexpected aiortc error (e.g. SDP parsing, track wiring).
+
+- **Notes**:
+  - The client must first open a report (`/api/reports/open`) before calling `/webrtc/offer`.
+  - The same endpoint is used for all reports; the selected pipeline is determined by `report_id`.
+
+### 3. Report Lifecycle
+
+The lifecycle of a report is:
+
+1. **Open**: client calls `POST /api/reports/open` with a `report_id`, `camera_source`, and `production_line_id`.  
+2. **Pipeline start**:
+   - A `SessionWorker` thread starts.
+   - Camera frames are pulled via `CamStream`.
+   - Frames are passed into the shared `PipelineManager` (one inference thread).
+3. **Streaming & detections**:
+   - Client negotiates WebRTC via `POST /webrtc/offer`.
+   - Annotated frames are pushed to each subscribed `VideoStreamTrack`.
+   - When a box exits the ROI and a decision is made (defect / OK), an event is pushed into the Firebase worker queue.
+4. **Close**: client calls `POST /api/reports/close`. The worker stops, the pipeline is unregistered, and subsequent WebRTC offers for that `report_id` fail with `"Report not found"`.
+
+Informal flow:
+
+```text
+Client → POST /api/reports/open
+       → POST /webrtc/offer  → WebRTC stream (video)
+       → Firebase writes: {report_id}/{detection_id} {defect, timestamp}
+       → POST /api/reports/close
+```
+
+### 4. WebRTC Configuration
+
+`/api/config` builds its response from:
+
+- `Boxes/flow/config/webrtc.yaml` (or environment fallback), containing:
+
+```yaml
+stun:
+  urls: "stun:HOST:3478"
+
+turn:
+  urls: "turn:HOST:3478"
+  secret: "YOUR_TURN_SECRET"
+
+webrtc_mode: auto   # auto | direct | stun | relay
+```
+
+The backend:
+
+- Generates `webrtc.iceServers` based on `webrtc_mode`:
+  - `auto`: host + STUN + TURN (with credentials).
+  - `direct`: host only.
+  - `stun`: host + STUN.
+  - `relay`: host + TURN only.
+- Uses `TURN_SECRET` (from `webrtc.yaml` or env) to compute short-lived TURN username/credential.
+
+#### WebRTC usage example
+
+```javascript
+// Load config once (or periodically)
+const cfg = await fetch('/api/config').then(r => r.json());
+const webrtc = cfg.webrtc || cfg;
+
+const pc = new RTCPeerConnection({
+  iceServers: webrtc.iceServers
+});
+```
+
+### 5. Firebase Realtime Events
+
+Firebase is initialized in `core/firebase_client.py` with:
+
+- `credentials_path` → service account JSON (from `firebase.yaml` or env).
+- `database_url` → Realtime Database URL (from `firebase.yaml`, `.env`, or `firebase_config.json`).
+
+Events are written by `publish_detection(report_id, timestamp, defect)`:
+
+```python
+path = report_id
+payload = {"defect": defect, "timestamp": timestamp}
+db.reference(path).push(payload)
+```
+
+Structure in the database:
+
+```text
+{report_id}
+  └── {detection_id}  # Firebase push key
+        defect: true
+        timestamp: "2026-03-09T14:21:00Z"
+```
+
+- `report_id`: identifier chosen by the client when opening the report.
+- `detection_id`: auto-generated key from Firebase `push()`.
+- `defect`:
+  - `true` → defect detected.
+  - `false` → explicitly non-defect event (depending on pipeline logic).
+- `timestamp`: ISO 8601 UTC time string, generated by the Firebase worker when enqueueing the event.
+
+### 6. Configuration System (backend)
+
+All backend configuration is under `Boxes/flow/config/`:
+
+- `api.yaml` — Uvicorn:
+  - `host`, `port`, `log_level`.
+- `app.yaml` — CORS:
+  - `cors_origins` list (empty = allow all, good for local dev).
+- `firebase.yaml` — Firebase project selection:
+
+```yaml
+service_account_path: "firebase-service-account.json"
+database_url: "https://chainly-f4afa-default-rtdb.europe-west1.firebasedatabase.app"
+```
+
+- `webrtc.yaml` — STUN/TURN and TURN secret (gitignored).
+- `.env` (optional) — fallback secrets:
+  - `FIREBASE_DATABASE_URL`, `TURN_SECRET`, `QC_SCM_FLOW_DEVICE`, etc.
+- `firebase_config.json` (optional) — alternate place to store `FIREBASE_DATABASE_URL`.
+
+Resolution order for `database_url` in the code:
+
+1. `firebase.yaml` → `database_url`
+2. environment variable `FIREBASE_DATABASE_URL`
+3. `firebase_config.json` → `FIREBASE_DATABASE_URL` or `database_url`
+
+### 7. Setup Instructions (backend)
+
+1. **Clone the repository**:
+
+   ```bash
+   git clone <repo-url>
+   cd QC-SCM
+   ```
+
+2. **Install dependencies** (full dev):
+
+   ```bash
+   pip install -e .
+   ```
+
+3. **Firebase service account JSON**:
+   - Download a service account key JSON from the Firebase console.
+   - Save it as:
+
+   ```text
+   Boxes/flow/config/firebase-service-account.json
+   ```
+
+4. **Configure `firebase.yaml`**:
+
+   ```bash
+   cp Boxes/flow/config/firebase.example.yaml Boxes/flow/config/firebase.yaml
+   ```
+
+   Then edit `firebase.yaml` to point to:
+
+   - `service_account_path: "firebase-service-account.json"`
+   - `database_url: "https://chainly-f4afa-default-rtdb.europe-west1.firebasedatabase.app"` (or your project).
+
+5. **Configure WebRTC**:
+
+   ```bash
+   cp Boxes/flow/config/webrtc.example.yaml Boxes/flow/config/webrtc.yaml
+   ```
+
+   Set:
+
+   - `stun.urls`
+   - `turn.urls`
+   - `turn.secret`
+
+6. **(Optional) `.env`**:
+
+   ```bash
+   cp Boxes/flow/config/.env.example Boxes/flow/config/.env
+   ```
+
+   Then set override values such as `FIREBASE_DATABASE_URL` or `TURN_SECRET` if you prefer env-based config.
+
+7. **Start the backend**:
+
+   ```bash
+   cd Boxes/flow
+   python3 main.py
+   ```
+
+### 8. Security Notes
+
+Sensitive files **must not** be committed:
+
+- `Boxes/flow/config/firebase-service-account.json` (Firebase private key).
+- `Boxes/flow/config/webrtc.yaml` (contains TURN secret).
+- `Boxes/flow/config/.env` (tokens / database URLs).
+- `Boxes/flow/config/firebase_config.json` (if used).
+
+The repo's `.gitignore` is already configured to ignore these; only the `*.example` templates are tracked. When adding new secrets, keep them under `Boxes/flow/config/` and extend `.gitignore` as needed.
+
+TURN credentials generated for WebRTC are time-limited and derived from a secret; treat the secret as sensitive as any password.
+
+### 9. Repository Structure (backend focus)
+
+Relevant folders for the backend:
+
+```text
+Boxes/
+  flow/
+    main.py          # Entry point (uvicorn)
+    api/             # FastAPI app + schemas
+    core/            # pipeline manager, session manager, Firebase, WebRTC track
+    config/          # YAML + env configs
+    detectors/       # YOLO wrapper
+    models/          # Inference models for flow
+    requirements/    # Flow runtime requirements
+    scripts/         # run_dev.sh
+    utils/           # Visualizer, geometry
+```
+
+Each of these has its own small `README.md` under `Boxes/flow/*/` for quick reference.
+
+### 10. Example API Usage (curl)
+
+#### Open a report
+
+```bash
+curl -sS -X POST "http://localhost:8000/api/reports/open" \
+  -H "content-type: application/json" \
+  -d '{"report_id":"r-123","camera_source":0,"production_line_id":"line-1"}'
+```
+
+#### Close a report
+
+```bash
+curl -sS -X POST "http://localhost:8000/api/reports/close" \
+  -H "content-type: application/json" \
+  -d '{"report_id":"r-123"}'
+```
+
+#### List active reports
+
+```bash
+curl -sS "http://localhost:8000/api/reports"
+```
+
+#### Get health
+
+```bash
+curl -sS "http://localhost:8000/api/health"
+```
+
+#### Get WebRTC config
+
+```bash
+curl -sS "http://localhost:8000/api/config"
+```
+
+Clients then use `/webrtc/offer` with an SDP offer plus `report_id` to establish a WebRTC stream for that report.
+
+---
+
+## 1. Project Overview
+
+### 1.1 What the project does
+
+QC-SCM is an AI-driven quality inspection system for manufacturing lines. It:
+
+- Connects to camera sources on production lines.
+- Runs a **two-stage YOLO-based detection pipeline**:
+  - **Box detector** finds the box/package in a region of interest (ROI).
+  - **Defect detector** examines that box for defects.
+- Streams **annotated video frames** via **WebRTC** to external clients.
+- Emits **minimal defect events** into **Firebase Realtime Database** for downstream analytics and traceability.
+
+### 1.2 Goal of the system
+
+- Provide a **headless detection service** that any client can integrate with via a simple HTTP + WebRTC API.
+- Separate **training** (YOLO projects) from **runtime inference** (Flow service), so models can evolve without changing the serving code.
+
+### 1.3 Main components
+
+- **Flow runtime (`Boxes/flow/`)**
+  - FastAPI backend.
+  - WebRTC signaling and media streaming (via `aiortc`).
+  - Box + defect detection pipeline.
+  - Firebase Realtime Database event publishing.
+- **Training pipelines (`Boxes/training/`)**
+  - `box-YOLO`: trains the **box detector**.
+  - `defect-YOLO`: trains the **defect detector**.
+  - Exports ONNX and quantized INT8 ONNX models for deployment.
+
+### 1.4 High-level architecture
+
+```text
+Camera → Flow backend:
+  - CamStream (OpenCV capture)
+  - PipelineManager (single inference thread)
+  - Pipeline (box YOLO → defect YOLO → tracking + decision)
+  - WebRTC track (annotated frames)
+  - Firebase worker (defect events)
+
+          ↓
+
+External client (WebRTC viewer, dashboards, etc.)
+```
+
+With data paths:
+
+```text
+Camera → AI pipeline → WebRTC stream → external client
+Camera → AI pipeline → detection event → Firebase Realtime Database
+```
+
+---
+
+## 2. System Architecture
+
+### 2.1 Backend services
+
+- **FastAPI app (`Boxes/flow/api/api_server.py`)**
+  - Creates the FastAPI instance.
+  - Loads YAML/ENV configuration (`_load_configs`).
+  - Initializes Firebase and models on startup (`@app.on_event("startup")`).
+  - Cleans up `PipelineManager` and WebRTC peer connections on shutdown.
+  - Exposes:
+    - `/api/reports/open`, `/api/reports/close`, `/api/reports`
+    - `/api/health`
+    - `/api/config`
+    - `/webrtc/offer`
+
+- **Session management (`Boxes/flow/core/session_manager.py` + `session_worker.py`)**
+  - `SessionManager`:
+    - Ensures one active report per `production_line_id`.
+    - Ensures a camera source is not shared across reports.
+  - `SessionWorker` (per-report thread):
+    - Creates a `Pipeline` configured with the correct detectors and stream settings.
+    - Starts the camera capture (`CamStream`).
+    - Registers the pipeline and WebRTC tracks with `PipelineManager`.
+    - Spawns a camera feeder thread that pushes frames into `PipelineManager`.
+
+- **Pipeline orchestration (`Boxes/flow/core/pipeline_manager.py`)**
+  - Singleton `PipelineManager` with:
+    - Bounded `frame_queue` for frames from all reports.
+    - Bounded `result_queue` for annotated frames + exit events.
+    - Bounded `firebase_queue` for final defect decisions.
+  - Starts three threads:
+    - **Inference thread**: serializes all GPU work, calling `Pipeline.run_step`.
+    - **Result-consumer thread**: updates WebRTC tracks and enqueues Firebase events.
+    - **Firebase worker thread**: commits events to Firebase Realtime Database.
+
+- **Inference pipeline (`Boxes/flow/core/pipeline.py`)**
+  - Holds:
+    - Camera stream (`CamStream`).
+    - Box + defect detectors.
+    - `AppState` (tracking, stability, counts).
+    - `Visualizer` (canvas layout and overlays).
+  - Implements:
+    - `run_step(frame, enqueue_time, camera_fps)` for frame-by-frame inference.
+    - Throttled box and defect detection.
+    - Single-box tracking and decision logic.
+
+- **Camera capture (`Boxes/flow/core/stream.py`)**
+  - `CamStream`:
+    - Uses OpenCV with V4L2 backend and MJPG fourcc.
+    - Runs a dedicated capture thread.
+    - Stores only the latest frame in `deque(maxlen=1)`.
+    - Provides non-blocking `get_latest_frame()`.
+
+- **Model/device management (`Boxes/flow/core/device_manager.py`, `model_loader.py`)**
+  - `select_device`:
+    - Chooses `cuda` / `mps` / `cpu` based on config and env (`QC_SCM_FLOW_DEVICE`).
+  - `ModelLoader`:
+    - Loads box and defect models once.
+    - Provides references to `Pipeline` instances.
+    - Optionally performs warmup passes.
+
+### 2.2 WebRTC streaming
+
+- Clients obtain ICE configuration from:
+
+  ```http
+  GET /api/config
+  ```
+
+  which returns:
+
+  ```json
+  {
+    "webrtc": {
+      "iceServers": [...],
+      "webrtc_mode": "auto"
+    }
+  }
+  ```
+
+- Clients send SDP offers to:
+
+  ```http
+  POST /webrtc/offer
+  {
+    "sdp": "...",
+    "type": "offer",
+    "report_id": "r-123"
+  }
+  ```
+
+- The backend:
+  - Looks up `SessionWorker` for `report_id`.
+  - Creates `RTCPeerConnection` with ICE servers derived from `webrtc.yaml`.
+  - Adds a `VideoTransformTrack`:
+    - `PipelineManager` feeds it annotated frames via `update_frame`.
+    - aiortc pulls frames from `recv()` and sends them to the client.
+
+### 2.3 Firebase event storage
+
+- Initialization:
+  - `_load_configs` reads `firebase.yaml`, `.env`, and `firebase_config.json` in that order of priority for `database_url`.
+  - `firebase_client.initialize(credentials_path, database_url)` sets up `firebase_admin`.
+- Publishing:
+  - `PipelineManager`'s Firebase worker calls:
+
+    ```python
+    publish_detection(report_id, timestamp, defect)
+    ```
+
+  - Which writes to Realtime Database under path `report_id` with an auto-generated `detection_id`.
+
+---
+
+## 3. AI / ML Pipeline
+
+### 3.1 Models and roles
+
+- **Box detector (`Boxes/training/box-YOLO`)**
+  - `PROJECT_NAME = "detect_box"`.
+  - Detects the single box in the ROI per frame.
+- **Defect detector (`Boxes/training/defect-YOLO`)**
+  - `PROJECT_NAME = "defect_box"`.
+  - Detects defects on the surface of the tracked box.
+
+Both start from pretrained YOLO models (`yolo26n.pt`/`yolov8n.pt`) and use Ultralytics YOLO training APIs.
+
+### 3.2 Training datasets
+
+Both detectors use the same YOLO-style dataset structure:
+
+```text
+data/
+  data/
+    data.yaml
+    train/images, train/labels
+    valid/images, valid/labels
+    test/images,  test/labels
+```
+
+`data/data/data.yaml` (user-provided) defines:
+
+- `path`, `train`, `val`, `test` directories.
+- Class `names` (e.g. `0: box` or `0: defect`).
+
+Utility scripts `scripts/merge_data.py` help compose large datasets and can remap labels to a single class.
+
+### 3.3 Training process
+
+For each project (`training/train.py`):
+
+1. Imports `configs.config` for:
+   - Paths (`ROOT`, `DATA_YAML`, `PROJECT_DIR`, `PROJECT_NAME`).
+   - Hyperparameters (`EPOCHS`, `BATCH_SIZE`, `IMG_SIZE`, `DEVICE`).
+2. Ensures output directories exist via `ensure_dirs`.
+3. If `runs/train/<PROJECT_NAME>/weights/last.pt` exists:
+   - Resumes training from `last.pt`.
+   - Otherwise:
+     - Ensures `BASE_MODEL` exists via `check_and_download_model`.
+     - Starts from the base weights.
+4. Selects training device:
+   - `select_device(DEVICE, env_var="QC_SCM_TRAIN_DEVICE", context="training")`.
+5. Calls `YOLO(...).train(...)` with:
+   - `data=DATA_YAML`, `epochs=100`, `imgsz=640`.
+   - `batch=8` (box) or `16` (defect).
+   - `patience=15`, `cache=True`, `cos_lr=True`, `mosaic=0.8`, `save=True`.
+6. Cleans up intermediate checkpoints with `prune_weights`, keeping `best.pt` and `last.pt`.
+
+### 3.4 Export and quantization
+
+- **Export to ONNX**:
+  - `export/export_onnx.py`:
+    - Loads `best.pt` from `runs/train/<PROJECT_NAME>/weights/`.
+    - Copies it to `models/exported/best.pt`.
+    - Exports to ONNX with `opset=OPSET` and `dynamic=True`.
+    - Renames `best.onnx` to `models/exported/<ONNX_NAME>`.
+
+- **Quantize to INT8**:
+  - `export/quantize_onnx.py`:
+    - Loads `models/exported/<ONNX_NAME>`.
+    - Runs `quantize_dynamic(..., weight_type=QuantType.QUInt8)`.
+    - Produces `models/exported/<ONNX_INT8_NAME>`.
+
+These ONNX artifacts are copied into `Boxes/flow/models/` for runtime use.
+
+### 3.5 Inference flow per frame
+
+Summarized from `core/pipeline.py`:
+
+1. `CamStream` capture thread writes frames into `deque(maxlen=1)`.
+2. `SessionWorker` feeder reads the newest frame and enqueues into `PipelineManager`.
+3. Inference thread calls `Pipeline.run_step(frame, enqueue_time, camera_fps)`:
+   - Builds or reuses a canvas with an info panel.
+   - Extracts an ROI for the conveyor belt.
+   - Runs box detection at a configurable rate (`box_detect_every_n_frames`).
+   - Maintains a **single tracked box** using IoU-based matching and smoothed coordinates.
+   - Runs defect detection on the cropped box at a separate rate (`defect_detect_every_n_frames`).
+   - Uses `AppState` to:
+     - Track entry/exit of the box through the ROI.
+     - Perform a rolling vote over recent defect results.
+     - Decide `"DEFECT"` vs `"OK"` once the box exits.
+   - Returns:
+     - `canvas`: annotated frame.
+     - `exit_event`: `True`/`False` if a box has just exited; `None` otherwise.
+
+---
+
+## 4. Training Configuration
+
+### 4.1 Hyperparameters (box-YOLO vs defect-YOLO)
+
+Both `configs/config.py` files define:
+
+- `EPOCHS = 100`
+- `IMG_SIZE = 640`
+- `DEVICE = "auto"` (overridable via `QC_SCM_TRAIN_DEVICE`)
+- `BATCH_SIZE`:
+  - Box detector: `8`
+  - Defect detector: `16`
+- Export:
+  - `ONNX_NAME` / `ONNX_INT8_NAME`
+  - `OPSET = 12`
+
+### 4.2 Dataset config
+
+- `DATA_YAML = DATA_DIR / "data" / "data.yaml"`:
+  - Standard YOLO `data.yaml` with `train`, `val`, `test` and `names`.
+- Data augmentations are those of Ultralytics YOLO, configured via training arguments:
+  - `mosaic=0.8` enables mosaic augmentation most of the time.
+  - Other augmentations (flip, HSV, scale) follow defaults.
+
+---
+
+## 5. Model Metrics
+
+### 5.1 Metrics output
+
+Each training run produces:
+
+- `results.csv` – per-epoch metrics (precision, recall, mAP, losses).
+- `results.png` – plotted curves.
+- `confusion_matrix.png` and `confusion_matrix_normalized.png`.
+- `BoxP_curve.png`, `BoxR_curve.png`, `BoxF1_curve.png`, `BoxPR_curve.png`.
+
+### 5.2 Metric collation
+
+`utils/utils.py` in each project:
+
+- `collect_final_metrics(run_dir, dest_dir)` copies the above into:
+
+```text
+Boxes/training/box-YOLO/runs/metrics/
+Boxes/training/defect-YOLO/runs/metrics/
+```
+
+### 5.3 Using metrics
+
+- Use **precision/recall/F1** and PR curves to:
+  - Choose `conf_thres` and `iou_thres` for runtime configuration.
+  - Compare model versions.
+- Use **confusion matrices** to:
+  - Inspect false positives/negatives.
+  - Validate class separability (especially for multi-class defect detectors).
+
+---
+
+## 6. Runtime Detection Flow
+
+End-to-end summary:
+
+1. **Open report**
+   - Client calls `POST /api/reports/open` with `{ report_id, camera_source, production_line_id }`.
+   - Backend:
+     - Starts `SessionWorker` if not already open for the production line.
+     - Creates `Pipeline` and `CamStream`.
+2. **Capture and enqueue frames**
+   - `CamStream` capture thread reads from camera → updates `deque(maxlen=1)`.
+   - Camera feeder thread reads from `CamStream` and pushes frames to `PipelineManager.put_frame(...)`.
+3. **Single-threaded inference**
+   - Inference thread:
+     - Dequeues `(session_id, frame, enqueue_time, camera_fps)`.
+     - Runs `Pipeline.run_step`.
+     - Measures latency and updates diagnostics.
+4. **Per-box decision**
+   - `Pipeline.run_step`:
+     - Updates tracking and defect votes.
+     - Emits `exit_event` when a box leaves the ROI with a final decision.
+5. **Distribute results**
+   - Result-consumer thread:
+     - Updates all WebRTC tracks for the report with the latest `canvas`.
+     - If `exit_event` is present:
+       - Pushes `(session_id, is_defect, firebase_meta)` into `firebase_queue`.
+6. **Persist events**
+   - Firebase worker thread:
+     - Dequeues events and calls `publish_detection(report_id, timestamp, defect)`.
+7. **Close report**
+   - Client calls `POST /api/reports/close` with `{ report_id }`.
+   - Backend:
+     - Stops `SessionWorker`, unregisters from `PipelineManager`.
+
+---
+
+## 7. Firebase Event System
+
+Each event is:
+
+```json
+{
+  "defect": true,
+  "timestamp": "2026-03-09T14:21:00Z"
+}
+```
+
+Stored under:
+
+```text
+{report_id}/{detection_id}
+```
+
+- `detection_id` is a Firebase push key; ordering roughly follows write time.
+
+---
+
+## 8. Configuration System
+
+### 8.1 Flow runtime
+
+All config lives in `Boxes/flow/config/`:
+
+- `api.yaml` – Uvicorn settings.
+- `app.yaml` – CORS (origins).
+- `webrtc.yaml` / `webrtc.example.yaml` – STUN/TURN and `webrtc_mode`.
+- `firebase.yaml` / `firebase.example.yaml` – service account path and `database_url`.
+- `.env` / `.env.example` – optional env overrides:
+  - `FIREBASE_DATABASE_URL`, `TURN_SECRET`, `QC_SCM_FLOW_DEVICE`, etc.
+- `firebase_config.json` / `.example` – JSON alternative for DB URL.
+- `box_detector.yaml`, `defect_detector.yaml`, `stream.yaml` – detector and stream configuration.
+
+### 8.2 Training
+
+- `Boxes/training/*-YOLO/configs/config.py` – per-project training config.
+- `data/data/data.yaml` – dataset config (user-provided).
+
+---
+
+## 9. Project Structure
+
+High-level:
+
+```text
+QC-SCM/
+  README.md
+  pyproject.toml
+  .gitignore
+  Boxes/
+    flow/       # Runtime detection service
+    training/   # YOLO training projects
+```
+
+```text
+Boxes/training/
+  box-YOLO/
+    configs/
+    training/
+    export/
+    models/
+    runs/
+    scripts/
+    utils/
+
+  defect-YOLO/
+    (same structure)
+```
+
+---
+
+## 10. Deployment / Running the System
+
+1. Clone repo and `pip install -e .` (or Flow-only requirements).
+2. Configure Firebase (`firebase-service-account.json`, `firebase.yaml` or env).
+3. Configure WebRTC (`webrtc.yaml`, TURN secret).
+4. Train and export models (optional if you bring your own):
+   - `Boxes/training/box-YOLO/scripts/run_all.py`
+   - `Boxes/training/defect-YOLO/scripts/run_all.py`
+5. Copy exported ONNX/INT8 artifacts to `Boxes/flow/models/` and update detector configs.
+6. Start backend:
+
+   ```bash
+   cd Boxes/flow
+   python3 main.py
+   ```
+
+7. Use `/api/reports/*` to manage reports and `/webrtc/offer` + `/api/config` to stream video.
+
+---
+
+## 11. Security Considerations
+
+### 11.1 Sensitive files
+
+Do **not** commit:
+
+- `Boxes/flow/config/firebase-service-account.json`
+- `Boxes/flow/config/webrtc.yaml`
+- `Boxes/flow/config/.env`
+- `Boxes/flow/config/firebase_config.json`
+- Any root `.env` with secrets.
+- Any proprietary datasets or raw production images.
+
+### 11.2 Environment variables
+
+Key env vars:
+
+- `FIREBASE_DATABASE_URL`
+- `TURN_SECRET`
+- `QC_SCM_FLOW_DEVICE`
+- `QC_SCM_TRAIN_DEVICE`
+
+These should be stored in secure secret stores or non-committed `.env` files.
+
+### 11.3 TURN and Firebase security
+
+- Treat TURN `secret` as a password; it controls generation of short-lived TURN credentials.
+- Restrict Firebase service account permissions and enforce strict Realtime Database rules so only the backend can write events.
+
+### 11.4 Data & privacy
+
+- Protect the backend API behind authentication or network controls where required.
+- Use HTTPS in production for both API and WebRTC signaling.
+- Define retention/anonymization policies for events stored in Firebase.

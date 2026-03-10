@@ -94,7 +94,7 @@ class PipelineManager:
             self._result_consumer_thread.start()
             self._firebase_thread.start()
             self._started = True
-            logger.info("PipelineManager workers started (inference, result_consumer, firebase)")
+            logger.debug("PipelineManager workers started")
 
     def put_frame(
         self,
@@ -203,7 +203,7 @@ class PipelineManager:
                                 track.update_frame(canvas)
                                 get_diagnostics().record_webrtc_update(time.perf_counter() - t0)
                             except Exception as e:
-                                logger.error("Error updating track session=%s: %s", session_id, e)
+                                logger.error("[Error] track update session=%s: %s", session_id, e)
                 if exit_event is not None and firebase_meta is not None:
                     try:
                         self._firebase_queue.put_nowait((session_id, exit_event, firebase_meta))
@@ -223,32 +223,14 @@ class PipelineManager:
                     break
                 session_id, is_defect, meta = item
                 timestamp = datetime.utcnow().isoformat() + "Z"
-                model_version = str(meta.get("model_version", "1.0"))
-                confidence = 1.0 if is_defect else 0.0
                 try:
                     publish_detection(
-                        factory_id=meta["factory_id"],
-                        production_line_id=meta["production_line_id"],
-                        session_id=meta["session_id"],
+                        report_id=meta["report_id"],
                         timestamp=timestamp,
                         defect=is_defect,
-                        camera_id=meta["camera_id"],
-                        station_id=meta["station_id"],
-                        factory_name=meta["factory_name"],
-                        production_line_name=meta["production_line_name"],
-                        model_version=model_version,
-                        confidence=confidence,
-                    )
-                    logger.info(
-                        "Detection sent → factory=%s line=%s session=%s defect=%s",
-                        meta["factory_id"], meta["production_line_id"], session_id, is_defect,
                     )
                 except Exception as e:
-                    logger.error(
-                        "Firebase write failed session=%s: %s",
-                        session_id, e,
-                        exc_info=True,
-                    )
+                    logger.error("[Error] Firebase write report=%s: %s", session_id, e)
             except queue.Empty:
                 continue
         logger.debug("Firebase worker stopped")
@@ -262,4 +244,4 @@ class PipelineManager:
             except queue.Full:
                 pass
         self._started = False
-        logger.info("PipelineManager shutdown")
+        logger.debug("PipelineManager shutdown")

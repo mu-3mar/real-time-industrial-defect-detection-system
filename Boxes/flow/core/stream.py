@@ -181,14 +181,17 @@ class CamStream:
         logger.debug("Camera capture loop running (produces to deque maxlen=1)")
         fps_count = 0
         fps_last_time = time.time()
+        _read_fail_logged = False
 
         while not self._stop_event.is_set():
             ret, frame = self.cap.read()
             if not ret:
-                logger.warning("Camera read failed in capture thread (ret=False)")
-                # Brief pause before retry to avoid busy-spinning on a dead device
+                if not _read_fail_logged:
+                    logger.warning("Camera read failed (ret=False)")
+                    _read_fail_logged = True
                 time.sleep(0.05)
                 continue
+            _read_fail_logged = False
 
             # Enqueue — automatically evicts old frame if consumer is slow
             self._frame_queue.append(frame)
@@ -209,8 +212,8 @@ class CamStream:
             now = time.time()
             if now - self._diag_last_log >= self._diag_log_interval:
                 self._diag_last_log = now
-                logger.info(
-                    "[DIAG] camera_capture_fps=%.1f (capture thread, %d frames total)",
+                logger.debug(
+                    "camera_capture_fps=%.1f (%d frames)",
                     self._camera_fps, self._capture_frame_count,
                 )
 

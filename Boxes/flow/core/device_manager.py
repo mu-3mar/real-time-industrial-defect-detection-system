@@ -99,7 +99,7 @@ def select_device(
 
     if requested == "auto":
         resolved = _resolve_auto()
-        logger.info("%sDevice: auto -> %s", prefix, resolved)
+        logger.debug("%sDevice: auto -> %s", prefix, resolved)
         return resolved
 
     if not _device_available(requested):
@@ -110,5 +110,5 @@ def select_device(
         )
         return fallback
 
-    logger.info("%sDevice: %s", prefix, requested)
+    logger.debug("%sDevice: %s", prefix, requested)
     return requested

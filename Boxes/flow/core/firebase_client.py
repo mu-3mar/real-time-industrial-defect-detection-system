@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import firebase_admin
 from firebase_admin import credentials, db
@@ -12,21 +11,31 @@ logger = logging.getLogger(__name__)
 _initialized: bool = False
 
 
+def _teardown_existing_app() -> None:
+    """Delete any previously initialized Firebase app so we can start fresh."""
+    try:
+        app = firebase_admin.get_app()
+        firebase_admin.delete_app(app)
+        logger.debug("Deleted stale Firebase app before re-init")
+    except ValueError:
+        pass  # no app exists yet
+
+
 def initialize(credentials_path: str, database_url: str) -> bool:
     """
-    Initialize Firebase Admin SDK with Realtime Database and return success.
-    Idempotent: if already initialized, returns True.
+    Initialize Firebase Admin SDK with Realtime Database.
+
+    Always tears down any existing Firebase app first so credentials
+    are never stale across restarts or hot-reloads.
 
     Args:
         credentials_path: Path to service account JSON file.
-        database_url: Firebase Realtime Database URL (e.g. from FIREBASE_DATABASE_URL).
+        database_url: Firebase Realtime Database URL.
 
     Returns:
         True if initialized successfully.
     """
     global _initialized
-    if _initialized:
-        return True
 
     path = Path(credentials_path)
     if not path.is_absolute():
@@ -35,12 +44,17 @@ def initialize(credentials_path: str, database_url: str) -> bool:
         raise FileNotFoundError(f"Firebase credentials not found: {path}")
 
     if not database_url or not database_url.strip():
-        raise ValueError("Firebase Realtime Database URL is required (e.g. FIREBASE_DATABASE_URL)")
+        raise ValueError(
+            "Firebase Realtime Database URL is required "
+            "(set database_url in firebase.yaml or FIREBASE_DATABASE_URL env)"
+        )
+
+    _teardown_existing_app()
 
     cred = credentials.Certificate(str(path))
     firebase_admin.initialize_app(cred, {"databaseURL": database_url.strip()})
     _initialized = True
-    logger.debug("Firebase initialized; Realtime Database client ready")
+    logger.info("[Service] Firebase initialized")
     return True
 
 
@@ -49,71 +63,38 @@ def get_initialized() -> bool:
     return _initialized
 
 
-def publish_detection(
-    factory_id: str,
-    production_line_id: str,
-    session_id: str,
-    timestamp: str,
-    defect: bool,
-    camera_id: str,
-    station_id: str,
-    factory_name: str,
-    production_line_name: str,
-    model_version: str,
-    confidence: float,
-) -> bool:
+def publish_detection(report_id: str, timestamp: str, defect: bool) -> bool:
     """
-    Write a detection event to Firebase Realtime Database. Each call pushes a new
-    record under factories/{factory_id}/production_lines/{production_line_id}/sessions/{session_id}/insights/
-    with an auto-generated key.
+    Push a detection event to Firebase Realtime Database.
+
+    Structure:
+        {report_id}
+           └── {detection_id}   (auto-generated Firebase push key)
+                ├── defect: true | false
+                └── timestamp: "2026-03-09T14:21:00Z"
 
     Args:
-        factory_id: Factory identifier.
-        production_line_id: Production line identifier.
-        session_id: Session identifier.
+        report_id: Report identifier (from /api/reports/open).
         timestamp: ISO 8601 UTC timestamp string.
         defect: True if defect detected, False otherwise.
-        camera_id: Camera identifier.
-        station_id: Station identifier.
-        factory_name: Human-readable factory name.
-        production_line_name: Human-readable production line name.
-        model_version: Detection model version string.
-        confidence: Detection confidence (0.0–1.0).
 
     Returns:
-        True if write succeeded, False otherwise. Does not raise; logs errors.
+        True if write succeeded, False otherwise.
     """
     if not _initialized:
-        logger.error("Firebase not initialized; cannot publish detection")
+        logger.error("[Error] Firebase not initialized")
         return False
 
-    path = (
-        f"factories/{factory_id}/production_lines/{production_line_id}"
-        f"/sessions/{session_id}/insights"
-    )
-    result = {
-        "timestamp": timestamp,
+    payload = {
         "defect": defect,
-        "camera_id": camera_id,
-        "station_id": station_id,
-        "factory_name": factory_name,
-        "production_line_name": production_line_name,
-        "model_version": model_version,
-        "confidence": confidence,
+        "timestamp": timestamp,
     }
 
     try:
-        ref = db.reference(path)
-        ref.push(result)
-        logger.info(
-            "Detection sent → factory=%s line=%s session=%s defect=%s",
-            factory_id, production_line_id, session_id, defect,
-        )
+        ref = db.reference(report_id)
+        ref.push(payload)
+        logger.debug("Detection sent → report_id=%s defect=%s", report_id, defect)
         return True
     except Exception as e:
-        logger.error(
-            "Realtime Database write failed: factory=%s line=%s session=%s error=%s",
-            factory_id, production_line_id, session_id, e,
-            exc_info=True,
-        )
+        logger.error("[Error] Firebase write failed: %s", e)
         return False

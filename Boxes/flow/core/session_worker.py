@@ -25,28 +25,18 @@ class SessionWorker(threading.Thread):
 
     def __init__(
         self,
-        session_id: str,
+        report_id: str,
         camera_source: Union[str, int],
-        factory_id: str,
-        factory_name: str,
         production_line_id: str,
-        production_line_name: str,
-        camera_id: str,
-        station_id: str,
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
         loop: asyncio.AbstractEventLoop,
     ):
         super().__init__(daemon=True)
-        self.session_id = session_id
+        self.report_id = report_id
         self.camera_source = camera_source
-        self.factory_id = factory_id
-        self.factory_name = factory_name
         self.production_line_id = production_line_id
-        self.production_line_name = production_line_name
-        self.camera_id = camera_id
-        self.station_id = station_id
         self._box_cfg = box_cfg
         self._defect_cfg = defect_cfg
         self._stream_cfg = {**stream_cfg, "source": camera_source}
@@ -74,7 +64,7 @@ class SessionWorker(threading.Thread):
             enqueue_time = stream.last_enqueue_time
             camera_fps = stream.camera_fps
             diag.set_camera_capture_fps(camera_fps)
-            ok = self._manager.put_frame(self.session_id, frame, enqueue_time, camera_fps)
+            ok = self._manager.put_frame(self.report_id, frame, enqueue_time, camera_fps)
             diag.record_frame_enqueue(ok)
             if not ok:
                 time.sleep(0.001)
@@ -94,18 +84,9 @@ class SessionWorker(threading.Thread):
             )
             self._pipeline_ref.stream.start()
 
-            firebase_meta = {
-                "factory_id": self.factory_id,
-                "production_line_id": self.production_line_id,
-                "session_id": self.session_id,
-                "camera_id": self.camera_id,
-                "station_id": self.station_id,
-                "factory_name": self.factory_name,
-                "production_line_name": self.production_line_name,
-                "model_version": str(self._defect_cfg.get("model_version", "1.0")),
-            }
+            firebase_meta = {"report_id": self.report_id}
             self._manager.register_session(
-                self.session_id,
+                self.report_id,
                 self._pipeline_ref,
                 (self._tracks, self._tracks_lock),
                 firebase_meta,
@@ -113,7 +94,7 @@ class SessionWorker(threading.Thread):
 
             self._feeder_thread = threading.Thread(
                 target=self._camera_feeder_loop,
-                name=f"CameraFeeder-{self.session_id}",
+                name=f"CameraFeeder-{self.report_id}",
                 daemon=True,
             )
             self._feeder_thread.start()
@@ -121,35 +102,23 @@ class SessionWorker(threading.Thread):
             while not self._stop_event.is_set():
                 self._stop_event.wait(timeout=0.5)
         except Exception as e:
-            logger.exception("Session %s pipeline error: %s", self.session_id, e)
+            logger.error("[Error] session %s: %s", self.report_id, e)
         finally:
-            self._manager.unregister_session(self.session_id)
-            logger.info("Session %s ended", self.session_id)
+            self._manager.unregister_session(self.report_id)
+            logger.debug("Session %s worker ended", self.report_id)
 
     def stop(self) -> None:
         """Signal the worker to stop."""
         self._stop_event.set()
 
     def get_info(self) -> dict:
-        """Return session metadata for GET /api/sessions (includes pipeline metrics when available)."""
-        info = {
-            "session_id": self.session_id,
-            "factory_id": self.factory_id,
-            "factory_name": self.factory_name,
-            "production_line_id": self.production_line_id,
-            "production_line_name": self.production_line_name,
-            "camera_id": self.camera_id,
-            "camera_source": str(self.camera_source),
-            "status": "active",
+        """Return report summary for GET /api/reports: report_id, viewers_count."""
+        with self._tracks_lock:
+            viewers_count = len(self._tracks)
+        return {
+            "report_id": self.report_id,
+            "viewers_count": viewers_count,
         }
-        if self._pipeline_ref is not None:
-            try:
-                info["pipeline_fps"] = getattr(self._pipeline_ref, "pipeline_fps", 0.0)
-                info["camera_fps_estimate"] = getattr(self._pipeline_ref, "camera_fps_estimate", 0.0)
-                info["queue_latency_ms"] = getattr(self._pipeline_ref, "queue_latency_ms", 0.0)
-            except Exception:
-                pass
-        return info
 
     def add_track(self, track: Any) -> None:
         """Add a WebRTC video track to receive frames."""

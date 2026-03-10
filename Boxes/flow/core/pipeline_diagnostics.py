@@ -122,19 +122,15 @@ class PipelineDiagnostics:
             log_result_drops = self.result_queue_drops
             log_latency_avg_ms = avg_latency * 1000.0
             log_latency_max_ms = self.inference_latency_max * 1000.0
-        logger.info(
-            "[DIAG] camera_capture_fps=%.1f | frame_enqueue_rate=%.1f | frame_queue_drops=%d | "
-            "inference_fps=%.1f | inference_latency_avg_ms=%.2f | inference_latency_max_ms=%.2f | "
-            "result_queue_drops=%d | webrtc_avg_ms=%.2f | "
-            "queue_sizes: frame=%d result=%d firebase=%d",
+        logger.debug(
+            "diagnostics: cam_fps=%.1f enq_rate=%.1f drops=%d inf_fps=%.1f "
+            "lat_avg=%.1fms lat_max=%.1fms q=%d/%d/%d",
             log_camera_fps,
             enqueue_rate,
             log_drops,
             inf_fps,
             log_latency_avg_ms,
             log_latency_max_ms,
-            log_result_drops,
-            webrtc_avg_ms,
             frame_queue_size,
             result_queue_size,
             firebase_queue_size,

@@ -11,9 +11,11 @@ __pycache__/
 *.so
 .ipynb_checkpoints/
 
-# Environments
+# Environments (keep .env.example for reference)
 .env
 .env.*
+!.env.example
+!**/.env.example
 Boxes/flow/config/.env
 env/
 venv/
@@ -44,6 +46,7 @@ outputs/
 *.pdf
 *.svg
 *.eps
+*.html
 
 # Secrets and credentials (do not commit)
 secrets.json
@@ -52,9 +55,13 @@ secrets.json
 *.p12
 *.pfx
 
-# Firebase service account keys (private keys inside)
-Boxes/flow/config/*.json
+# Firebase: service account keys (private keys) and config with DB URL
+Boxes/flow/config/*-firebase-adminsdk*.json
 Boxes/flow/config/*credentials*
+Boxes/flow/config/firebase-service-account*.json
+!Boxes/flow/config/firebase-service-account.example.json
+Boxes/flow/config/firebase_config.json
+!Boxes/flow/config/firebase_config.json.example
 *firebase-adminsdk*.json
 **/firebase*adminsdk*.json
 

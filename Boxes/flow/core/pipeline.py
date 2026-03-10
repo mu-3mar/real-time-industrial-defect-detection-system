@@ -161,8 +161,8 @@ class Pipeline:
         self.update_fps()
         now = time.time()
         if now - self._last_diag_log_time >= self._diag_log_interval:
-            logger.info(
-                "Pipeline diagnostics: pipeline_fps=%.1f camera_fps=%.1f queue_latency_ms=%.1f",
+            logger.debug(
+                "pipeline fps=%.1f camera_fps=%.1f latency=%.1fms",
                 self.pipeline_fps, self.camera_fps_estimate, self.queue_latency_ms,
             )
             self._last_diag_log_time = now
@@ -232,11 +232,8 @@ class Pipeline:
         if just_exited:
             self._current_track = None
             is_defect = final_decision == "DEFECT"
-            logger.info(
-                "Box processed: decision=%s total=%d defect=%d ok=%d",
-                final_decision, self.state.total_count,
-                self.state.defect_count, self.state.ok_count,
-            )
+            label_text = "DEFECT" if is_defect else "OK"
+            logger.info("[Detection] %s (total=%d)", label_text, self.state.total_count)
             exit_event = is_defect
 
         return canvas, exit_event
@@ -260,7 +257,7 @@ class Pipeline:
         Args:
             stop_event: Optional threading event to signal stop
         """
-        logger.info("Session pipeline started (headless=%s)", self.headless)
+        logger.debug("Pipeline started (headless=%s)", self.headless)
 
         # Start the camera capture thread (producer)
         self.stream.start()
@@ -268,7 +265,7 @@ class Pipeline:
         try:
             while True:
                 if stop_event and stop_event.is_set():
-                    logger.info("Session pipeline stopped")
+                    logger.debug("Pipeline stopped")
                     break
 
                 # ── Non-blocking frame read from camera queue (Task 1+2) ──
@@ -295,8 +292,8 @@ class Pipeline:
                 self.update_fps()
                 now = time.time()
                 if now - self._last_diag_log_time >= self._diag_log_interval:
-                    logger.info(
-                        "Pipeline diagnostics: pipeline_fps=%.1f camera_fps=%.1f queue_latency_ms=%.1f",
+                    logger.debug(
+                        "pipeline fps=%.1f camera_fps=%.1f latency=%.1fms",
                         self.pipeline_fps, self.camera_fps_estimate, self.queue_latency_ms,
                     )
                     self._last_diag_log_time = now
@@ -369,11 +366,8 @@ class Pipeline:
                 if just_exited:
                     self._current_track = None
                     is_defect = final_decision == "DEFECT"
-                    logger.info(
-                        "Box processed: decision=%s total=%d defect=%d ok=%d",
-                        final_decision, self.state.total_count,
-                        self.state.defect_count, self.state.ok_count,
-                    )
+                    label_text = "DEFECT" if is_defect else "OK"
+                    logger.info("[Detection] %s (total=%d)", label_text, self.state.total_count)
                     if self.on_result_callback:
                         self.on_result_callback(is_defect)
                     else:
@@ -390,7 +384,7 @@ class Pipeline:
             logger.error("Pipeline error: %s", e, exc_info=True)
         finally:
             self.cleanup()
-            logger.info("Session pipeline ended (frames=%d)", self.frame_count)
+            logger.debug("Pipeline ended (frames=%d)", self.frame_count)
 
     def _match_track(self, boxes_roi: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
         """

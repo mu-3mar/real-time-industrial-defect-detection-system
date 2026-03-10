@@ -1,4 +1,9 @@
-# Firebase Realtime Database for detection insights.
-# All factory/line/session metadata comes from the open-session request; nothing is hardcoded here.
-# Database URL must be set via FIREBASE_DATABASE_URL (e.g. in .env) or firebase_config.json (see .env.example).
-credentials_path: "qc-scm-firebase-adminsdk-fbsvc-91b32d7485.json"
+# Firebase Realtime Database for detection events.
+# Detections are stored under report_id only; each entry has defect and timestamp. No factory/line hierarchy.
+#
+# This file selects which Firebase project to use. Do NOT commit the actual
+# service account JSON; it is gitignored. Use the europe-west1 URL provided
+# by Firebase as database_url.
+
+service_account_path: "chainly-f4afa-firebase-adminsdk-fbsvc-42caaffab8.json"
+database_url: "https://chainly-f4afa-default-rtdb.europe-west1.firebasedatabase.app"
