@@ -40,29 +40,25 @@ class SessionManager:
         defect_cfg: dict,
         stream_cfg: dict,
         loop: asyncio.AbstractEventLoop,
-    ) -> Tuple[SessionWorker, bool]:
+    ) -> SessionWorker:
         """
-        Create and start a new headless detection session, or return existing if
-        this production line is already open. Uses report_id as the session identifier.
+        Create and start a new headless detection session.
 
-        Returns:
-            (worker, already_open): worker is the SessionWorker; already_open is True
-            if the production line had an open session and we did not create a new one.
+        Raises ValueError if report_id, production_line_id, or camera_source
+        is already used by an active session.
         """
         camera_key = str(camera_source)
         with self.sessions_lock:
-            if production_line_id in self.production_line_to_report:
-                existing_report_id = self.production_line_to_report[production_line_id]
-                worker = self.sessions.get(existing_report_id)
-                if worker is not None:
-                    logger.debug(
-                        "Production line %s already open as %s",
-                        production_line_id, existing_report_id,
-                    )
-                    return worker, True
-
             if report_id in self.sessions:
                 raise ValueError(f"Session {report_id} already exists")
+
+            if production_line_id in self.production_line_to_report:
+                existing_report_id = self.production_line_to_report[production_line_id]
+                if existing_report_id in self.sessions:
+                    raise ValueError(
+                        f"Production line {production_line_id} already has an active session {existing_report_id}"
+                    )
+
             if camera_key in self.camera_locks:
                 locked_by = self.camera_locks[camera_key]
                 raise ValueError(
@@ -83,7 +79,7 @@ class SessionManager:
             self.production_line_to_report[production_line_id] = report_id
             worker.start()
             logger.info("[Session] opened: %s", report_id)
-            return worker, False
+            return worker
 
     def close_session(self, report_id: str) -> Tuple[bool, bool]:
         """

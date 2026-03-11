@@ -285,7 +285,7 @@ async def open_report(body: OpenReportRequest) -> ReportResponse:
     try:
         loop = asyncio.get_running_loop()
 
-        worker, already_open = session_manager.create_session(
+        worker = session_manager.create_session(
             report_id=body.report_id,
             camera_source=body.camera_source,
             production_line_id=body.production_line_id,
@@ -294,16 +294,9 @@ async def open_report(body: OpenReportRequest) -> ReportResponse:
             stream_cfg=configs["stream"],
             loop=loop,
         )
-        report_id = worker.report_id
-        if already_open:
-            return ReportResponse(
-                status="success",
-                report_id=report_id,
-                message="Report is already open for this production line",
-            )
         return ReportResponse(
             status="success",
-            report_id=report_id,
+            report_id=worker.report_id,
             message=f"Report started with camera {body.camera_source}",
         )
     except ValueError as e:

@@ -86,10 +86,15 @@ config.local.*
 *.tar
 *.gz
 
-# Model training artifacts (keep Boxes/flow/models/*.onnx for runtime)
+# Model training artifacts
 *.tflite
 *.npy
 *.h5
 *.pb
 *.index
 *.data-00000-of-00001
+
+# Model binaries (ignore all heavy model files)
+*.onnx
+*.engine
+*.pt
