@@ -203,6 +203,19 @@
     align-content:start;
   }
 
+  .v-card.fullscreen {
+    position: fixed;
+    inset: 8px 8px 148px 8px; /* leave room for header + log */
+    z-index: 300;
+    max-width: none;
+  }
+  .v-card.fullscreen .v-video {
+    flex: 1;
+  }
+  .v-card.fullscreen .v-video video {
+    object-fit: contain;
+  }
+
   /* VIDEO CARD */
   .v-card {
     background:var(--surface);
@@ -467,7 +480,7 @@ async function openSession() {
   if(sessions.has(reportId)){ log('[Error] Already open: '+reportId); return; }
 
   const lineKey = $('lineSelect').value;
-  const sess = { reportId, lineKey, pc:null, state:'opening', iceType:null, startedAt:new Date() };
+  const sess = { reportId, lineKey, pc:null, state:'opening', iceType:null, startedAt:new Date(), fullscreen:false };
   sessions.set(reportId, sess);
 
   renderCard(sess);
@@ -482,9 +495,8 @@ async function openSession() {
       production_line_id: LINE_DEFS[lineKey].production_line_id,
     });
     log('[Session] opened: '+reportId);
-    sess.state='connecting';
+    sess.state='ready';
     syncCard(sess); syncSideItem(sess);
-    await startWebRTC(sess);
   } catch(e) {
     log('[Error] open failed ('+reportId+'): '+e.message);
     sess.state='failed';
@@ -569,7 +581,20 @@ async function startWebRTC(sess) {
 }
 
 function stopWebRTC(sess){
-  if(sess.pc){try{sess.pc.close();}catch{}sess.pc=null;}
+  if(sess.pc){
+    try{sess.pc.close();}catch{}
+    sess.pc=null;
+  }
+  const cardEl=document.getElementById(cardId(sess.reportId));
+  if(cardEl){
+    const vid=cardEl.querySelector('video');
+    const ns=cardEl.querySelector('.no-sig');
+    if(vid){
+      if(vid.srcObject){ vid.srcObject=null; }
+      vid.classList.remove('on');
+    }
+    if(ns){ ns.style.display='flex'; }
+  }
 }
 
 async function detectIceType(pc){
@@ -599,6 +624,8 @@ function renderCard(sess){
         <span class="v-line-tag">${line.label}</span>
       </div>
       <div class="v-card-head-right">
+        <button class="btn btn-ghost btn-sm" id="${id}-sb" onclick="openStream('${sess.reportId}')">Open Stream</button>
+        <button class="btn btn-ghost btn-sm" id="${id}-cb" onclick="closeStream('${sess.reportId}')">Close Stream</button>
         <div class="live-dot" id="${id}-ld"><span class="dot pulse"></span>LIVE</div>
         <button class="btn-x" onclick="closeSession('${sess.reportId}')" title="Close session">✕</button>
       </div>
@@ -613,6 +640,10 @@ function renderCard(sess){
       </div>
     </div>`;
   $('videoGrid').appendChild(el);
+  const videoArea = el.querySelector('.v-video');
+  if(videoArea){
+    videoArea.addEventListener('click', ()=>toggleFullscreen(sess.reportId));
+  }
 }
 
 function syncCard(sess){
@@ -620,13 +651,22 @@ function syncCard(sess){
   const st=document.getElementById(id+'-st');
   const ic=document.getElementById(id+'-ice');
   const ld=document.getElementById(id+'-ld');
+  const sb=document.getElementById(id+'-sb');
+  const cb=document.getElementById(id+'-cb');
   const card=document.getElementById(id);
   if(!st) return;
-  const labels={opening:'Opening…',connecting:'Connecting…',live:'● Live',failed:'✕ Failed',closing:'Closing…',disconnected:'Disconnected'};
+  const labels={opening:'Opening…',ready:'Ready',connecting:'Connecting…',live:'● Live',failed:'✕ Failed',closing:'Closing…',disconnected:'Disconnected'};
   st.textContent=labels[sess.state]||sess.state;
   st.style.color=sess.state==='live'?'var(--accent)':sess.state==='failed'||sess.state==='disconnected'?'var(--danger)':'var(--text-muted)';
   if(ic) ic.textContent=sess.iceType?'ICE: '+sess.iceType:'';
   if(ld) ld.classList.toggle('on', sess.state==='live');
+  if(sb){
+    const canOpen = !sess.pc && (sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected');
+    sb.disabled = !canOpen;
+  }
+  if(cb){
+    cb.disabled = !sess.pc;
+  }
   if(card){
     card.classList.toggle('is-live', sess.state==='live');
     card.classList.toggle('is-failed', sess.state==='failed'||sess.state==='disconnected');
@@ -667,11 +707,47 @@ function syncSideItem(sess){
   const b=document.getElementById(id+'-b');
   const item=document.getElementById(id);
   if(!b) return;
-  const lbl={opening:'OPENING',connecting:'RTC…',live:'LIVE',failed:'FAILED',closing:'…',disconnected:'DISCON'};
-  const cls={opening:'opening',connecting:'opening',live:'live',failed:'failed',closing:'idle',disconnected:'failed'};
+  const lbl={opening:'OPENING',ready:'READY',connecting:'RTC…',live:'LIVE',failed:'FAILED',closing:'…',disconnected:'DISCON'};
+  const cls={opening:'opening',ready:'idle',connecting:'opening',live:'live',failed:'failed',closing:'idle',disconnected:'failed'};
   b.textContent=lbl[sess.state]||sess.state.toUpperCase();
   b.className='s-badge '+(cls[sess.state]||'idle');
   if(item) item.classList.toggle('is-live', sess.state==='live');
+}
+
+function toggleFullscreen(reportId){
+  const sess=sessions.get(reportId);
+  if(!sess){ return; }
+  sess.fullscreen = !sess.fullscreen;
+  const card=document.getElementById(cardId(reportId));
+  if(card){
+    card.classList.toggle('fullscreen', sess.fullscreen);
+  }
+}
+
+async function openStream(reportId){
+  const sess=sessions.get(reportId);
+  if(!sess){ log('[Error] Unknown session: '+reportId); return; }
+  if(sess.pc){ log('[Session] stream already active for '+reportId); return; }
+  if(!(sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected')){
+    log('[Session] stream not ready for '+reportId);
+    return;
+  }
+  sess.state='connecting';
+  syncCard(sess); syncSideItem(sess);
+  await startWebRTC(sess);
+}
+
+function closeStream(reportId){
+  const sess=sessions.get(reportId);
+  if(!sess){ log('[Error] Unknown session: '+reportId); return; }
+  if(!sess.pc){
+    log('[Session] no active stream for '+reportId);
+    return;
+  }
+  log('[Session] stopping stream: '+reportId);
+  stopWebRTC(sess);
+  sess.state='ready';
+  syncCard(sess); syncSideItem(sess);
 }
 
 function removeSideItem(rid){
