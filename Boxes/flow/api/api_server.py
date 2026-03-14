@@ -6,22 +6,14 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
 
 import yaml
-from dotenv import load_dotenv
 
 # Base path: Boxes/flow (parent of api/)
 _base_flow = Path(__file__).resolve().parent.parent
-_repo_root = _base_flow.parent.parent
-# Load environment secrets: Boxes/flow/config/.env then flow dir .env then repo root .env then cwd
-load_dotenv(_base_flow / "config" / ".env")
-load_dotenv(_base_flow / ".env")
-load_dotenv(_repo_root / ".env")
-load_dotenv()
 
 from core.device_manager import select_device
 from fastapi import FastAPI, HTTPException
@@ -154,21 +146,28 @@ def _load_configs(base: Path) -> None:
     """Load all YAML configs from the single config/ directory."""
     cfg = base / "config"
 
-    # Environment-dependent config (optional, with defaults)
-    # Note: api.yaml is loaded by main.py only; webrtc used here for ICE
-    for key, filename in [("app", "app.yaml"), ("webrtc", "webrtc.yaml")]:
-        path = cfg / filename
-        if path.exists():
-            with open(path) as f:
-                configs[key] = yaml.safe_load(f) or {}
-        else:
-            configs[key] = {}
-    # Defaults when webrtc.yaml is missing (e.g. not committed; use env TURN_SECRET or add webrtc.yaml)
-    if "webrtc" not in configs or not configs["webrtc"]:
-        configs["webrtc"] = {
-            "stun": {"urls": "stun:20.51.117.96:3478"},
-            "turn": {"urls": "turn:20.51.117.96:3478", "secret": os.environ.get("TURN_SECRET", "")},
-        }
+    # app.yaml is optional (CORS); webrtc.yaml is required (runtime config, not committed)
+    app_path = cfg / "app.yaml"
+    if app_path.exists():
+        with open(app_path) as f:
+            configs["app"] = yaml.safe_load(f) or {}
+    else:
+        configs["app"] = {}
+
+    webrtc_path = cfg / "webrtc.yaml"
+    if not webrtc_path.exists():
+        raise ValueError(
+            "WebRTC config is required. Copy the template and add your values:\n"
+            "  cp Boxes/flow/config/webrtc.example.yaml Boxes/flow/config/webrtc.yaml\n"
+            "Then edit config/webrtc.yaml with your STUN/TURN URLs and TURN secret. "
+            "webrtc.yaml is gitignored and is the single runtime source for WebRTC configuration."
+        )
+    with open(webrtc_path) as f:
+        configs["webrtc"] = yaml.safe_load(f) or {}
+    if not configs["webrtc"]:
+        raise ValueError(
+            "config/webrtc.yaml is empty. Use webrtc.example.yaml as a template and set mode (or webrtc_mode), stun, and turn."
+        )
 
     # Service configs (now co-located in config/ alongside environment configs)
     with open(cfg / "box_detector.yaml") as f:
@@ -208,7 +207,6 @@ def _load_configs(base: Path) -> None:
     raw_device = configs.get("box", {}).get("device", "0")
     resolved_device = select_device(
         str(raw_device).strip() or None,
-        env_var="QC_SCM_FLOW_DEVICE",
         context="flow",
     )
     configs["box"]["device"] = resolved_device
@@ -223,10 +221,8 @@ def _load_configs(base: Path) -> None:
     )
     cred_path = base / "config" / cred_rel
 
-    # Prefer database_url from firebase.yaml, then env, then firebase_config.json
+    # database_url: firebase.yaml first, then firebase_config.json (both in config/)
     database_url = str(fb_cfg.get("database_url", "")).strip()
-    if not database_url:
-        database_url = os.environ.get("FIREBASE_DATABASE_URL", "").strip()
     if not database_url:
         config_json_path = base / "config" / "firebase_config.json"
         if config_json_path.exists():
@@ -239,8 +235,8 @@ def _load_configs(base: Path) -> None:
                 ).strip()
     if not database_url:
         raise ValueError(
-            "Firebase Realtime Database URL must be set. Use firebase.yaml (database_url), "
-            "Boxes/flow/config/.env, or firebase_config.json (see Boxes/flow/config/.env.example)."
+            "Firebase Realtime Database URL must be set in config: "
+            "firebase.yaml (database_url) or firebase_config.json (see firebase_config.json.example)."
         )
     init_firebase(str(cred_path), database_url)
 
@@ -352,6 +348,18 @@ async def health_check() -> HealthResponse:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# -----------------------------------------------------------------------------
+# WebRTC config pipeline (config/webrtc.yaml is the single source of truth)
+# 1. _load_configs() loads webrtc.yaml into configs["webrtc"] (required at startup).
+# 2. Mode is read as (mode or webrtc_mode) -> one of auto | direct | stun | relay.
+# 3. _ice_servers_for_mode(mode) builds ICE server list: direct=empty, stun=STUN only,
+#    relay=TURN only, auto=STUN+TURN. TURN credentials are short-lived (e.g. 5 min).
+# 4. GET /api/config returns { webrtc: { iceServers, mode, webrtc_mode, iceTransportPolicy? } }.
+# 5. Frontend creates RTCPeerConnection(iceServers, iceTransportPolicy) and sets
+#    iceTransportPolicy: "relay" when mode=relay so the browser uses TURN only.
+# -----------------------------------------------------------------------------
+
+
 def _generate_turn_credentials(secret: str) -> tuple[str, str]:
     """Generate temporary TURN credentials using REST API authentication (valid for 5 mins)."""
     expiry = int(time.time()) + 300
@@ -367,15 +375,27 @@ def _generate_turn_credentials(secret: str) -> tuple[str, str]:
     return username, credential
 
 
+def _get_webrtc_mode() -> str:
+    """
+    Resolve connection mode from config/webrtc.yaml.
+    Accepts either 'mode' or 'webrtc_mode' (same meaning). Returns one of auto, direct, stun, relay.
+    """
+    w = configs.get("webrtc") or {}
+    raw = (w.get("mode") or w.get("webrtc_mode") or "auto")
+    mode = (raw if isinstance(raw, str) else str(raw)).strip().lower() or "auto"
+    if mode not in ("auto", "direct", "stun", "relay"):
+        mode = "auto"
+    return mode
+
+
 def _ice_servers_for_mode(mode: str, for_aiortc: bool = False) -> list:
     """
-    Build ICE server list from webrtc_mode.
-    - auto:   host + STUN + TURN
-    - direct: host only (empty list)
-    - stun:   host + STUN
-    - relay:  host + TURN only
-    When for_aiortc=False (client config), includes temporary TURN username/credential
-    (short-lived, e.g. 5 minutes) so the browser can establish WebRTC connections.
+    Build ICE server list from config/webrtc.yaml for the given mode.
+    - auto:   STUN + TURN (browser may use host/srflx/relay)
+    - direct: empty list (host candidates only)
+    - stun:   STUN only (host + srflx, no TURN)
+    - relay:  TURN only (client must set iceTransportPolicy: "relay" to enforce)
+    When for_aiortc=False (client config), includes temporary TURN username/credential.
     """
     w = configs.get("webrtc") or {}
     stun = w.get("stun") or {}
@@ -398,22 +418,23 @@ def _ice_servers_for_mode(mode: str, for_aiortc: bool = False) -> list:
 
 def _client_webrtc_config() -> Dict[str, Any]:
     """
-    Build client WebRTC config: STUN servers, TURN servers, and temporary TURN
-    credentials (short-lived, valid for a few minutes). The frontend uses this
-    to create RTCPeerConnection and establish WebRTC connections.
+    Build client WebRTC config from config/webrtc.yaml (single source of truth).
+    Returns iceServers (and optional iceTransportPolicy hint) so the frontend
+    can create RTCPeerConnection. For mode=relay the frontend must set
+    iceTransportPolicy: "relay" to force TURN-only; other modes use iceServers
+    only (direct=empty, stun=STUN only, auto=STUN+TURN).
     """
-    w = configs.get("webrtc") or {}
-    mode = (w.get("webrtc_mode") or "auto").strip().lower() or "auto"
-    if mode not in ("auto", "direct", "stun", "relay"):
-        mode = "auto"
+    mode = _get_webrtc_mode()
     ice_servers = _ice_servers_for_mode(mode, for_aiortc=False)
-    logger.debug("WebRTC config: webrtc_mode=%s, ice_servers=%d", mode, len(ice_servers))
-    return {
-        "webrtc": {
-            "iceServers": ice_servers,
-            "webrtc_mode": mode,
-        }
+    logger.debug("WebRTC config: mode=%s, ice_servers=%d", mode, len(ice_servers))
+    out: Dict[str, Any] = {
+        "iceServers": ice_servers,
+        "mode": mode,
+        "webrtc_mode": mode,
     }
+    if mode == "relay":
+        out["iceTransportPolicy"] = "relay"
+    return {"webrtc": out}
 
 
 @app.get("/api/config")
@@ -438,10 +459,7 @@ async def webrtc_offer(params: OfferRequest) -> OfferResponse:
 
     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
 
-    w = configs.get("webrtc") or {}
-    mode = (w.get("webrtc_mode") or "auto").strip().lower() or "auto"
-    if mode not in ("auto", "direct", "stun", "relay"):
-        mode = "auto"
+    mode = _get_webrtc_mode()
     ice_servers = _ice_servers_for_mode(mode, for_aiortc=True)
     config = RTCConfiguration(iceServers=ice_servers)
     pc = RTCPeerConnection(configuration=config)

@@ -11,12 +11,9 @@ __pycache__/
 *.so
 .ipynb_checkpoints/
 
-# Environments (keep .env.example for reference)
+# Environment files (project uses config/ only; ignore .env if present)
 .env
 .env.*
-!.env.example
-!**/.env.example
-Boxes/flow/config/.env
 env/
 venv/
 .venv/

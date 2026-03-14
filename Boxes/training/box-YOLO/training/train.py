@@ -50,7 +50,7 @@ def train():
         model = YOLO(str(BASE_MODEL))
         resume = False
 
-    device = select_device(DEVICE, env_var="QC_SCM_TRAIN_DEVICE", context="training")
+    device = select_device(DEVICE, context="training")
     model.train(
         data=str(DATA_YAML),
         epochs=EPOCHS,

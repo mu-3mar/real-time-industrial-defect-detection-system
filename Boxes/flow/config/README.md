@@ -6,8 +6,8 @@ Runtime configuration for the flow server (`Boxes/flow/main.py` + `api/api_serve
 
 - `api.yaml`: bind address + port + log level (used by `main.py`).
 - `app.yaml`: optional CORS origins list.
-- `webrtc.yaml`: STUN/TURN + TURN **secret** and `webrtc_mode` (gitignored).
-- `webrtc.example.yaml`: template for `webrtc.yaml`.
+- `webrtc.yaml`: **Required** runtime WebRTC config (STUN/TURN URLs, TURN secret, `webrtc_mode`). Not committed (gitignored); create by copying from the example.
+- `webrtc.example.yaml`: Template committed to the repo (no secrets). Copy to `webrtc.yaml` and fill in real values.
 - `firebase.yaml`: Firebase Realtime Database settings
   - `service_account_path`: filename of the service account JSON in this folder (JSON is gitignored)
   - `database_url`: Realtime Database URL
@@ -19,19 +19,19 @@ Runtime configuration for the flow server (`Boxes/flow/main.py` + `api/api_serve
 ## Secrets
 
 - Do not commit `webrtc.yaml` or `firebase-service-account.json`.
-- Prefer `firebase.yaml` for `database_url`; server also supports `FIREBASE_DATABASE_URL` env and `firebase_config.json` fallback.
-# Configuration Reference
+- Prefer `firebase.yaml` for `database_url`; optional fallback: `firebase_config.json` in this directory. No environment variables are used.
 
-## Setup (after cloning)
+## Configuration Reference
+
+### Setup (after cloning)
 
 Copy the example files and fill in real values. Do not commit files that contain secrets.
 
 | Example file | Copy to | Contains |
 |--------------|---------|----------|
-| `.env.example` | `.env` | `FIREBASE_DATABASE_URL`, optional overrides |
-| `firebase.example.yaml` | `firebase.yaml` | `credentials_path` for Firebase service account JSON |
+| `firebase.example.yaml` | `firebase.yaml` | `service_account_path` + `database_url` |
 | `webrtc.example.yaml` | `webrtc.yaml` | STUN/TURN URLs and TURN `secret` |
-| `firebase_config.json.example` | `firebase_config.json` | Alternative: `FIREBASE_DATABASE_URL` in JSON |
+| `firebase_config.json.example` | `firebase_config.json` | Alternative: `database_url` in JSON (optional) |
 
 Place your Firebase service account JSON in this folder; it is gitignored.
 
@@ -53,15 +53,17 @@ Place your Firebase service account JSON in this folder; it is gitignored.
 | `port` | Listen port (default: 8000) |
 | `log_level` | Uvicorn log level (default: info) |
 
-## webrtc.yaml (optional, has defaults)
+## webrtc.yaml (required at runtime)
 
 | Key | Purpose |
 |-----|---------|
+| `mode` or `webrtc_mode` | Connection mode (same meaning): `auto`, `direct`, `stun`, `relay` |
 | `stun.urls` | STUN server for NAT traversal |
-| `turn` | TURN server (urls + secret for credential generation) |
-| `webrtc_mode` | `auto` (host+STUN+TURN), `direct` (host only), `stun` (host+STUN), `relay` (host+TURN) |
+| `turn` | TURN server (`urls` + `secret` for credential generation) |
 
-**Client config:** The `/api/config` endpoint returns STUN URLs, TURN URLs, and **temporary TURN credentials** (short-lived, e.g. 5 minutes) so the frontend can establish WebRTC connections. Credentials are time-limited for security.
+**Mode enforcement:** The backend builds `iceServers` from this file and returns them with the chosen `mode` from GET `/api/config`. The frontend creates `RTCPeerConnection` with those servers and sets `iceTransportPolicy: "relay"` when `mode: relay` so the connection uses TURN only; other modes use only the provided servers (direct = empty, stun = STUN only, auto = STUN + TURN).
+
+**Client config:** GET `/api/config` returns `webrtc.iceServers` (with temporary TURN credentials when applicable), `webrtc.mode`, and when mode is `relay`, `webrtc.iceTransportPolicy: "relay"` so the frontend can enforce TURN-only connections.
 
 ## stream.yaml (required)
 
@@ -79,7 +81,7 @@ Source comes from `camera_source` in POST /api/reports/open.
 | `service_account_path` | Filename of Firebase service account JSON in `config/` (gitignored). |
 | `database_url` | Firebase Realtime Database URL (e.g. europe-west1 `*.firebasedatabase.app`). |
 
-**Database URL (required):** Prefer `database_url` in `firebase.yaml`. As a fallback, `FIREBASE_DATABASE_URL` can be set in `.env` or in `firebase_config.json`. Do not commit `.env` or `firebase_config.json`.
+**Database URL (required):** Set `database_url` in `firebase.yaml`, or optionally in `firebase_config.json`. Do not commit `firebase_config.json` if it contains secrets.
 
 Report open uses `report_id`, `camera_source`, and `production_line_id` from POST /api/reports/open. Detections are written to Firebase Realtime Database under the report only: root key is `report_id`; each detection is a child with an auto-generated key (`detection_id`), containing only `defect` (boolean) and `timestamp` (ISO 8601 string). No factory/line/station hierarchy.
 
@@ -90,7 +92,7 @@ Report open uses `report_id`, `camera_source`, and `production_line_id` from POS
 | `model_path` | Path to box detection model |
 | `conf_thres` | Confidence threshold |
 | `iou_thres` | IoU threshold for NMS |
-| `device` | `auto` (CUDA→MPS→CPU), `cuda`, `mps`, `cpu`; override with `QC_SCM_FLOW_DEVICE` |
+| `device` | `auto` (CUDA→MPS→CPU), `cuda`, `mps`, or `cpu` (from this config only) |
 
 ## defect_detector.yaml (required)
 

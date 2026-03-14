@@ -7,4 +7,3 @@ pydantic>=2.10.0
 PyYAML>=6.0.0
 firebase-admin>=6.0.0
 aiortc>=1.10.0
-python-dotenv>=1.0.0

@@ -7,16 +7,16 @@ from pathlib import Path
 import yaml
 import uvicorn
 
-os.environ["ORT_LOGGING_LEVEL"] = "3"
-os.environ["YOLO_VERBOSE"] = "false"
-os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 
-try:
-    import onnxruntime as ort
-
-    ort.set_default_logger_severity(3)
-except ImportError:
-    pass
+def _apply_library_logging(api_cfg: dict) -> None:
+    """Set third-party library log levels from config (applied via env for ONNX/YOLO/OpenCV)."""
+    lib = api_cfg.get("library_logging") or {}
+    if lib.get("ort") is not None:
+        os.environ["ORT_LOGGING_LEVEL"] = str(lib["ort"])
+    if lib.get("yolo_verbose") is not None:
+        os.environ["YOLO_VERBOSE"] = str(lib["yolo_verbose"]).lower()
+    if lib.get("opencv") is not None:
+        os.environ["OPENCV_LOG_LEVEL"] = str(lib["opencv"])
 
 
 def _suppress_noisy_loggers() -> None:
@@ -33,9 +33,7 @@ def _suppress_noisy_loggers() -> None:
 
 
 def main():
-    """Launch FastAPI server. Configuration from config/api.yaml."""
-    _suppress_noisy_loggers()
-
+    """Launch FastAPI server. Configuration from config/api.yaml only."""
     base = Path(__file__).resolve().parent
     api_cfg_path = base / "config" / "api.yaml"
     if api_cfg_path.exists():
@@ -47,6 +45,15 @@ def main():
     api_cfg.setdefault("host", "0.0.0.0")
     api_cfg.setdefault("port", 8000)
     api_cfg.setdefault("log_level", "warning")
+
+    _apply_library_logging(api_cfg)
+    try:
+        import onnxruntime as ort
+        ort.set_default_logger_severity(int(api_cfg.get("library_logging", {}).get("ort", 3)))
+    except ImportError:
+        pass
+
+    _suppress_noisy_loggers()
 
     uvicorn.run(
         "api.api_server:app",

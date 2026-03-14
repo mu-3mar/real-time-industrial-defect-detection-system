@@ -2,18 +2,18 @@
 Unified device selection for QC-SCM (training and flow/inference).
 
 API:
-    select_device(config_value=None, env_var="QC_SCM_DEVICE", context="") -> str
+    select_device(config_value=None, context="") -> str
 
 Supported device values: auto, cuda, mps, cpu.
 Legacy numeric values (e.g. "0") are accepted and interpreted as CUDA.
 
-Priority: config value (if set and not "auto") -> environment variable -> automatic.
+Priority: config value (if set and not "auto") -> automatic.
 Automatic order: CUDA -> MPS -> CPU.
 If the requested device is unavailable, logs a warning and falls back to the best available.
+Configuration is read from config files only (e.g. box_detector.yaml device key).
 """
 
 import logging
-import os
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -71,15 +71,13 @@ def _device_available(device: str) -> bool:
 
 def select_device(
     config_value: Optional[str] = None,
-    env_var: str = "QC_SCM_DEVICE",
     context: str = "",
 ) -> str:
     """
-    Resolve runtime device: config (if not auto) -> env -> automatic (cuda -> mps -> cpu).
+    Resolve runtime device from config value, or automatic (cuda -> mps -> cpu).
 
     Args:
-        config_value: Value from config (e.g. "auto", "cuda", "cpu", or legacy "0").
-        env_var: Environment variable to override when config is "auto".
+        config_value: Value from config file (e.g. "auto", "cuda", "cpu", or legacy "0").
         context: Optional label for logs (e.g. "flow", "training").
 
     Returns:
@@ -87,13 +85,10 @@ def select_device(
     """
     prefix = f"[{context}] " if context else ""
     cfg = _normalize(config_value)
-    env = _normalize(os.environ.get(env_var))
 
-    # Effective request: config wins unless it's "auto", then env, then "auto"
+    # Effective request: config value or "auto"
     if cfg and cfg != "auto":
         requested = cfg
-    elif env and env != "auto":
-        requested = env
     else:
         requested = "auto"
 

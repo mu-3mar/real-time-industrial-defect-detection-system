@@ -2,3 +2,13 @@
 host: "0.0.0.0"
 port: 8000
 log_level: "warning"
+
+# Optional: library log levels (applied before importing heavy libs). Omit to use defaults.
+# library_logging:
+#   ort: "3"           # ONNX Runtime (0=Verbose, 3=Error)
+#   yolo_verbose: "false"
+#   opencv: "ERROR"
+library_logging:
+  ort: "3"
+  yolo_verbose: "false"
+  opencv: "ERROR"

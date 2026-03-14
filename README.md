@@ -114,21 +114,19 @@ Endpoints:
 | `firebase.example.yaml` | Template for `firebase.yaml`. |
 | `firebase-service-account.json` | Firebase service account key (**gitignored**). |
 | `firebase-service-account.example.json` | Template JSON structure. |
-| `firebase_config.json` | Optional fallback secrets file (**gitignored**). |
+| `firebase_config.json` | Optional fallback for `database_url` (**gitignored**). |
 | `firebase_config.json.example` | Template for the fallback file. |
-| `.env` | Optional environment fallback (**gitignored**). |
-| `.env.example` | Template for `.env`. |
 | `box_detector.yaml` | box model path + thresholds. |
 | `defect_detector.yaml` | defect model path + thresholds + stability settings. |
 | `stream.yaml` | frame size + detection throttling. |
 
 #### Secrets & gitignore
 
-The repo is configured to ignore sensitive files (Firebase service account, TURN secret, `.env`). Keep secrets only in:
+Configuration is loaded **only from files in `Boxes/flow/config/`** (no environment variables or `.env`). The repo ignores sensitive files:
 
 - `Boxes/flow/config/firebase-service-account.json`
-- `Boxes/flow/config/webrtc.yaml`
-- `Boxes/flow/config/.env` (optional)
+- `Boxes/flow/config/webrtc.yaml` (TURN secret)
+- `Boxes/flow/config/firebase_config.json` (if used for `database_url`)
 
 ### Flow API (current contract)
 
@@ -336,8 +334,8 @@ Then set `model_path` in:
   - Configure `Boxes/flow/config/webrtc.yaml` (TURN secret required for many NATs).
   - Client reads ICE servers from `GET /api/config`.
 - **Device selection**:
-  - Flow: set `QC_SCM_FLOW_DEVICE` (or use YAML device settings).
-  - Training: set `QC_SCM_TRAIN_DEVICE` (overrides config `DEVICE`).
+  - Flow: set `device` in `box_detector.yaml` / `defect_detector.yaml` (e.g. `auto`, `cuda`, `cpu`).
+  - Training: set `DEVICE` in the training config (e.g. `configs/config.py`).
 
 ---
 
@@ -602,7 +600,7 @@ Client → POST /api/reports/open
 
 `/api/config` builds its response from:
 
-- `Boxes/flow/config/webrtc.yaml` (or environment fallback), containing:
+- `Boxes/flow/config/webrtc.yaml` (required; copy from `webrtc.example.yaml`), containing:
 
 ```yaml
 stun:
@@ -622,7 +620,7 @@ The backend:
   - `direct`: host only.
   - `stun`: host + STUN.
   - `relay`: host + TURN only.
-- Uses `TURN_SECRET` (from `webrtc.yaml` or env) to compute short-lived TURN username/credential.
+- Uses TURN `secret` from `webrtc.yaml` to compute short-lived TURN username/credential.
 
 #### WebRTC usage example
 
@@ -641,7 +639,7 @@ const pc = new RTCPeerConnection({
 Firebase is initialized in `core/firebase_client.py` with:
 
 - `credentials_path` → service account JSON (from `firebase.yaml` or env).
-- `database_url` → Realtime Database URL (from `firebase.yaml`, `.env`, or `firebase_config.json`).
+- `database_url` → Realtime Database URL (from `firebase.yaml` or `firebase_config.json`).
 
 Events are written by `publish_detection(report_id, timestamp, defect)`:
 
@@ -683,15 +681,9 @@ database_url: "https://chainly-f4afa-default-rtdb.europe-west1.firebasedatabase.
 ```
 
 - `webrtc.yaml` — STUN/TURN and TURN secret (gitignored).
-- `.env` (optional) — fallback secrets:
-  - `FIREBASE_DATABASE_URL`, `TURN_SECRET`, `QC_SCM_FLOW_DEVICE`, etc.
-- `firebase_config.json` (optional) — alternate place to store `FIREBASE_DATABASE_URL`.
+- `firebase_config.json` (optional) — alternate place for `database_url` if not in `firebase.yaml`.
 
-Resolution order for `database_url` in the code:
-
-1. `firebase.yaml` → `database_url`
-2. environment variable `FIREBASE_DATABASE_URL`
-3. `firebase_config.json` → `FIREBASE_DATABASE_URL` or `database_url`
+Resolution order for `database_url`: 1) `firebase.yaml` → `database_url`, 2) `firebase_config.json` → `database_url` or `FIREBASE_DATABASE_URL`.
 
 ### 7. Setup Instructions (backend)
 
@@ -739,15 +731,7 @@ Resolution order for `database_url` in the code:
    - `turn.urls`
    - `turn.secret`
 
-6. **(Optional) `.env`**:
-
-   ```bash
-   cp Boxes/flow/config/.env.example Boxes/flow/config/.env
-   ```
-
-   Then set override values such as `FIREBASE_DATABASE_URL` or `TURN_SECRET` if you prefer env-based config.
-
-7. **Start the backend**:
+6. **Start the backend** (config is loaded from `Boxes/flow/config/` only):
 
    ```bash
    cd Boxes/flow
@@ -760,8 +744,7 @@ Sensitive files **must not** be committed:
 
 - `Boxes/flow/config/firebase-service-account.json` (Firebase private key).
 - `Boxes/flow/config/webrtc.yaml` (contains TURN secret).
-- `Boxes/flow/config/.env` (tokens / database URLs).
-- `Boxes/flow/config/firebase_config.json` (if used).
+- `Boxes/flow/config/firebase_config.json` (if used for `database_url`).
 
 The repo's `.gitignore` is already configured to ignore these; only the `*.example` templates are tracked. When adding new secrets, keep them under `Boxes/flow/config/` and extend `.gitignore` as needed.
 
@@ -936,7 +919,7 @@ Camera → AI pipeline → detection event → Firebase Realtime Database
 
 - **Model/device management (`Boxes/flow/core/device_manager.py`, `model_loader.py`)**
   - `select_device`:
-    - Chooses `cuda` / `mps` / `cpu` based on config and env (`QC_SCM_FLOW_DEVICE`).
+    - Chooses `cuda` / `mps` / `cpu` from config (`box_detector.yaml` / `defect_detector.yaml` device).
   - `ModelLoader`:
     - Loads box and defect models once.
     - Provides references to `Pipeline` instances.
@@ -982,7 +965,7 @@ Camera → AI pipeline → detection event → Firebase Realtime Database
 ### 2.3 Firebase event storage
 
 - Initialization:
-  - `_load_configs` reads `firebase.yaml`, `.env`, and `firebase_config.json` in that order of priority for `database_url`.
+  - `_load_configs` reads `firebase.yaml` then `firebase_config.json` for `database_url`.
   - `firebase_client.initialize(credentials_path, database_url)` sets up `firebase_admin`.
 - Publishing:
   - `PipelineManager`'s Firebase worker calls:
@@ -1042,7 +1025,7 @@ For each project (`training/train.py`):
      - Ensures `BASE_MODEL` exists via `check_and_download_model`.
      - Starts from the base weights.
 4. Selects training device:
-   - `select_device(DEVICE, env_var="QC_SCM_TRAIN_DEVICE", context="training")`.
+   - `select_device(DEVICE, context="training")` (device from training config only).
 5. Calls `YOLO(...).train(...)` with:
    - `data=DATA_YAML`, `epochs=100`, `imgsz=640`.
    - `batch=8` (box) or `16` (defect).
@@ -1096,7 +1079,7 @@ Both `configs/config.py` files define:
 
 - `EPOCHS = 100`
 - `IMG_SIZE = 640`
-- `DEVICE = "auto"` (overridable via `QC_SCM_TRAIN_DEVICE`)
+- `DEVICE = "auto"` (from training config only)
 - `BATCH_SIZE`:
   - Box detector: `8`
   - Defect detector: `16`
@@ -1214,8 +1197,7 @@ All config lives in `Boxes/flow/config/`:
 - `app.yaml` – CORS (origins).
 - `webrtc.yaml` / `webrtc.example.yaml` – STUN/TURN and `webrtc_mode`.
 - `firebase.yaml` / `firebase.example.yaml` – service account path and `database_url`.
-- `.env` / `.env.example` – optional env overrides:
-  - `FIREBASE_DATABASE_URL`, `TURN_SECRET`, `QC_SCM_FLOW_DEVICE`, etc.
+- All configuration is in `Boxes/flow/config/` (no `.env` or environment variables).
 - `firebase_config.json` / `.example` – JSON alternative for DB URL.
 - `box_detector.yaml`, `defect_detector.yaml`, `stream.yaml` – detector and stream configuration.
 
@@ -1285,21 +1267,12 @@ Do **not** commit:
 
 - `Boxes/flow/config/firebase-service-account.json`
 - `Boxes/flow/config/webrtc.yaml`
-- `Boxes/flow/config/.env`
-- `Boxes/flow/config/firebase_config.json`
-- Any root `.env` with secrets.
+- `Boxes/flow/config/firebase_config.json` (if used)
 - Any proprietary datasets or raw production images.
 
-### 11.2 Environment variables
+### 11.2 Configuration (config directory only)
 
-Key env vars:
-
-- `FIREBASE_DATABASE_URL`
-- `TURN_SECRET`
-- `QC_SCM_FLOW_DEVICE`
-- `QC_SCM_TRAIN_DEVICE`
-
-These should be stored in secure secret stores or non-committed `.env` files.
+All configuration is loaded from files under `Boxes/flow/config/`. No environment variables or `.env` files are used. Sensitive values (e.g. `database_url`, TURN `secret`) belong in `firebase.yaml`, `webrtc.yaml`, or `firebase_config.json`; keep these files out of version control.
 
 ### 11.3 TURN and Firebase security
 

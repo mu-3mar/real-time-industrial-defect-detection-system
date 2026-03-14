@@ -1,11 +1,19 @@
-# WebRTC ICE configuration. Copy to webrtc.yaml and set your TURN secret.
-# webrtc.yaml is gitignored (contains secret).
+# WebRTC ICE configuration (template — no secrets).
+# Copy to webrtc.yaml and set your real STUN/TURN URLs and TURN secret.
+# webrtc.yaml is used at runtime and is gitignored.
+#
+#   cp Boxes/flow/config/webrtc.example.yaml Boxes/flow/config/webrtc.yaml
+#
+# Connection mode (use 'mode' or 'webrtc_mode'; same meaning):
+#   auto   - STUN + TURN; browser may use host, srflx, or relay
+#   direct - host candidates only (no STUN/TURN)
+#   stun   - STUN only (host + srflx)
+#   relay  - TURN only; frontend sets iceTransportPolicy: "relay" to enforce
+mode: auto
+
 stun:
   urls: "stun:YOUR_STUN_HOST:3478"
 
 turn:
   urls: "turn:YOUR_TURN_HOST:3478"
   secret: "YOUR_TURN_SECRET"
-
-# webrtc_mode: auto | direct | stun | relay
-webrtc_mode: auto

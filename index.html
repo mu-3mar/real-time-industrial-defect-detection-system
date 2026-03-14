@@ -469,7 +469,10 @@ async function apiFetch(path, method='GET', body=null) {
 async function loadWebRTCConfig() {
   try{
     const c=await apiFetch('/api/config'), w=c.webrtc||c;
-    iceServers=w.iceServers||[]; webrtcMode=w.webrtc_mode||w.mode||'auto';
+    iceServers=w.iceServers||[];
+    // Config supports both 'mode' and 'webrtc_mode' (backend accepts both in webrtc.yaml)
+    webrtcMode=(w.mode||w.webrtc_mode||'auto').toLowerCase();
+    if(!['auto','direct','stun','relay'].includes(webrtcMode)) webrtcMode='auto';
   }catch{}
 }
 
@@ -528,6 +531,7 @@ async function refreshReports() {
 async function startWebRTC(sess) {
   await loadWebRTCConfig();
   const cfg={iceServers:iceServers.length?iceServers:[]};
+  // Enforce mode from config/webrtc.yaml: relay => TURN only (must set iceTransportPolicy)
   if(webrtcMode==='relay') cfg.iceTransportPolicy='relay';
   const pc=new RTCPeerConnection(cfg);
   sess.pc=pc;
