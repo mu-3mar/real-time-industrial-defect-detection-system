@@ -370,7 +370,7 @@
       </div>
       <div class="btn-group">
         <button class="btn btn-primary" onclick="openSession()">▶ Open Session</button>
-        <button class="btn btn-ghost btn-sm" onclick="refreshReports()" title="Refresh">↻</button>
+        <button class="btn btn-ghost btn-sm" onclick="refreshReports()" title="Sync with server">↻</button>
       </div>
     </div>
 
@@ -420,7 +420,8 @@ const LINE_DEFS = {
 let API_BASE = localStorage.getItem('qcscm_api') || '';
 let iceServers = [], webrtcMode = 'auto';
 
-// Map: reportId -> { reportId, lineKey, pc, state, iceType, startedAt }
+// Map: reportId -> { reportId, lineKey?, pc, state, iceType, startedAt, fullscreen?, viewers_count? }
+// Sessions are synced from the server (GET /api/reports); local state is only for WebRTC and UI.
 const sessions = new Map();
 
 const $ = id => document.getElementById(id);
@@ -522,9 +523,55 @@ async function closeSession(reportId) {
   updateCount();
 }
 
+/** Sync dashboard with server: add reports returned by API, remove reports no longer active. */
+async function syncSessionsFromServer() {
+  if(!API_BASE){ return; }
+  try {
+    const list = await apiFetch('/api/reports');
+    const reports = Array.isArray(list) ? list : [];
+    const serverIds = new Set(reports.map(r => r.report_id));
+
+    // Add sessions that exist on server but not in local state (e.g. opened from Swagger/other client)
+    for (const r of reports) {
+      if (sessions.has(r.report_id)) continue;
+      const sess = {
+        reportId: r.report_id,
+        lineKey: null,
+        pc: null,
+        state: 'ready',
+        iceType: null,
+        startedAt: new Date(),
+        fullscreen: false,
+        viewers_count: r.viewers_count
+      };
+      sessions.set(r.report_id, sess);
+      renderCard(sess);
+      renderSideItem(sess);
+      log('[Session] synced from server: '+r.report_id);
+    }
+
+    // Remove sessions that are no longer on server (closed elsewhere)
+    for (const reportId of Array.from(sessions.keys())) {
+      if (serverIds.has(reportId)) continue;
+      const sess = sessions.get(reportId);
+      if(sess) stopWebRTC(sess);
+      removeCard(reportId);
+      removeSideItem(reportId);
+      sessions.delete(reportId);
+      log('[Session] removed (closed elsewhere): '+reportId);
+    }
+
+    updateCount();
+    if (reports.length && (sessions.size > 0)) $('sessEmpty').style.display='none';
+    if (sessions.size === 0) $('sessEmpty').style.display='block';
+  } catch(e) {
+    log('[Error] sync reports: '+e.message);
+  }
+}
+
 async function refreshReports() {
-  try{ const l=await apiFetch('/api/reports'); log('[Service] active reports: '+(Array.isArray(l)?l.length:0)); }
-  catch(e){ log('[Error] refresh: '+e.message); }
+  await syncSessionsFromServer();
+  log('[Service] active reports: '+sessions.size);
 }
 
 // ── WEBRTC ───────────────────────────────────
@@ -617,7 +664,7 @@ function cardId(rid){ return 'vc-'+rid.replace(/[^a-zA-Z0-9_-]/g,'_'); }
 function renderCard(sess){
   $('emptyState').style.display='none';
   const id=cardId(sess.reportId);
-  const line=LINE_DEFS[sess.lineKey];
+  const line=LINE_DEFS[sess.lineKey]||{ label: '—' };
   const el=document.createElement('div');
   el.className='v-card';
   el.id=id;
@@ -689,7 +736,8 @@ function sideId(rid){ return 'si-'+rid.replace(/[^a-zA-Z0-9_-]/g,'_'); }
 function renderSideItem(sess){
   $('sessEmpty').style.display='none';
   const id=sideId(sess.reportId);
-  const line=LINE_DEFS[sess.lineKey];
+  const line=LINE_DEFS[sess.lineKey]||{ label: '—' };
+  const meta = line.label + ' · ' + (sess.startedAt ? sess.startedAt.toLocaleTimeString('en-GB') : '—');
   const el=document.createElement('div');
   el.className='sess-item';
   el.id=id;
@@ -697,7 +745,7 @@ function renderSideItem(sess){
   el.innerHTML=`
     <div class="sess-item-info">
       <div class="sess-item-id" title="${sess.reportId}">${sess.reportId}</div>
-      <div class="sess-item-meta">${line.label} · ${sess.startedAt.toLocaleTimeString('en-GB')}</div>
+      <div class="sess-item-meta">${meta}</div>
     </div>
     <div class="sess-item-right">
       <span class="s-badge opening" id="${id}-b">OPENING</span>
@@ -763,12 +811,16 @@ function removeSideItem(rid){
 function updateCount(){ $('sessCount').textContent=sessions.size; }
 
 // ── INIT ─────────────────────────────────────
+const SYNC_INTERVAL_MS = 4000;
+
 (async()=>{
   try{
     const h=await apiFetch('/api/health');
     log('[Service] health: '+h.status);
     $('connPill').className='status-pill online';
     $('connLabel').textContent='ONLINE';
+    await syncSessionsFromServer();
+    setInterval(syncSessionsFromServer, SYNC_INTERVAL_MS);
   }catch{
     log('[Service] backend unreachable');
     $('connPill').className='status-pill error';
