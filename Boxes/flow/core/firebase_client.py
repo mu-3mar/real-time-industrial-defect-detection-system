@@ -63,18 +63,22 @@ def get_initialized() -> bool:
     return _initialized
 
 
-def publish_detection(report_id: str, timestamp: str, defect: bool) -> bool:
+def publish_detection(report_id: str, detection_id: str, timestamp: str, defect: bool) -> bool:
     """
     Push a detection event to Firebase Realtime Database.
 
     Structure:
         {report_id}
-           └── {detection_id}   (auto-generated Firebase push key)
-                ├── defect: true | false
-                └── timestamp: "2026-03-09T14:21:00Z"
+           ├── defect
+           │    └── {detection_id}
+           │         └── timestamp: "2026-03-09T14:21:00Z"
+           └── non_defect
+                └── {detection_id}
+                     └── timestamp: "2026-03-09T14:21:00Z"
 
     Args:
         report_id: Report identifier (from /api/reports/open).
+        detection_id: Unique identifier for this detection.
         timestamp: ISO 8601 UTC timestamp string.
         defect: True if defect detected, False otherwise.
 
@@ -85,15 +89,16 @@ def publish_detection(report_id: str, timestamp: str, defect: bool) -> bool:
         logger.error("[Error] Firebase not initialized")
         return False
 
+    group = "defect" if defect else "non_defect"
     payload = {
-        "defect": defect,
         "timestamp": timestamp,
     }
 
     try:
-        ref = db.reference(report_id)
-        ref.push(payload)
-        logger.debug("Detection sent → report_id=%s defect=%s", report_id, defect)
+        # report_id / defect|non_defect / detection_id
+        ref = db.reference(f"{report_id}/{group}/{detection_id}")
+        ref.set(payload)
+        logger.debug("Detection sent → report_id=%s group=%s det_id=%s", report_id, group, detection_id)
         return True
     except Exception as e:
         logger.error("[Error] Firebase write failed: %s", e)

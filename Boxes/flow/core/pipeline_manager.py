@@ -206,7 +206,8 @@ class PipelineManager:
                                 logger.error("[Error] track update session=%s: %s", session_id, e)
                 if exit_event is not None and firebase_meta is not None:
                     try:
-                        self._firebase_queue.put_nowait((session_id, exit_event, firebase_meta))
+                        is_defect, detection_id = exit_event
+                        self._firebase_queue.put_nowait((session_id, is_defect, detection_id, firebase_meta))
                     except queue.Full:
                         pass
             except queue.Empty:
@@ -221,11 +222,12 @@ class PipelineManager:
                 item = self._firebase_queue.get(timeout=0.1)
                 if item is _SHUTDOWN:
                     break
-                session_id, is_defect, meta = item
+                session_id, is_defect, detection_id, meta = item
                 timestamp = datetime.utcnow().isoformat() + "Z"
                 try:
                     publish_detection(
                         report_id=meta["report_id"],
+                        detection_id=detection_id,
                         timestamp=timestamp,
                         defect=is_defect,
                     )

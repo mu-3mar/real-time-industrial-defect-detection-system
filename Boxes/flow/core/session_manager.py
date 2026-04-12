@@ -36,9 +36,13 @@ class SessionManager:
         report_id: str,
         camera_source: Union[str, int],
         production_line_id: str,
+        target_speed: int,
+        max_temp: int,
+        max_amps: int,
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
+        app_cfg: dict,
         loop: asyncio.AbstractEventLoop,
     ) -> SessionWorker:
         """
@@ -69,9 +73,13 @@ class SessionManager:
                 report_id=report_id,
                 camera_source=camera_source,
                 production_line_id=production_line_id,
+                target_speed=target_speed,
+                max_temp=max_temp,
+                max_amps=max_amps,
                 box_cfg=box_cfg,
                 defect_cfg=defect_cfg,
                 stream_cfg=stream_cfg,
+                app_cfg=app_cfg,
                 loop=loop,
             )
             self.sessions[report_id] = worker

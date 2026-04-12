@@ -5,3 +5,12 @@
 #     - "http://localhost:3000"
 #     - "https://myapp.example.com"
 cors_origins: []
+
+# Default values for session structured fields
+session_defaults:
+  telemetry:
+    rpm_actual: 0
+    predicted_temp: 0
+    torque: 0
+  control:
+    machine_status: "idle"

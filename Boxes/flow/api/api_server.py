@@ -97,6 +97,9 @@ class OpenReportRequest(BaseModel):
     report_id: str
     camera_source: Union[str, int]
     production_line_id: str
+    target_speed: int
+    max_temp: int
+    max_amps: int
 
 
 class CloseReportRequest(BaseModel):
@@ -285,9 +288,13 @@ async def open_report(body: OpenReportRequest) -> ReportResponse:
             report_id=body.report_id,
             camera_source=body.camera_source,
             production_line_id=body.production_line_id,
+            target_speed=body.target_speed,
+            max_temp=body.max_temp,
+            max_amps=body.max_amps,
             box_cfg=configs["box"],
             defect_cfg=configs["defect"],
             stream_cfg=configs["stream"],
+            app_cfg=configs["app"],
             loop=loop,
         )
         return ReportResponse(
