@@ -150,6 +150,15 @@
   .btn:disabled { opacity:.3; cursor:not-allowed; }
   .btn-group { display:flex; gap:5px; margin-top:11px; }
 
+  /* Camera source hint */
+  .field-hint {
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+
   /* SESSION LIST */
   .sess-list { display:flex; flex-direction:column; }
   .sess-empty { padding:18px 16px; text-align:center; font-size:11px; color:var(--text-dim); line-height:1.8; }
@@ -368,6 +377,23 @@
           <option value="line2">Line 2 — Integrated HD</option>
         </select>
       </div>
+      <div class="field">
+        <label>Camera Source</label>
+        <input type="text" id="cameraSource" placeholder="rtsp://... or http://... or /dev/video0">
+        <div class="field-hint">RTSP stream · HTTP stream · local device path</div>
+      </div>
+      <div class="field">
+        <label>Target Speed (RPM) *</label>
+        <input type="text" id="target_speed" placeholder="e.g. 1500">
+      </div>
+      <div class="field">
+        <label>Max Temp (°C) *</label>
+        <input type="text" id="max_temp" placeholder="e.g. 90">
+      </div>
+      <div class="field">
+        <label>Max Amps (A) *</label>
+        <input type="text" id="max_amps" placeholder="e.g. 40">
+      </div>
       <div class="btn-group">
         <button class="btn btn-primary" onclick="openSession()">▶ Open Session</button>
         <button class="btn btn-ghost btn-sm" onclick="refreshReports()" title="Sync with server">↻</button>
@@ -418,9 +444,9 @@ const LINE_DEFS = {
 };
 
 let API_BASE = localStorage.getItem('qcscm_api') || '';
-let iceServers = [], webrtcMode = 'auto';
+let ice_servers = [], webrtc_mode = 'auto';
 
-// Map: reportId -> { reportId, lineKey?, pc, state, iceType, startedAt, fullscreen?, viewers_count? }
+// Map: report_id -> { report_id, line_key?, pc, state, ice_type, started_at, fullscreen?, viewers_count? }
 // Sessions are synced from the server (GET /api/reports); local state is only for WebRTC and UI.
 const sessions = new Map();
 
@@ -470,56 +496,75 @@ async function apiFetch(path, method='GET', body=null) {
 async function loadWebRTCConfig() {
   try{
     const c=await apiFetch('/api/config'), w=c.webrtc||c;
-    iceServers=w.iceServers||[];
+    ice_servers=w.ice_servers||w.iceServers||[];
     // Config supports both 'mode' and 'webrtc_mode' (backend accepts both in webrtc.yaml)
-    webrtcMode=(w.mode||w.webrtc_mode||'auto').toLowerCase();
-    if(!['auto','direct','stun','relay'].includes(webrtcMode)) webrtcMode='auto';
+    webrtc_mode=(w.mode||w.webrtc_mode||'auto').toLowerCase();
+    if(!['auto','direct','stun','relay'].includes(webrtc_mode)) webrtc_mode='auto';
   }catch{}
 }
 
 // ── SESSION ──────────────────────────────────
 async function openSession() {
-  const reportId = $('reportId').value.trim();
-  if(!reportId){ log('[Error] Report ID required'); return; }
-  if(sessions.has(reportId)){ log('[Error] Already open: '+reportId); return; }
+  const report_id = $('reportId').value.trim();
+  if(!report_id){ log('[Error] Report ID required'); return; }
+  if(sessions.has(report_id)){ log('[Error] Already open: '+report_id); return; }
 
-  const lineKey = $('lineSelect').value;
-  const sess = { reportId, lineKey, pc:null, state:'opening', iceType:null, startedAt:new Date(), fullscreen:false };
-  sessions.set(reportId, sess);
+  const line_key = $('lineSelect').value;
+
+  const camera_source = document.getElementById('cameraSource').value.trim();
+  if (!camera_source) {
+    log('[Error] Camera source required');
+    return;
+  }
+
+  const target_speed = $('target_speed').value.trim();
+  const max_temp = $('max_temp').value.trim();
+  const max_amps = $('max_amps').value.trim();
+
+  if(!target_speed || !max_temp || !max_amps){
+    log('[Error] Target Speed, Max Temp, and Max Amps are required');
+    return;
+  }
+
+  const sess = { report_id, line_key, pc:null, state:'opening', ice_type:null, started_at:new Date(), fullscreen:false };
+  sessions.set(report_id, sess);
 
   renderCard(sess);
   renderSideItem(sess);
   updateCount();
-  log('[Session] opening: '+reportId+' on '+LINE_DEFS[lineKey].label);
+  log('[Session] opening: '+report_id+' on '+LINE_DEFS[line_key].label+' · src: '+camera_source);
 
   try {
     await apiFetch('/api/reports/open','POST',{
-      report_id: reportId,
-      camera_source: LINE_DEFS[lineKey].camera_source,
-      production_line_id: LINE_DEFS[lineKey].production_line_id,
+      report_id: report_id,
+      camera_source: camera_source,
+      production_line_id: LINE_DEFS[line_key].production_line_id,
+      target_speed: parseInt(target_speed, 10),
+      max_temp: parseInt(max_temp, 10),
+      max_amps: parseInt(max_amps, 10),
     });
-    log('[Session] opened: '+reportId);
+    log('[Session] opened: '+report_id);
     sess.state='ready';
     syncCard(sess); syncSideItem(sess);
   } catch(e) {
-    log('[Error] open failed ('+reportId+'): '+e.message);
+    log('[Error] open failed ('+report_id+'): '+e.message);
     sess.state='failed';
     syncCard(sess); syncSideItem(sess);
   }
 }
 
-async function closeSession(reportId) {
-  const sess=sessions.get(reportId);
+async function closeSession(report_id) {
+  const sess=sessions.get(report_id);
   if(!sess) return;
   sess.state='closing';
   syncCard(sess); syncSideItem(sess);
-  log('[Session] closing: '+reportId);
-  try{ await apiFetch('/api/reports/close','POST',{report_id:reportId}); log('[Session] closed: '+reportId); }
-  catch(e){ log('[Error] close failed ('+reportId+'): '+e.message); }
+  log('[Session] closing: '+report_id);
+  try{ await apiFetch('/api/reports/close','POST',{report_id:report_id}); log('[Session] closed: '+report_id); }
+  catch(e){ log('[Error] close failed ('+report_id+'): '+e.message); }
   stopWebRTC(sess);
-  removeCard(reportId);
-  removeSideItem(reportId);
-  sessions.delete(reportId);
+  removeCard(report_id);
+  removeSideItem(report_id);
+  sessions.delete(report_id);
   updateCount();
 }
 
@@ -529,18 +574,18 @@ async function syncSessionsFromServer() {
   try {
     const list = await apiFetch('/api/reports');
     const reports = Array.isArray(list) ? list : [];
-    const serverIds = new Set(reports.map(r => r.report_id));
+    const server_ids = new Set(reports.map(r => r.report_id));
 
     // Add sessions that exist on server but not in local state (e.g. opened from Swagger/other client)
     for (const r of reports) {
       if (sessions.has(r.report_id)) continue;
       const sess = {
-        reportId: r.report_id,
-        lineKey: null,
+        report_id: r.report_id,
+        line_key: null,
         pc: null,
         state: 'ready',
-        iceType: null,
-        startedAt: new Date(),
+        ice_type: null,
+        started_at: new Date(),
         fullscreen: false,
         viewers_count: r.viewers_count
       };
@@ -551,14 +596,14 @@ async function syncSessionsFromServer() {
     }
 
     // Remove sessions that are no longer on server (closed elsewhere)
-    for (const reportId of Array.from(sessions.keys())) {
-      if (serverIds.has(reportId)) continue;
-      const sess = sessions.get(reportId);
+    for (const report_id of Array.from(sessions.keys())) {
+      if (server_ids.has(report_id)) continue;
+      const sess = sessions.get(report_id);
       if(sess) stopWebRTC(sess);
-      removeCard(reportId);
-      removeSideItem(reportId);
-      sessions.delete(reportId);
-      log('[Session] removed (closed elsewhere): '+reportId);
+      removeCard(report_id);
+      removeSideItem(report_id);
+      sessions.delete(report_id);
+      log('[Session] removed (closed elsewhere): '+report_id);
     }
 
     updateCount();
@@ -577,37 +622,37 @@ async function refreshReports() {
 // ── WEBRTC ───────────────────────────────────
 async function startWebRTC(sess) {
   await loadWebRTCConfig();
-  const cfg={iceServers:iceServers.length?iceServers:[]};
+  const cfg={iceServers:ice_servers.length?ice_servers:[]};
   // Enforce mode from config/webrtc.yaml: relay => TURN only (must set iceTransportPolicy)
-  if(webrtcMode==='relay') cfg.iceTransportPolicy='relay';
+  if(webrtc_mode==='relay') cfg.iceTransportPolicy='relay';
   const pc=new RTCPeerConnection(cfg);
   sess.pc=pc;
-  log('[WebRTC] connecting: '+sess.reportId);
+  log('[WebRTC] connecting: '+sess.report_id);
 
   pc.onconnectionstatechange=async()=>{
     const st=pc.connectionState;
     if(st==='connected'){
-      sess.iceType=await detectIceType(pc);
+      sess.ice_type=await detectIceType(pc);
       sess.state='live';
-      log('[WebRTC] live ('+sess.iceType+') '+sess.reportId);
+      log('[WebRTC] live ('+sess.ice_type+') '+sess.report_id);
       syncCard(sess); syncSideItem(sess);
     } else if(st==='failed'){
       sess.state='failed';
-      log('[WebRTC] failed: '+sess.reportId);
+      log('[WebRTC] failed: '+sess.report_id);
       syncCard(sess); syncSideItem(sess);
     } else if(st==='disconnected'||st==='closed'){
       if(sess.state!=='closing') sess.state='disconnected';
-      log('[WebRTC] '+st+': '+sess.reportId);
+      log('[WebRTC] '+st+': '+sess.report_id);
       syncCard(sess); syncSideItem(sess);
     }
   };
 
   pc.ontrack=e=>{
-    const vid=document.querySelector('#'+cardId(sess.reportId)+' video');
+    const vid=document.querySelector('#'+cardId(sess.report_id)+' video');
     if(!vid) return;
     vid.srcObject=e.streams[0]||new MediaStream([e.track]);
     vid.classList.add('on');
-    const ns=document.querySelector('#'+cardId(sess.reportId)+' .no-sig');
+    const ns=document.querySelector('#'+cardId(sess.report_id)+' .no-sig');
     if(ns) ns.style.display='none';
   };
 
@@ -623,10 +668,10 @@ async function startWebRTC(sess) {
   });
 
   try{
-    const ans=await apiFetch('/webrtc/offer','POST',{sdp:pc.localDescription.sdp,type:pc.localDescription.type,report_id:sess.reportId});
+    const ans=await apiFetch('/webrtc/offer','POST',{sdp:pc.localDescription.sdp,type:pc.localDescription.type,report_id:sess.report_id});
     await pc.setRemoteDescription(new RTCSessionDescription({type:ans.type,sdp:ans.sdp}));
   } catch(e){
-    log('[Error] offer failed ('+sess.reportId+'): '+e.message);
+    log('[Error] offer failed ('+sess.report_id+'): '+e.message);
     sess.state='failed'; syncCard(sess); syncSideItem(sess);
   }
 }
@@ -636,7 +681,7 @@ function stopWebRTC(sess){
     try{sess.pc.close();}catch{}
     sess.pc=null;
   }
-  const cardEl=document.getElementById(cardId(sess.reportId));
+  const cardEl=document.getElementById(cardId(sess.report_id));
   if(cardEl){
     const vid=cardEl.querySelector('video');
     const ns=cardEl.querySelector('.no-sig');
@@ -663,22 +708,22 @@ function cardId(rid){ return 'vc-'+rid.replace(/[^a-zA-Z0-9_-]/g,'_'); }
 
 function renderCard(sess){
   $('emptyState').style.display='none';
-  const id=cardId(sess.reportId);
-  const line=LINE_DEFS[sess.lineKey]||{ label: '—' };
+  const id=cardId(sess.report_id);
+  const line=LINE_DEFS[sess.line_key]||{ label: '—' };
   const el=document.createElement('div');
   el.className='v-card';
   el.id=id;
   el.innerHTML=`
     <div class="v-card-head">
       <div class="v-card-head-left">
-        <span class="v-report-id" title="${sess.reportId}">${sess.reportId}</span>
+        <span class="v-report-id" title="${sess.report_id}">${sess.report_id}</span>
         <span class="v-line-tag">${line.label}</span>
       </div>
       <div class="v-card-head-right">
-        <button class="btn btn-ghost btn-sm" id="${id}-sb" onclick="openStream('${sess.reportId}')">Open Stream</button>
-        <button class="btn btn-ghost btn-sm" id="${id}-cb" onclick="closeStream('${sess.reportId}')">Close Stream</button>
+        <button class="btn btn-ghost btn-sm" id="${id}-sb" onclick="openStream('${sess.report_id}')">Open Stream</button>
+        <button class="btn btn-ghost btn-sm" id="${id}-cb" onclick="closeStream('${sess.report_id}')">Close Stream</button>
         <div class="live-dot" id="${id}-ld"><span class="dot pulse"></span>LIVE</div>
-        <button class="btn-x" onclick="closeSession('${sess.reportId}')" title="Close session">✕</button>
+        <button class="btn-x" onclick="closeSession('${sess.report_id}')" title="Close session">✕</button>
       </div>
     </div>
     <div class="v-video">
@@ -693,12 +738,12 @@ function renderCard(sess){
   $('videoGrid').appendChild(el);
   const videoArea = el.querySelector('.v-video');
   if(videoArea){
-    videoArea.addEventListener('click', ()=>toggleFullscreen(sess.reportId));
+    videoArea.addEventListener('click', ()=>toggleFullscreen(sess.report_id));
   }
 }
 
 function syncCard(sess){
-  const id=cardId(sess.reportId);
+  const id=cardId(sess.report_id);
   const st=document.getElementById(id+'-st');
   const ic=document.getElementById(id+'-ice');
   const ld=document.getElementById(id+'-ld');
@@ -709,7 +754,7 @@ function syncCard(sess){
   const labels={opening:'Opening…',ready:'Ready',connecting:'Connecting…',live:'● Live',failed:'✕ Failed',closing:'Closing…',disconnected:'Disconnected'};
   st.textContent=labels[sess.state]||sess.state;
   st.style.color=sess.state==='live'?'var(--accent)':sess.state==='failed'||sess.state==='disconnected'?'var(--danger)':'var(--text-muted)';
-  if(ic) ic.textContent=sess.iceType?'ICE: '+sess.iceType:'';
+  if(ic) ic.textContent=sess.ice_type?'ICE: '+sess.ice_type:'';
   if(ld) ld.classList.toggle('on', sess.state==='live');
   if(sb){
     const canOpen = !sess.pc && (sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected');
@@ -735,27 +780,27 @@ function sideId(rid){ return 'si-'+rid.replace(/[^a-zA-Z0-9_-]/g,'_'); }
 
 function renderSideItem(sess){
   $('sessEmpty').style.display='none';
-  const id=sideId(sess.reportId);
-  const line=LINE_DEFS[sess.lineKey]||{ label: '—' };
-  const meta = line.label + ' · ' + (sess.startedAt ? sess.startedAt.toLocaleTimeString('en-GB') : '—');
+  const id=sideId(sess.report_id);
+  const line=LINE_DEFS[sess.line_key]||{ label: '—' };
+  const meta = line.label + ' · ' + (sess.started_at ? sess.started_at.toLocaleTimeString('en-GB') : '—');
   const el=document.createElement('div');
   el.className='sess-item';
   el.id=id;
-  el.onclick=()=>{ document.getElementById(cardId(sess.reportId))?.scrollIntoView({behavior:'smooth',block:'nearest'}); };
+  el.onclick=()=>{ document.getElementById(cardId(sess.report_id))?.scrollIntoView({behavior:'smooth',block:'nearest'}); };
   el.innerHTML=`
     <div class="sess-item-info">
-      <div class="sess-item-id" title="${sess.reportId}">${sess.reportId}</div>
+      <div class="sess-item-id" title="${sess.report_id}">${sess.report_id}</div>
       <div class="sess-item-meta">${meta}</div>
     </div>
     <div class="sess-item-right">
       <span class="s-badge opening" id="${id}-b">OPENING</span>
-      <button class="btn-x" onclick="event.stopPropagation();closeSession('${sess.reportId}')">✕</button>
+      <button class="btn-x" onclick="event.stopPropagation();closeSession('${sess.report_id}')">✕</button>
     </div>`;
   $('sessList').appendChild(el);
 }
 
 function syncSideItem(sess){
-  const id=sideId(sess.reportId);
+  const id=sideId(sess.report_id);
   const b=document.getElementById(id+'-b');
   const item=document.getElementById(id);
   if(!b) return;
@@ -766,22 +811,22 @@ function syncSideItem(sess){
   if(item) item.classList.toggle('is-live', sess.state==='live');
 }
 
-function toggleFullscreen(reportId){
-  const sess=sessions.get(reportId);
+function toggleFullscreen(report_id){
+  const sess=sessions.get(report_id);
   if(!sess){ return; }
   sess.fullscreen = !sess.fullscreen;
-  const card=document.getElementById(cardId(reportId));
+  const card=document.getElementById(cardId(report_id));
   if(card){
     card.classList.toggle('fullscreen', sess.fullscreen);
   }
 }
 
-async function openStream(reportId){
-  const sess=sessions.get(reportId);
-  if(!sess){ log('[Error] Unknown session: '+reportId); return; }
-  if(sess.pc){ log('[Session] stream already active for '+reportId); return; }
+async function openStream(report_id){
+  const sess=sessions.get(report_id);
+  if(!sess){ log('[Error] Unknown session: '+report_id); return; }
+  if(sess.pc){ log('[Session] stream already active for '+report_id); return; }
   if(!(sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected')){
-    log('[Session] stream not ready for '+reportId);
+    log('[Session] stream not ready for '+report_id);
     return;
   }
   sess.state='connecting';
@@ -789,14 +834,14 @@ async function openStream(reportId){
   await startWebRTC(sess);
 }
 
-function closeStream(reportId){
-  const sess=sessions.get(reportId);
-  if(!sess){ log('[Error] Unknown session: '+reportId); return; }
+function closeStream(report_id){
+  const sess=sessions.get(report_id);
+  if(!sess){ log('[Error] Unknown session: '+report_id); return; }
   if(!sess.pc){
-    log('[Session] no active stream for '+reportId);
+    log('[Session] no active stream for '+report_id);
     return;
   }
-  log('[Session] stopping stream: '+reportId);
+  log('[Session] stopping stream: '+report_id);
   stopWebRTC(sess);
   sess.state='ready';
   syncCard(sess); syncSideItem(sess);
