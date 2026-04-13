@@ -103,3 +103,33 @@ def publish_detection(report_id: str, detection_id: str, timestamp: str, defect:
     except Exception as e:
         logger.error("[Error] Firebase write failed: %s", e)
         return False
+
+
+def publish_session_info(report_id: str, session_info: dict) -> bool:
+    """
+    Safely write session_info under the report_id node without overwriting 
+    existing nodes (like defect/non_defect).
+
+    Args:
+        report_id: Report identifier.
+        session_info: Dictionary containing telemetry, control, and config metadata.
+
+    Returns:
+        True if write succeeded, False otherwise.
+    """
+    if not _initialized:
+        logger.error("[Error] Firebase not initialized")
+        return False
+
+    try:
+        # We use update on the root of report_id. This will only add/modify
+        # the 'session_info' key and leave 'defect' / 'non_defect' intact.
+        ref = db.reference(report_id)
+        ref.update({
+            "session_info": session_info
+        })
+        logger.debug("Session info sent → report_id=%s", report_id)
+        return True
+    except Exception as e:
+        logger.error("[Error] Firebase session info write failed: %s", e)
+        return False

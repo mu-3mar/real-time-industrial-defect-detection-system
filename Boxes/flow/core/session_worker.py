@@ -9,6 +9,7 @@ from typing import Any, Optional, Union, Set
 
 import numpy as np
 
+from core.firebase_client import publish_session_info
 from core.pipeline import Pipeline
 from core.pipeline_diagnostics import get_diagnostics
 from core.pipeline_manager import PipelineManager
@@ -109,6 +110,10 @@ class SessionWorker(threading.Thread):
                 on_frame_callback=None,
             )
             self._pipeline_ref.stream.start()
+
+            # Publish session_info once on startup
+            # This uses update() to safely add the sibling node without modifying defect/non_defect
+            publish_session_info(self.report_id, self.session_info)
 
             firebase_meta = {
                 "report_id": self.report_id,
