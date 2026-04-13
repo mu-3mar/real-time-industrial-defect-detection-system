@@ -5,7 +5,7 @@ Runtime configuration for the flow server (`Boxes/flow/main.py` + `api/api_serve
 ## Files
 
 - `api.yaml`: bind address + port + log level (used by `main.py`).
-- `app.yaml`: optional CORS origins list.
+- `app.yaml`: optional CORS origins list and `session_defaults` (telemetry/control initialization placeholders).
 - `webrtc.yaml`: **Required** runtime WebRTC config (STUN/TURN URLs, TURN secret, `webrtc_mode`). Not committed (gitignored); create by copying from the example.
 - `webrtc.example.yaml`: Template committed to the repo (no secrets). Copy to `webrtc.yaml` and fill in real values.
 - `firebase.yaml`: Firebase Realtime Database settings
@@ -44,6 +44,7 @@ Place your Firebase service account JSON in this folder; it is gitignored.
 | Key | Purpose |
 |-----|---------|
 | `cors_origins` | List of allowed origins. Empty = allow all. Non-empty = restrict to these origins with credentials. |
+| `session_defaults` | Initialization placeholders written ONCE to Firebase (`session_info` node) when a session starts. E.g. `telemetry` and `control`. |
 
 ## api.yaml (optional)
 
@@ -83,7 +84,12 @@ Source comes from `camera_source` in POST /api/reports/open.
 
 **Database URL (required):** Set `database_url` in `firebase.yaml`, or optionally in `firebase_config.json`. Do not commit `firebase_config.json` if it contains secrets.
 
-Report open uses `report_id`, `camera_source`, and `production_line_id` from POST /api/reports/open. Detections are written to Firebase Realtime Database under the report only: root key is `report_id`; each detection is a child with an auto-generated key (`detection_id`), containing only `defect` (boolean) and `timestamp` (ISO 8601 string). No factory/line/station hierarchy.
+Report open uses `report_id`, `camera_source`, `production_line_id`, and session config (`target_speed`, `max_temp`, `max_amps`) from POST `/api/reports/open`. 
+
+**Firebase Structure (Updated):**
+All data is written under the `report_id` root key:
+1. `session_info`: Written ONCE on session start. Combines POST request configs (`target_speed`, etc.) and `app.yaml` `session_defaults` (`rpm_actual`, `machine_status`, etc.).
+2. `defect` and `non_defect`: Detections are grouped here. Each detection is a child with an auto-generated key (`detection_id`), containing only `timestamp` (ISO 8601 string). No factory/line/station hierarchy.
 
 ## box_detector.yaml (required)
 

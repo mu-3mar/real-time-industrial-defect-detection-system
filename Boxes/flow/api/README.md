@@ -5,7 +5,7 @@ FastAPI layer for the flow (detection) service.
 ## Endpoints (surface)
 
 - `POST /api/reports/open`: open a report (idempotent per `production_line_id`)
-  - Body: `{ "report_id": "...", "camera_source": "...|0", "production_line_id": "..." }`
+  - Body: `{ "report_id": "...", "camera_source": "...|0", "production_line_id": "...", "target_speed": 1500, "max_temp": 90, "max_amps": 40 }`
 - `POST /api/reports/close`: close a report (idempotent)
   - Body: `{ "report_id": "..." }`
 - `GET /api/reports`: list active (open) reports

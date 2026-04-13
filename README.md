@@ -107,7 +107,7 @@ Endpoints:
 | File | Purpose |
 |------|--------|
 | `api.yaml` | Uvicorn host/port/log level (used by `main.py`). |
-| `app.yaml` | Optional CORS configuration. |
+| `app.yaml` | CORS configuration and **`session_defaults`** (initialization placeholders like telemetry). |
 | `webrtc.yaml` | STUN/TURN + TURN **secret** + `webrtc_mode` (**gitignored**). |
 | `webrtc.example.yaml` | Template for `webrtc.yaml`. |
 | `firebase.yaml` | Firebase `service_account_path` + `database_url`. |
@@ -137,11 +137,19 @@ Configuration is loaded **only from files in `Boxes/flow/config/`** (no environm
 Body:
 
 ```json
-{ "report_id": "r-123", "camera_source": 0, "production_line_id": "line-1" }
+{ 
+  "report_id": "r-123", 
+  "camera_source": 0, 
+  "production_line_id": "line-1",
+  "target_speed": 1500,
+  "max_temp": 90,
+  "max_amps": 40
+}
 ```
 
 Notes:
 
+- **Updated:** The request now requires `target_speed`, `max_temp`, and `max_amps` for session configuration.
 - **Idempotent per `production_line_id`**: if a report is already open for the line, the API returns success (does not error).
 
 Example:
@@ -149,7 +157,7 @@ Example:
 ```bash
 curl -sS -X POST "http://localhost:8000/api/reports/open" \
   -H "content-type: application/json" \
-  -d '{"report_id":"r-123","camera_source":0,"production_line_id":"line-1"}'
+  -d '{"report_id":"r-123","camera_source":0,"production_line_id":"line-1","target_speed":1500,"max_temp":90,"max_amps":40}'
 ```
 
 #### Close a report
@@ -209,17 +217,43 @@ Returns:
 
 ### Firebase Realtime Database structure (current)
 
-Events are written to:
-
-```
-{report_id}/{detection_id}
-```
-
-Payload:
+**Updated:** Events and session metadata are written under the `{report_id}` node:
 
 ```json
-{ "defect": true, "timestamp": "2026-03-09T14:21:00Z" }
+{
+  "report_id": {
+    "session_info": {
+      "telemetry": {
+        "rpm_actual": 0,
+        "predicted_temp": 0,
+        "torque": 0
+      },
+      "control": {
+        "target_speed": 1500,
+        "machine_status": "idle"
+      },
+      "config": {
+        "max_temp": 90,
+        "max_amps": 40
+      }
+    },
+    "defect": {
+      "det_001": {
+        "timestamp": "2026-03-09T14:21:00Z"
+      }
+    },
+    "non_defect": {
+      "det_002": {
+        "timestamp": "2026-03-09T14:21:05Z"
+      }
+    }
+  }
+}
 ```
+
+Notes:
+- `session_info` is written ONCE when the session starts.
+- Detection events are grouped under `defect` and `non_defect` nodes using a generated `detection_id`.
 
 ### Models
 
@@ -381,11 +415,14 @@ All endpoints are defined in `Boxes/flow/api/api_server.py`.
 {
   "report_id": "string",
   "camera_source": "0",
-  "production_line_id": "line-1"
+  "production_line_id": "line-1",
+  "target_speed": 1500,
+  "max_temp": 90,
+  "max_amps": 40
 }
 ```
 
-`camera_source` can be a string (e.g. RTSP URL) or integer (device index).
+`camera_source` can be a string (e.g. RTSP URL) or integer (device index). The `target_speed`, `max_temp`, and `max_amps` fields are used to populate the session metadata.
 
 - **Successful response (new report)**:
 
@@ -576,23 +613,26 @@ All endpoints are defined in `Boxes/flow/api/api_server.py`.
 
 The lifecycle of a report is:
 
-1. **Open**: client calls `POST /api/reports/open` with a `report_id`, `camera_source`, and `production_line_id`.  
+1. **Open**: client calls `POST /api/reports/open` with `report_id`, `camera_source`, `production_line_id`, and session config fields (`target_speed`, `max_temp`, `max_amps`).
 2. **Pipeline start**:
    - A `SessionWorker` thread starts.
+   - **New:** `publish_session_info` is called ONCE to write the `session_info` metadata to Firebase (combining request config and `app.yaml` defaults).
    - Camera frames are pulled via `CamStream`.
    - Frames are passed into the shared `PipelineManager` (one inference thread).
 3. **Streaming & detections**:
    - Client negotiates WebRTC via `POST /webrtc/offer`.
    - Annotated frames are pushed to each subscribed `VideoStreamTrack`.
    - When a box exits the ROI and a decision is made (defect / OK), an event is pushed into the Firebase worker queue.
+   - The `PipelineManager`'s Firebase worker then safely writes to the `defect` or `non_defect` nodes in Firebase.
 4. **Close**: client calls `POST /api/reports/close`. The worker stops, the pipeline is unregistered, and subsequent WebRTC offers for that `report_id` fail with `"Report not found"`.
 
 Informal flow:
 
 ```text
 Client → POST /api/reports/open
+       → Firebase write (session_info metadata ONCE on start)
        → POST /webrtc/offer  → WebRTC stream (video)
-       → Firebase writes: {report_id}/{detection_id} {defect, timestamp}
+       → Firebase writes: {report_id}/{defect|non_defect}/{detection_id}
        → POST /api/reports/close
 ```
 
@@ -641,29 +681,31 @@ Firebase is initialized in `core/firebase_client.py` with:
 - `credentials_path` → service account JSON (from `firebase.yaml` or env).
 - `database_url` → Realtime Database URL (from `firebase.yaml` or `firebase_config.json`).
 
-Events are written by `publish_detection(report_id, timestamp, defect)`:
-
-```python
-path = report_id
-payload = {"defect": defect, "timestamp": timestamp}
-db.reference(path).push(payload)
-```
+Events are written by `publish_detection(report_id, detection_id, timestamp, defect)`. Also, session metadata is written once on startup via `publish_session_info`.
 
 Structure in the database:
 
 ```text
 {report_id}
-  └── {detection_id}  # Firebase push key
-        defect: true
-        timestamp: "2026-03-09T14:21:00Z"
+  ├── session_info        # Written once on session start
+  │    ├── telemetry
+  │    ├── control
+  │    └── config
+  ├── defect              # Group for defect events
+  │    └── {detection_id}
+  │          └── timestamp: "2026-03-09T14:21:00Z"
+  └── non_defect          # Group for OK events
+       └── {detection_id}
+             └── timestamp: "2026-03-09T14:21:00Z"
 ```
 
 - `report_id`: identifier chosen by the client when opening the report.
-- `detection_id`: auto-generated key from Firebase `push()`.
-- `defect`:
-  - `true` → defect detected.
-  - `false` → explicitly non-defect event (depending on pipeline logic).
-- `timestamp`: ISO 8601 UTC time string, generated by the Firebase worker when enqueueing the event.
+- `session_info`: populated from `POST /api/reports/open` body and `app.yaml` defaults (`session_defaults`).
+- `detection_id`: unique identifier for each box exiting the ROI.
+- `defect` / `non_defect`:
+  - `defect` → defect detected.
+  - `non_defect` → explicitly non-defect event.
+- `timestamp`: ISO 8601 UTC time string.
 
 ### 6. Configuration System (backend)
 
@@ -671,8 +713,9 @@ All backend configuration is under `Boxes/flow/config/`:
 
 - `api.yaml` — Uvicorn:
   - `host`, `port`, `log_level`.
-- `app.yaml` — CORS:
+- `app.yaml` — App & CORS settings:
   - `cors_origins` list (empty = allow all, good for local dev).
+  - **New:** `session_defaults` containing `telemetry` (`rpm_actual`, `predicted_temp`, `torque`) and `control` (`machine_status`). *Note: These are initialization placeholders only and are not dynamically updated yet.*
 - `firebase.yaml` — Firebase project selection:
 
 ```yaml
