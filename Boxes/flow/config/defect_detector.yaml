@@ -1,6 +1,6 @@
 model_path: models/defect_box.engine
 model_version: "1.0"
-conf_thres: 0.2
+conf_thres: 0.4
 iou_thres: 0.6
 device: auto
 

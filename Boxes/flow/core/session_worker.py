@@ -101,6 +101,10 @@ class SessionWorker(threading.Thread):
         """Start camera, register with PipelineManager, run camera feeder until stop."""
         self._started_at = datetime.utcnow()
         try:
+            # Publish session_info immediately on startup so the client sees it in Firebase
+            # before the potentially slow Pipeline/Camera initialization blocks the thread.
+            publish_session_info(self.report_id, self.session_info)
+
             self._pipeline_ref = Pipeline(
                 box_cfg=self._box_cfg,
                 defect_cfg=self._defect_cfg,
@@ -110,10 +114,6 @@ class SessionWorker(threading.Thread):
                 on_frame_callback=None,
             )
             self._pipeline_ref.stream.start()
-
-            # Publish session_info once on startup
-            # This uses update() to safely add the sibling node without modifying defect/non_defect
-            publish_session_info(self.report_id, self.session_info)
 
             firebase_meta = {
                 "report_id": self.report_id,

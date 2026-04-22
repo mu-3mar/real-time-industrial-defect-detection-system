@@ -75,6 +75,19 @@ class CamStream:
             logger.error("Failed to open video source: %s", source)
             raise RuntimeError(f"Could not open video source: {source}")
 
+        ret, frame = self.cap.read()
+        if not ret or frame is None:
+            logger.error("Failed to read initial frame from source: %s", source)
+            raise RuntimeError(f"Could not read initial frame from source: {source}")
+
+        print("SHAPE:", frame.shape)
+        print("FPS:", self.cap.get(cv2.CAP_PROP_FPS))
+        fourcc = int(self.cap.get(cv2.CAP_PROP_FOURCC))
+        fourcc_str = "".join([chr((fourcc >> (8 * i)) & 0xFF) for i in range(4)])
+        print("FOURCC:", fourcc_str)
+        print("BACKEND:", self.cap.getBackendName())
+        print("CONVERT_RGB:", self.cap.get(cv2.CAP_PROP_CONVERT_RGB))
+
         # Read back actual properties (camera may not honour all requests exactly)
         actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

@@ -121,15 +121,14 @@ def publish_session_info(report_id: str, session_info: dict) -> bool:
         logger.error("[Error] Firebase not initialized")
         return False
 
+    logger.info("Writing session_info to Firebase for report_id: %s...", report_id)
     try:
-        # We use update on the root of report_id. This will only add/modify
-        # the 'session_info' key and leave 'defect' / 'non_defect' intact.
-        ref = db.reference(report_id)
-        ref.update({
-            "session_info": session_info
-        })
-        logger.debug("Session info sent → report_id=%s", report_id)
+        # We use set on the specific child node to avoid any root update issues
+        # and ensure it doesn't overwrite sibling nodes like defect/non_defect
+        ref = db.reference(f"{report_id}/session_info")
+        ref.set(session_info)
+        logger.info("Success: session_info written to Firebase for report_id: %s", report_id)
         return True
     except Exception as e:
-        logger.error("[Error] Firebase session info write failed: %s", e)
+        logger.error("[Error] Failed to write session_info to Firebase for report_id: %s. Reason: %s", report_id, e)
         return False
