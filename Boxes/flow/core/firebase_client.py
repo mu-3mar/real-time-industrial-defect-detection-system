@@ -72,9 +72,13 @@ def publish_detection(report_id: str, detection_id: str, timestamp: str, defect:
            ├── defect
            │    └── {detection_id}
            │         └── timestamp: "2026-03-09T14:21:00Z"
-           └── non_defect
+           ├── non_defect
+           │    └── {detection_id}
+           │         └── timestamp: "2026-03-09T14:21:00Z"
+           └── detections
                 └── {detection_id}
-                     └── timestamp: "2026-03-09T14:21:00Z"
+                     ├── timestamp: "2026-03-09T14:21:00Z"
+                     └── defect: true|false
 
     Args:
         report_id: Report identifier (from /api/reports/open).
@@ -90,15 +94,31 @@ def publish_detection(report_id: str, detection_id: str, timestamp: str, defect:
         return False
 
     group = "defect" if defect else "non_defect"
-    payload = {
+    grouped_payload = {
         "timestamp": timestamp,
+    }
+    unified_payload = {
+        "timestamp": timestamp,
+        "defect": defect,
     }
 
     try:
-        # report_id / defect|non_defect / detection_id
-        ref = db.reference(f"{report_id}/{group}/{detection_id}")
-        ref.set(payload)
-        logger.debug("Detection sent → report_id=%s group=%s det_id=%s", report_id, group, detection_id)
+        # Additive write:
+        # 1) Keep existing grouped structure (defect/non_defect) untouched.
+        # 2) Mirror under report_id/detections with a defect flag.
+        report_ref = db.reference(str(report_id))
+        report_ref.update(
+            {
+                f"{group}/{detection_id}": grouped_payload,
+                f"detections/{detection_id}": unified_payload,
+            }
+        )
+        logger.debug(
+            "Detection sent → report_id=%s group=%s det_id=%s mirrored_in=detections",
+            report_id,
+            group,
+            detection_id,
+        )
         return True
     except Exception as e:
         logger.error("[Error] Firebase write failed: %s", e)
