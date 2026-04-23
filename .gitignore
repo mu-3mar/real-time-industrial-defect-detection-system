@@ -34,7 +34,7 @@ outputs/
 # *.bmp
 # *.gif
 # *.webp
-# *.mp4
+*.mp4
 # *.avi
 # *.mov
 # *.mkv

@@ -159,6 +159,19 @@
     line-height: 1.5;
   }
 
+  /* Camera alias badge */
+  .cam-alias {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--accent-dim); border: 1px solid var(--accent2);
+    border-radius: 4px; padding: 3px 8px; margin-top: 5px;
+    font-size: 9px; letter-spacing: 0.07em; color: var(--accent);
+  }
+  .cam-alias .cam-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse 1.8s infinite; }
+  .cam-path-preview {
+    font-size: 9px; color: var(--text-dim); margin-top: 3px;
+    letter-spacing: 0.04em; word-break: break-all; line-height: 1.5;
+  }
+
   /* SESSION LIST */
   .sess-list { display:flex; flex-direction:column; }
   .sess-empty { padding:18px 16px; text-align:center; font-size:11px; color:var(--text-dim); line-height:1.8; }
@@ -371,14 +384,14 @@
         <input type="text" id="reportId" placeholder="e.g. report_batch42">
       </div>
       <div class="field">
-        <label>Production Line</label>
-        <select id="lineSelect">
-          <option value="line1">Line 1 — DroidCam</option>
-          <option value="line2">Line 2 — Integrated HD</option>
-        </select>
-      </div>
-      <div class="field">
         <label>Camera Source</label>
+        <select id="cameraSelect" onchange="onCameraSelectChange()">
+          <option value="" disabled selected>— select camera —</option>
+        </select>
+        <div class="field-hint" id="cameraHint" style="display:none"></div>
+      </div>
+      <div class="field" id="cameraCustomField" style="display:none">
+        <label>Custom Source Path / URL</label>
         <input type="text" id="cameraSource" placeholder="rtsp://... or http://... or /dev/video0">
         <div class="field-hint">RTSP stream · HTTP stream · local device path</div>
       </div>
@@ -434,14 +447,80 @@
 </div>
 
 <script>
-const CAMERAS = {
-  line1: '/dev/v4l/by-id/v4l2loopback-DroidCam-video',
-  line2: '/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0',
-};
+const CAMERAS = [
+  {
+    key: 'line1',
+    alias: 'DroidCam',
+    label: 'Line 1 — DroidCam',
+    path: '/dev/v4l/by-id/v4l2loopback-DroidCam-video',
+  },
+  {
+    key: 'line2',
+    alias: 'Integrated Webcam HD',
+    label: 'Line 2 — Integrated HD',
+    path: '/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0',
+  },
+];
 const LINE_DEFS = {
-  line1: { production_line_id:'line1', camera_source:CAMERAS.line1, label:'Line 1' },
-  line2: { production_line_id:'line2', camera_source:CAMERAS.line2, label:'Line 2' },
+  line1: { production_line_id:'line1', camera_source: CAMERAS[0].path, label:'Line 1' },
+  line2: { production_line_id:'line2', camera_source: CAMERAS[1].path, label:'Line 2' },
 };
+
+// ── CAMERA SELECT ────────────────────────────
+function populateCameraSelect() {
+  const sel = $('cameraSelect');
+  // Clear except placeholder
+  while (sel.options.length > 1) sel.remove(1);
+  CAMERAS.forEach(cam => {
+    const opt = document.createElement('option');
+    opt.value = cam.key;
+    opt.textContent = cam.label;
+    sel.appendChild(opt);
+  });
+  // Other option
+  const other = document.createElement('option');
+  other.value = '__other__';
+  other.textContent = '⊕ Other — custom source…';
+  sel.appendChild(other);
+}
+
+function onCameraSelectChange() {
+  const sel = $('cameraSelect');
+  const val = sel.value;
+  const hint = $('cameraHint');
+  const customField = $('cameraCustomField');
+
+  if (!val || val === '') {
+    hint.innerHTML = ''; hint.style.display = 'none';
+    customField.style.display = 'none';
+    return;
+  }
+
+  if (val === '__other__') {
+    hint.innerHTML = ''; hint.style.display = 'none';
+    customField.style.display = 'block';
+    $('cameraSource').value = '';
+    $('cameraSource').focus();
+    return;
+  }
+
+  const cam = CAMERAS.find(c => c.key === val);
+  customField.style.display = 'none';
+  if (cam) {
+    hint.style.display = 'block';
+    hint.innerHTML = `
+      <div class="cam-alias"><span class="cam-dot"></span>${cam.alias}</div>
+      <div class="cam-path-preview">${cam.path}</div>`;
+  }
+}
+
+function getSelectedCameraSource() {
+  const val = $('cameraSelect').value;
+  if (!val) return '';
+  if (val === '__other__') return $('cameraSource').value.trim();
+  const cam = CAMERAS.find(c => c.key === val);
+  return cam ? cam.path : '';
+}
 
 let API_BASE = localStorage.getItem('qcscm_api') || '';
 let ice_servers = [], webrtc_mode = 'auto';
@@ -452,6 +531,7 @@ const sessions = new Map();
 
 const $ = id => document.getElementById(id);
 $('apiBase').value = API_BASE;
+populateCameraSelect();
 
 // ── LOG ─────────────────────────────────────
 const LOG_TAG_MAP = { Service:'service', Session:'session', WebRTC:'webrtc', Error:'error' };
@@ -509,9 +589,7 @@ async function openSession() {
   if(!report_id){ log('[Error] Report ID required'); return; }
   if(sessions.has(report_id)){ log('[Error] Already open: '+report_id); return; }
 
-  const line_key = $('lineSelect').value;
-
-  const camera_source = document.getElementById('cameraSource').value.trim();
+  const camera_source = getSelectedCameraSource();
   if (!camera_source) {
     log('[Error] Camera source required');
     return;
@@ -526,19 +604,18 @@ async function openSession() {
     return;
   }
 
-  const sess = { report_id, line_key, pc:null, state:'opening', ice_type:null, started_at:new Date(), fullscreen:false };
+  const sess = { report_id, line_key: null, pc:null, state:'opening', ice_type:null, started_at:new Date(), fullscreen:false };
   sessions.set(report_id, sess);
 
   renderCard(sess);
   renderSideItem(sess);
   updateCount();
-  log('[Session] opening: '+report_id+' on '+LINE_DEFS[line_key].label+' · src: '+camera_source);
+  log('[Session] opening: '+report_id+' · src: '+camera_source);
 
   try {
     await apiFetch('/api/reports/open','POST',{
       report_id: report_id,
       camera_source: camera_source,
-      production_line_id: LINE_DEFS[line_key].production_line_id,
       target_speed: parseInt(target_speed, 10),
       max_temp: parseInt(max_temp, 10),
       max_amps: parseInt(max_amps, 10),
@@ -709,7 +786,6 @@ function cardId(rid){ return 'vc-'+rid.replace(/[^a-zA-Z0-9_-]/g,'_'); }
 function renderCard(sess){
   $('emptyState').style.display='none';
   const id=cardId(sess.report_id);
-  const line=LINE_DEFS[sess.line_key]||{ label: '—' };
   const el=document.createElement('div');
   el.className='v-card';
   el.id=id;
@@ -717,7 +793,6 @@ function renderCard(sess){
     <div class="v-card-head">
       <div class="v-card-head-left">
         <span class="v-report-id" title="${sess.report_id}">${sess.report_id}</span>
-        <span class="v-line-tag">${line.label}</span>
       </div>
       <div class="v-card-head-right">
         <button class="btn btn-ghost btn-sm" id="${id}-sb" onclick="openStream('${sess.report_id}')">Open Stream</button>
@@ -781,8 +856,7 @@ function sideId(rid){ return 'si-'+rid.replace(/[^a-zA-Z0-9_-]/g,'_'); }
 function renderSideItem(sess){
   $('sessEmpty').style.display='none';
   const id=sideId(sess.report_id);
-  const line=LINE_DEFS[sess.line_key]||{ label: '—' };
-  const meta = line.label + ' · ' + (sess.started_at ? sess.started_at.toLocaleTimeString('en-GB') : '—');
+  const meta = sess.started_at ? sess.started_at.toLocaleTimeString('en-GB') : '—';
   const el=document.createElement('div');
   el.className='sess-item';
   el.id=id;
