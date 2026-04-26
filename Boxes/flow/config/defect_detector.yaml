@@ -1,6 +1,6 @@
 model_path: models/defect_new.engine
 model_version: "1.0"
-conf_thres: 0.18
+conf_thres: 0.25
 iou_thres: 0.6
 device: auto
 

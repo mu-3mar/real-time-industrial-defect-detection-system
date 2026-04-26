@@ -23,8 +23,20 @@ class Visualizer:
         
     def draw_layout(self, canvas):
         """Draws static UI elements (background only)."""
-        # Guide lines intentionally disabled.
-        return
+        cv2.line(
+            canvas,
+            (self.roi_left, 0),
+            (self.roi_left, self.height),
+            (0, 165, 255),
+            2,
+        )
+        cv2.line(
+            canvas,
+            (self.roi_right, 0),
+            (self.roi_right, self.height),
+            (0, 165, 255),
+            2,
+        )
 
     def draw_box(self, canvas, box, label, color):
         """Draws a bounding box (corners only) and label."""

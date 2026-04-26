@@ -197,7 +197,11 @@ class Pipeline:
         canvas = buf
         self.visualizer.draw_layout(canvas)
         self.visualizer.draw_stats(canvas, self.state, self.fps)
-        box_input = frame
+        roi_x1 = max(0, self.LEFT_X - info_width)
+        roi_x2 = min(w, self.RIGHT_X - info_width)
+        if roi_x2 <= roi_x1:
+            roi_x1, roi_x2 = 0, w
+        box_input = frame[:, roi_x1:roi_x2]
 
         current_boxes = np.zeros((0, 4))
         if self.frame_count % self.box_detect_every_n == 0:
@@ -207,6 +211,9 @@ class Pipeline:
                 if box_result.boxes is not None
                 else np.zeros((0, 4))
             )
+            if current_boxes.size > 0:
+                current_boxes = current_boxes.copy()
+                current_boxes[:, [0, 2]] += float(roi_x1)
             self._last_boxes_roi = current_boxes
         boxes_roi = current_boxes if self.strict_current_frame_mode else self._last_boxes_roi
 
@@ -373,13 +380,21 @@ class Pipeline:
                 # ── STAGE 1: Box Detection (with throttle, Task 3) ──
                 # Run the box detector every box_detect_every_n frames.
                 # Between runs, reuse the cached result so tracking stays continuous.
+                roi_x1 = max(0, self.LEFT_X - self.visualizer.info_width)
+                roi_x2 = min(w, self.RIGHT_X - self.visualizer.info_width)
+                if roi_x2 <= roi_x1:
+                    roi_x1, roi_x2 = 0, w
+                box_input = frame[:, roi_x1:roi_x2]
                 if self.frame_count % self.box_detect_every_n == 0:
-                    box_result = self.box_detector.detect(frame)
+                    box_result = self.box_detector.detect(box_input)
                     self._last_boxes_roi = (
                         box_result.boxes.xyxy.cpu().numpy()
                         if box_result.boxes is not None
                         else np.zeros((0, 4))
                     )
+                    if self._last_boxes_roi.size > 0:
+                        self._last_boxes_roi = self._last_boxes_roi.copy()
+                        self._last_boxes_roi[:, [0, 2]] += float(roi_x1)
 
                 boxes_roi = self._last_boxes_roi
 
