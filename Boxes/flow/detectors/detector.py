@@ -1,7 +1,6 @@
 """YOLO-based object detector wrapper."""
 
 import logging
-
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)

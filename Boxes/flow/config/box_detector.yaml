@@ -1,4 +1,4 @@
 model_path: models/detect_box.engine
-conf_thres: 0.7
+conf_thres: 0.65
 iou_thres: 0.6
 device: auto

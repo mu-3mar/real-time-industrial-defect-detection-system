@@ -107,8 +107,14 @@ class PipelineManager:
         Non-blocking put from camera feeder. Drops if full so inference is never blocked.
         Returns True if enqueued, False if queue full (frame dropped).
         """
+        with self._lock_registry:
+            pipeline = self._pipelines.get(session_id)
+        strict_mode = bool(getattr(pipeline, "strict_debug_mode", False)) if pipeline is not None else False
         try:
-            self._frame_queue.put_nowait((session_id, frame, enqueue_time, camera_fps))
+            if strict_mode:
+                self._frame_queue.put((session_id, frame, enqueue_time, camera_fps), timeout=0.2)
+            else:
+                self._frame_queue.put_nowait((session_id, frame, enqueue_time, camera_fps))
             return True
         except queue.Full:
             return False

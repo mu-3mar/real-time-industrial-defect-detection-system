@@ -4,4 +4,13 @@ height: 720
 
 # Adaptive detection throttle (frames between runs)
 box_detect_every_n_frames: 1
-defect_detect_every_n_frames: 2
+defect_detect_every_n_frames: 1
+
+# Strict per-frame debug processing.
+# Forces both detectors to run every frame and consumes queued frames in order.
+strict_debug_mode: false
+strict_crop_padding_ratio: 0.08
+strict_frame_queue_size: 120
+
+# Strict current-frame validation mode.
+strict_current_frame_mode: false

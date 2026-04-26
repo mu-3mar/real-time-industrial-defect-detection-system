@@ -47,7 +47,14 @@ class CamStream:
       - get_latest_frame() is non-blocking; returns the most recent frame or (False, None).
     """
 
-    def __init__(self, source, width: int, height: int):
+    def __init__(
+        self,
+        source,
+        width: int,
+        height: int,
+        strict_per_frame: bool = False,
+        frame_queue_size: int = 1,
+    ):
         """
         Initialize camera and configure hardware parameters.
 
@@ -103,7 +110,11 @@ class CamStream:
         # ── Task 1+2: Single-slot frame queue — newest frame only ──
         # deque(maxlen=1) provides atomic single-element replacement;
         # appending a new frame automatically evicts the old one.
-        self._frame_queue: deque = deque(maxlen=1)
+        self._strict_per_frame = bool(strict_per_frame)
+        queue_size = int(frame_queue_size) if frame_queue_size else 1
+        if not self._strict_per_frame:
+            queue_size = 1
+        self._frame_queue: deque = deque(maxlen=max(1, queue_size))
 
         # Capture thread control
         self._stop_event = threading.Event()
@@ -149,6 +160,8 @@ class CamStream:
             (False, None)          when the queue is empty (camera not ready yet).
         """
         if self._frame_queue:
+            if self._strict_per_frame:
+                return True, self._frame_queue.popleft()
             return True, self._frame_queue[-1]
         return False, None
 

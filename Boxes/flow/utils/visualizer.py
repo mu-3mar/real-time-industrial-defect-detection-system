@@ -22,18 +22,16 @@ class Visualizer:
         self.roi_right = info_width + 420 + roi_width // 2
         
     def draw_layout(self, canvas):
-        """Draws static UI elements (ROI lines, background)."""
-        h, w = canvas.shape[:2]
-        # ROI Lines
-        cv2.line(canvas, (self.roi_left, 0), (self.roi_left, h), (0, 0, 0), 2)
-        cv2.line(canvas, (self.roi_right, 0), (self.roi_right, h), (0, 0, 0), 2)
+        """Draws static UI elements (background only)."""
+        # Guide lines intentionally disabled.
+        return
 
     def draw_box(self, canvas, box, label, color):
         """Draws a bounding box (corners only) and label."""
         x1, y1, x2, y2 = map(int, box)
         
-        abs_x1 = x1 + self.roi_left
-        abs_x2 = x2 + self.roi_left
+        abs_x1 = x1 + self.info_width
+        abs_x2 = x2 + self.info_width
         
         # Draw Fancy Corners
         line_len = min(abs_x2 - abs_x1, y2 - y1) // 4
@@ -83,7 +81,7 @@ class Visualizer:
             return
 
         box_x1, box_y1 = box_origin
-        base_x = box_x1 + self.roi_left
+        base_x = box_x1 + self.info_width
         base_y = box_y1
         h, w = canvas.shape[:2]
         # Frame = visible camera image on canvas (right of info panel)

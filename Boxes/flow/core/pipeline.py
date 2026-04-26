@@ -48,10 +48,16 @@ class Pipeline:
 
         # 1. Setup Stream (producer thread, decouple camera IO from inference)
         #    Camera runs independently at hardware FPS; pipeline reads latest frame only.
+        self.strict_debug_mode = bool(stream_cfg.get("strict_debug_mode", False))
+        self.strict_current_frame_mode = bool(stream_cfg.get("strict_current_frame_mode", False))
+        self.strict_crop_padding_ratio = float(stream_cfg.get("strict_crop_padding_ratio", 0.08))
+        self.strict_frame_queue_size = int(stream_cfg.get("strict_frame_queue_size", 120))
         self.stream = CamStream(
             stream_cfg["source"],
             stream_cfg["width"],
             stream_cfg["height"],
+            strict_per_frame=self.strict_debug_mode,
+            frame_queue_size=self.strict_frame_queue_size,
         )
 
         # 2. Setup Detectors with pre-loaded models
@@ -103,6 +109,14 @@ class Pipeline:
         self.defect_detect_every_n: int = int(
             stream_cfg.get("defect_detect_every_n_frames", 3)
         )
+        if self.strict_debug_mode:
+            self.box_detect_every_n = 1
+            self.defect_detect_every_n = 1
+        if self.strict_current_frame_mode:
+            self.box_detect_every_n = 1
+            self.defect_detect_every_n = 1
+            self.state.max_missed = 0
+            self.state.track_grace_frames = 0
         logger.debug(
             "Detection throttle: box every %d frames, defect every %d frames",
             self.box_detect_every_n,
@@ -183,17 +197,18 @@ class Pipeline:
         canvas = buf
         self.visualizer.draw_layout(canvas)
         self.visualizer.draw_stats(canvas, self.state, self.fps)
-        roi_offset = self.visualizer.info_width
-        roi = frame[:, self.LEFT_X - roi_offset : self.RIGHT_X - roi_offset]
+        box_input = frame
 
+        current_boxes = np.zeros((0, 4))
         if self.frame_count % self.box_detect_every_n == 0:
-            box_result = self.box_detector.detect(roi)
-            self._last_boxes_roi = (
+            box_result = self.box_detector.detect(box_input)
+            current_boxes = (
                 box_result.boxes.xyxy.cpu().numpy()
                 if box_result.boxes is not None
                 else np.zeros((0, 4))
             )
-        boxes_roi = self._last_boxes_roi
+            self._last_boxes_roi = current_boxes
+        boxes_roi = current_boxes if self.strict_current_frame_mode else self._last_boxes_roi
 
         matched_box, detected = self._match_track(boxes_roi)
         label, color, final_code = "—", (128, 128, 128), "OK"
@@ -201,9 +216,23 @@ class Pipeline:
 
         if detected and matched_box is not None:
             x1, y1, x2, y2 = matched_box[0], matched_box[1], matched_box[2], matched_box[3]
-            frame_x1 = int(x1) + (self.LEFT_X - roi_offset)
-            frame_x2 = int(x2) + (self.LEFT_X - roi_offset)
-            crop = frame[int(y1):int(y2), frame_x1:frame_x2]
+            if self.strict_debug_mode:
+                # Debug mode: expand crop around full-frame detection box.
+                box_w = max(1.0, float(x2 - x1))
+                box_h = max(1.0, float(y2 - y1))
+                pad_x = int(box_w * self.strict_crop_padding_ratio)
+                pad_y = int(box_h * self.strict_crop_padding_ratio)
+                crop_x1 = max(0, int(x1) - pad_x)
+                crop_y1 = max(0, int(y1) - pad_y)
+                crop_x2 = min(frame.shape[1], int(x2) + pad_x)
+                crop_y2 = min(frame.shape[0], int(y2) + pad_y)
+            else:
+                crop_x1 = int(x1)
+                crop_y1 = int(y1)
+                crop_x2 = int(x2)
+                crop_y2 = int(y2)
+
+            crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
             is_defect, defect_boxes = self._check_defect_track(crop)
             self.state.update_history(is_defect)
             if defect_boxes:
@@ -214,17 +243,48 @@ class Pipeline:
                 self.state.add_defect_boxes_relative(boxes_relative)
             label, color, final_code = self.state.get_status()
             box_for_draw = matched_box.astype(np.float32)
-            self.visualizer.draw_box(canvas, box_for_draw, label, color)
             accumulated = self.state.get_accumulated_defect_boxes()
             is_early_phase = self.state.is_early_detection_phase()
-            if accumulated and is_early_phase:
-                self.visualizer.draw_defects(
+            if self.strict_debug_mode:
+                draw_x1, draw_y1, draw_x2, draw_y2 = int(x1), int(y1), int(x2), int(y2)
+                cv2.rectangle(
                     canvas,
-                    (int(x1), int(y1)),
-                    accumulated,
-                    is_early_phase=is_early_phase,
-                    visibility_threshold=self.defect_visibility_threshold,
+                    (self.visualizer.info_width + draw_x1, draw_y1),
+                    (self.visualizer.info_width + draw_x2, draw_y2),
+                    color,
+                    2,
                 )
+                cv2.putText(
+                    canvas,
+                    label,
+                    (self.visualizer.info_width + draw_x1, max(0, draw_y1 - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    color,
+                    2,
+                )
+                if accumulated and is_early_phase:
+                    for d_box in accumulated:
+                        dx1, dy1, dx2, dy2 = map(int, d_box)
+                        abs_dx1 = self.visualizer.info_width + crop_x1 + dx1
+                        abs_dy1 = crop_y1 + dy1
+                        abs_dx2 = self.visualizer.info_width + crop_x1 + dx2
+                        abs_dy2 = crop_y1 + dy2
+                        cv2.rectangle(canvas, (abs_dx1, abs_dy1), (abs_dx2, abs_dy2), (0, 0, 255), 1)
+            else:
+                self.visualizer.draw_box(canvas, box_for_draw, label, color)
+                if accumulated and is_early_phase:
+                    self.visualizer.draw_defects(
+                        canvas,
+                        (int(x1), int(y1)),
+                        accumulated,
+                        is_early_phase=is_early_phase,
+                        visibility_threshold=self.defect_visibility_threshold,
+                    )
+
+        if self.strict_current_frame_mode and not detected:
+            self._current_track = None
+            self.state.set_last_defect_result(False, [])
 
         self.state.increment_defect_lock_frame()
         just_exited, final_decision = self.state.process_entry_exit(detected)
@@ -310,13 +370,11 @@ class Pipeline:
                 self.visualizer.draw_stats(canvas, self.state, self.fps)
                 roi_offset = self.visualizer.info_width
 
-                roi = frame[:, self.LEFT_X - roi_offset : self.RIGHT_X - roi_offset]
-
                 # ── STAGE 1: Box Detection (with throttle, Task 3) ──
                 # Run the box detector every box_detect_every_n frames.
                 # Between runs, reuse the cached result so tracking stays continuous.
                 if self.frame_count % self.box_detect_every_n == 0:
-                    box_result = self.box_detector.detect(roi)
+                    box_result = self.box_detector.detect(frame)
                     self._last_boxes_roi = (
                         box_result.boxes.xyxy.cpu().numpy()
                         if box_result.boxes is not None
@@ -332,9 +390,7 @@ class Pipeline:
 
                 if detected and matched_box is not None:
                     x1, y1, x2, y2 = matched_box[0], matched_box[1], matched_box[2], matched_box[3]
-                    frame_x1 = int(x1) + (self.LEFT_X - roi_offset)
-                    frame_x2 = int(x2) + (self.LEFT_X - roi_offset)
-                    crop = frame[int(y1):int(y2), frame_x1:frame_x2]
+                    crop = frame[int(y1):int(y2), int(x1):int(x2)]
                     is_defect, defect_boxes = self._check_defect_track(crop)
                     self.state.update_history(is_defect)
                     # Store defects in box-relative coords (crop = box); IoU dedup in that space
@@ -459,7 +515,12 @@ class Pipeline:
         Returns (is_defect, defect_boxes).
         """
         # defect_detect_every_n=3 → run on frames 0, 3, 6, 9 … (every 3rd)
-        run_this_frame = (self.frame_count % self.defect_detect_every_n == 0)
+        run_this_frame = (
+            True if self.strict_current_frame_mode
+            else (self.frame_count % self.defect_detect_every_n == 0)
+        )
+        if self.strict_current_frame_mode and crop.size == 0:
+            return False, []
         if run_this_frame and crop.size > 0:
             d_res = self.defect_detector.detect(crop)
             hole_detected = False
@@ -471,7 +532,11 @@ class Pipeline:
                     if cls == 0:
                         hole_detected = True
                         defect_boxes.append(d[:4])
-            self.state.set_last_defect_result(hole_detected, defect_boxes)
+            if not self.strict_current_frame_mode:
+                self.state.set_last_defect_result(hole_detected, defect_boxes)
+            return hole_detected, defect_boxes
+        if self.strict_current_frame_mode:
+            return False, []
         return self.state.get_last_defect_result()
 
     def update_fps(self):
