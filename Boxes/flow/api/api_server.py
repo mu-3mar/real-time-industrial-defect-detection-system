@@ -273,6 +273,32 @@ def _load_configs(base: Path) -> None:
     init_firebase(str(cred_path), database_url)
 
 
+def _resolve_existing_path(base: Path, configured_path: str) -> str:
+    """
+    Resolve a configured path against common roots and return first existing path.
+
+    Supports:
+    - absolute paths
+    - paths relative to `Boxes/flow`
+    - paths relative to repo root (parent of `Boxes/`)
+    """
+    p = Path(configured_path)
+    if p.is_absolute():
+        return str(p)
+
+    candidates = [
+        base / p,         # flow-relative
+        base.parent / p,  # Boxes-relative
+        base.parent.parent / p,  # repo-root-relative
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    # Preserve previous behavior as final fallback for clearer error context upstream.
+    return str(base / p)
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
     """Initialize configs, models, and Firebase client."""
@@ -280,12 +306,8 @@ async def startup_event() -> None:
     try:
         _load_configs(base)
         model_loader = ModelLoader.get_instance()
-        box_path = configs["box"]["model_path"]
-        defect_path = configs["defect"]["model_path"]
-        if not Path(box_path).is_absolute():
-            box_path = str(base / box_path)
-        if not Path(defect_path).is_absolute():
-            defect_path = str(base / defect_path)
+        box_path = _resolve_existing_path(base, str(configs["box"]["model_path"]))
+        defect_path = _resolve_existing_path(base, str(configs["defect"]["model_path"]))
         model_loader.load_models(box_path, defect_path)
         device = str(configs.get("box", {}).get("device", "0"))
         model_loader.warmup(device=device)
