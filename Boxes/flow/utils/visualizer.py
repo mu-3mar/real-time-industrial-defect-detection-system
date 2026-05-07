@@ -14,12 +14,12 @@ def _rect_intersection_area(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2):
 
 
 class Visualizer:
-    def __init__(self, width, height, info_width, roi_width):
+    def __init__(self, width, height, info_width, roi_width, roi_center_offset: int = 420):
         self.width = width
         self.height = height
         self.info_width = info_width
-        self.roi_left = info_width + 420 - roi_width // 2  # 420 is center offset from original code
-        self.roi_right = info_width + 420 + roi_width // 2
+        self.roi_left = info_width + roi_center_offset - roi_width // 2
+        self.roi_right = info_width + roi_center_offset + roi_width // 2
         
     def draw_layout(self, canvas):
         """Draws static UI elements (background only)."""

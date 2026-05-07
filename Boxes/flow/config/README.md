@@ -75,6 +75,16 @@ Place your Firebase service account JSON in this folder; it is gitignored.
 
 Source comes from `camera_source` in POST /api/reports/open.
 
+## stream.yaml (ROI gate)
+
+The UI shows two vertical orange lines and the service runs box detection only inside
+the region between them.
+
+| Key | Purpose | Default |
+|-----|---------|---------|
+| `roi_width` | Width (in pixels) of the gate between the two vertical lines. | `400` |
+| `roi_center_offset` | Horizontal offset (in pixels) of the gate center relative to the info panel. | `420` |
+
 ## firebase.yaml (required)
 
 | Key | Purpose |

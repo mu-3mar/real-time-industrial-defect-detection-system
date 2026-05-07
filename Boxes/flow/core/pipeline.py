@@ -88,14 +88,20 @@ class Pipeline:
         rendering = defect_cfg.get("rendering", {})
         self.defect_visibility_threshold = float(rendering.get("visibility_threshold", 0.2))
 
-        # 4. Visualizer: always initialized for streaming
-        self.LEFT_X = INFO_WIDTH + ROI_CENTER_OFFSET - ROI_WIDTH // 2
-        self.RIGHT_X = INFO_WIDTH + ROI_CENTER_OFFSET + ROI_WIDTH // 2
+        # 4. Visualizer + ROI gate layout (lines on UI + crop region)
+        # Allow tuning gate width/position from `stream.yaml`.
+        self.roi_width = int(stream_cfg.get("roi_width", ROI_WIDTH))
+        self.roi_center_offset = int(stream_cfg.get("roi_center_offset", ROI_CENTER_OFFSET))
+
+        self.LEFT_X = INFO_WIDTH + self.roi_center_offset - self.roi_width // 2
+        self.RIGHT_X = INFO_WIDTH + self.roi_center_offset + self.roi_width // 2
+
         self.visualizer = Visualizer(
             stream_cfg["width"],
             stream_cfg["height"],
             INFO_WIDTH,
-            ROI_WIDTH,
+            self.roi_width,
+            roi_center_offset=self.roi_center_offset,
         )
 
         # ── Task 3: Adaptive Detection Throttle ──────────────────────────────
