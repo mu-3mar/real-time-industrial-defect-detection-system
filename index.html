@@ -460,10 +460,17 @@ const CAMERAS = [
     label: 'Line 2 — Integrated HD',
     path: '/dev/v4l/by-id/usb-CN0V976R8LG0019NANWSA01_Integrated_Webcam_HD-video-index0',
   },
+  {
+    key: 'webcam',
+    alias: ' Web Camera',
+    label: ' Web Camera',
+    path: '/dev/v4l/by-id/usb-icSpring_WebCamera_20240603201703-video-index0',
+  },
 ];
 const LINE_DEFS = {
   line1: { production_line_id:'line1', camera_source: CAMERAS[0].path, label:'Line 1' },
   line2: { production_line_id:'line2', camera_source: CAMERAS[1].path, label:'Line 2' },
+  webcam: { production_line_id:'webcam', camera_source: CAMERAS[2].path, label:'Web Camera' },
 };
 
 // ── CAMERA SELECT ────────────────────────────

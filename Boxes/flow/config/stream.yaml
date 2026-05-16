@@ -1,6 +1,7 @@
-# Default frame dimensions. Source comes from POST /api/reports/open (camera_source).
-width: 1280
-height: 720
+# Capture resolution (V4L2 + MJPG). FPS is not set by the app — camera default.
+# Source device: POST /api/reports/open (camera_source).
+width: 1920
+height: 1080
 
 # Adaptive detection throttle (frames between runs)
 box_detect_every_n_frames: 1
@@ -9,8 +10,8 @@ defect_detect_every_n_frames: 1
 # ROI gate (the two vertical lines)
 # Increasing `roi_width` moves the lines further apart (wider gate).
 # Changing `roi_center_offset` shifts the gate left/right (relative to the info panel).
-roi_width: 800
-roi_center_offset: 420
+roi_width: 1500
+roi_center_offset: 1000
 
 # Strict per-frame debug processing.
 # Forces both detectors to run every frame and consumes queued frames in order.

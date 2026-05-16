@@ -60,23 +60,20 @@ class CamStream:
 
         Args:
             source: Camera device index or file path.
-            width:  Deprecated. Kept for backwards compatibility; capture always
-                    uses the camera’s native resolution.
-            height: Deprecated. Kept for backwards compatibility; capture always
-                    uses the camera’s native resolution.
+            width:  Requested width from stream.yaml (0 = driver default).
+            height: Requested height from stream.yaml (0 = driver default).
         """
-        # ── Task 4: Force V4L2 backend + MJPG for maximum Linux camera FPS ──
-        # NOTE (Resolution Policy):
-        #   We deliberately DO NOT set CAP_PROP_FRAME_WIDTH / HEIGHT here.
-        #   The camera is opened at its native resolution and all downstream
-        #   processing (detection + rendering + WebRTC) operates on the
-        #   full‑resolution frames. Any inference-time resizing must be done
-        #   on a copy inside the pipeline, never by downscaling the capture.
+        # V4L2 + MJPG, then resolution only — FPS is left to the camera/driver.
         self.cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
         self.cap.set(
             cv2.CAP_PROP_FOURCC,
             cv2.VideoWriter_fourcc(*"MJPG"),
         )
+        if width > 0:
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        if height > 0:
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if not self.cap.isOpened():
             logger.error("Failed to open video source: %s", source)
@@ -87,24 +84,22 @@ class CamStream:
             logger.error("Failed to read initial frame from source: %s", source)
             raise RuntimeError(f"Could not read initial frame from source: {source}")
 
-        print("SHAPE:", frame.shape)
-        print("FPS:", self.cap.get(cv2.CAP_PROP_FPS))
-        fourcc = int(self.cap.get(cv2.CAP_PROP_FOURCC))
-        fourcc_str = "".join([chr((fourcc >> (8 * i)) & 0xFF) for i in range(4)])
-        print("FOURCC:", fourcc_str)
-        print("BACKEND:", self.cap.getBackendName())
-        print("CONVERT_RGB:", self.cap.get(cv2.CAP_PROP_CONVERT_RGB))
-
-        # Read back actual properties (camera may not honour all requests exactly)
         actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
         fourcc_int = int(self.cap.get(cv2.CAP_PROP_FOURCC))
         fourcc_str = "".join([chr((fourcc_int >> (8 * i)) & 0xFF) for i in range(4)])
 
-        logger.debug(
-            "CamStream opened: backend=V4L2, fourcc=%s, res=%dx%d, estimated_fps=%.1f",
-            fourcc_str, actual_w, actual_h, actual_fps,
+        logger.info(
+            "CamStream opened: fourcc=%s, requested=%dx%d, actual=%dx%d, "
+            "frame=%s, driver_fps=%.1f (not forced)",
+            fourcc_str,
+            width,
+            height,
+            actual_w,
+            actual_h,
+            frame.shape,
+            actual_fps,
         )
 
         # ── Task 1+2: Single-slot frame queue — newest frame only ──
