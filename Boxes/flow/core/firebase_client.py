@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 import firebase_admin
 from firebase_admin import credentials, db
@@ -63,72 +64,56 @@ def get_initialized() -> bool:
     return _initialized
 
 
-def publish_detection(report_id: str, detection_id: str, timestamp: str, defect: bool) -> bool:
+def publish_detection(report_id: str, timestamp: str, defect: bool) -> Optional[str]:
     """
     Push a detection event to Firebase Realtime Database.
 
+    Uses Firebase ``push()`` so the child key is auto-generated (same as POST to
+    ``/{report_id}/detections.json`` with a JSON body).
+
     Structure:
         {report_id}
-           ├── defect
-           │    └── {detection_id}
-           │         └── timestamp: "2026-03-09T14:21:00Z"
-           ├── non_defect
-           │    └── {detection_id}
-           │         └── timestamp: "2026-03-09T14:21:00Z"
            └── detections
-                └── {detection_id}
+                └── {-FirebasePushId-}
                      ├── timestamp: "2026-03-09T14:21:00Z"
                      └── defect: true|false
 
     Args:
-        report_id: Report identifier (from /api/reports/open).
-        detection_id: Unique identifier for this detection.
+        report_id: Report identifier (from /api/reports/open), e.g. ``chainly``.
         timestamp: ISO 8601 UTC timestamp string.
         defect: True if defect detected, False otherwise.
 
     Returns:
-        True if write succeeded, False otherwise.
+        The Firebase push key on success, None on failure.
     """
     if not _initialized:
         logger.error("[Error] Firebase not initialized")
-        return False
+        return None
 
-    group = "defect" if defect else "non_defect"
-    grouped_payload = {
-        "timestamp": timestamp,
-    }
-    unified_payload = {
+    payload = {
         "timestamp": timestamp,
         "defect": defect,
     }
 
     try:
-        # Additive write:
-        # 1) Keep existing grouped structure (defect/non_defect) untouched.
-        # 2) Mirror under report_id/detections with a defect flag.
-        report_ref = db.reference(str(report_id))
-        report_ref.update(
-            {
-                f"{group}/{detection_id}": grouped_payload,
-                f"detections/{detection_id}": unified_payload,
-            }
-        )
+        new_ref = db.reference(f"{report_id}/detections").push(payload)
+        push_key = new_ref.key
         logger.debug(
-            "Detection sent → report_id=%s group=%s det_id=%s mirrored_in=detections",
+            "Detection pushed → report_id=%s key=%s defect=%s",
             report_id,
-            group,
-            detection_id,
+            push_key,
+            defect,
         )
-        return True
+        return push_key
     except Exception as e:
         logger.error("[Error] Firebase write failed: %s", e)
-        return False
+        return None
 
 
 def publish_session_info(report_id: str, session_info: dict) -> bool:
     """
-    Safely write session_info under the report_id node without overwriting 
-    existing nodes (like defect/non_defect).
+    Safely write session_info under the report_id node without overwriting
+    sibling nodes (e.g. detections).
 
     Args:
         report_id: Report identifier.
@@ -144,7 +129,7 @@ def publish_session_info(report_id: str, session_info: dict) -> bool:
     logger.info("Writing session_info to Firebase for report_id: %s...", report_id)
     try:
         # We use set on the specific child node to avoid any root update issues
-        # and ensure it doesn't overwrite sibling nodes like defect/non_defect
+        # and ensure it doesn't overwrite sibling nodes like detections
         ref = db.reference(f"{report_id}/session_info")
         ref.set(session_info)
         logger.info("Success: session_info written to Firebase for report_id: %s", report_id)

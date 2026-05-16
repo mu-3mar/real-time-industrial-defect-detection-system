@@ -165,7 +165,7 @@ class Pipeline:
 
         Returns:
             (canvas, exit_event): canvas is the annotated frame; exit_event is None
-            normally, or (is_defect, detection_id) when a box just exited.
+            normally, or is_defect (bool) when a box just exited.
         """
         if enqueue_time is not None and enqueue_time > 0:
             self.queue_latency_ms = (time.time() - enqueue_time) * 1000.0
@@ -301,15 +301,13 @@ class Pipeline:
 
         self.state.increment_defect_lock_frame()
         just_exited, final_decision = self.state.process_entry_exit(detected)
-        exit_event: Optional[Tuple[bool, str]] = None
+        exit_event: Optional[bool] = None
         if just_exited:
             self._current_track = None
             is_defect = final_decision == "DEFECT"
-            # detection_id = det_{total_count} (e.g. det_001)
-            detection_id = f"det_{self.state.total_count:03d}"
             label_text = "DEFECT" if is_defect else "OK"
-            logger.info("[Detection] %s (id=%s total=%d)", label_text, detection_id, self.state.total_count)
-            exit_event = (is_defect, detection_id)
+            logger.info("[Detection] %s (total=%d)", label_text, self.state.total_count)
+            exit_event = is_defect
 
         return canvas, exit_event
 
@@ -445,16 +443,11 @@ class Pipeline:
                 if just_exited:
                     self._current_track = None
                     is_defect = final_decision == "DEFECT"
-                    # detection_id = det_{total_count} (e.g. det_001)
-                    detection_id = f"det_{self.state.total_count:03d}"
                     label_text = "DEFECT" if is_defect else "OK"
-                    logger.info("[Detection] %s (id=%s total=%d)", label_text, detection_id, self.state.total_count)
+                    logger.info("[Detection] %s (total=%d)", label_text, self.state.total_count)
                     if self.on_result_callback:
-                        # Modified callback to pass detection_id if supported, 
-                        # but for backward compatibility with existing callbacks 
-                        # that might only expect one arg, we check or just pass both.
                         try:
-                            self.on_result_callback(is_defect, detection_id)
+                            self.on_result_callback(is_defect)
                         except TypeError:
                             self.on_result_callback(is_defect)
                     else:
