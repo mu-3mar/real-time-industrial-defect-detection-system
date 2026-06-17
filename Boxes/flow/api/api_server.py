@@ -200,6 +200,14 @@ def _load_configs(base: Path) -> None:
         raise ValueError(
             "config/webrtc.yaml is empty. Use webrtc.example.yaml as a template and set mode (or webrtc_mode), stun, and turn."
         )
+    wmode = (
+        (configs["webrtc"].get("mode") or configs["webrtc"].get("webrtc_mode") or "auto")
+    )
+    if isinstance(wmode, str) and wmode.strip().lower() == "direct":
+        logger.warning(
+            "WebRTC mode is 'direct' (no STUN/TURN). Cross-network clients often fail ICE; "
+            "set mode to auto, stun, or relay in config/webrtc.yaml."
+        )
 
     # Service configs (now co-located in config/ alongside environment configs)
     with open(cfg / "box_detector.yaml") as f:
