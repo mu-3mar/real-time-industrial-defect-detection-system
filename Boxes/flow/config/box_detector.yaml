@@ -1,4 +1,4 @@
-model_path: Boxes/training V1.1/box_train/models/exported/detect_box.engine
+model_path: /home/mu-3mar/projects/test /box/models/exported/best.engine
 conf_thres: 0.4
 iou_thres: 0.6
 device: auto

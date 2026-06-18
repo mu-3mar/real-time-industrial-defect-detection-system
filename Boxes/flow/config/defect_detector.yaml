@@ -1,4 +1,4 @@
-model_path: Boxes/training V1.1/defect_train/models/exported/detect_defect.engine
+model_path: /home/mu-3mar/projects/test /defect/models/exported/best.pt
 model_version: "1.0"
 conf_thres: 0.4
 iou_thres: 0.6
