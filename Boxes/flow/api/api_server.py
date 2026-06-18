@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
 
 import yaml
+import cv2
 
 # Base path: Boxes/flow (parent of api/)
 _base_flow = Path(__file__).resolve().parent.parent
@@ -19,20 +20,13 @@ _base_flow = Path(__file__).resolve().parent.parent
 from core.device_manager import select_device
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
-from aiortc import (
-    RTCPeerConnection,
-    RTCSessionDescription,
-    RTCConfiguration,
-    RTCIceServer,
-)
 
 from core.model_loader import ModelLoader
 from core.firebase_client import initialize as init_firebase
 from core.pipeline_manager import PipelineManager
 from core.session_manager import SessionManager
-from core.webrtc_track import VideoTransformTrack
 
 # Setup logging
 logging.basicConfig(
@@ -86,9 +80,6 @@ app.add_middleware(
 session_manager = SessionManager.get_instance()
 configs: Dict[str, Any] = {}
 
-# WebRTC Peer Connections
-pcs: Set[RTCPeerConnection] = set()
-
 
 # -----------------------------------------------------------------------------
 # Schema models
@@ -129,19 +120,6 @@ class HealthResponse(BaseModel):
 
     status: str
     active_reports: int
-
-
-class OfferRequest(BaseModel):
-    """WebRTC Offer request. report_id identifies the active report."""
-    sdp: str
-    type: str
-    report_id: str
-
-
-class OfferResponse(BaseModel):
-    """WebRTC Answer response."""
-    sdp: str
-    type: str
 
 
 def _production_line_from_camera_source(camera_source: Union[str, int]) -> str:
@@ -187,27 +165,11 @@ def _load_configs(base: Path) -> None:
         configs["app"] = {}
 
     webrtc_path = cfg / "webrtc.yaml"
-    if not webrtc_path.exists():
-        raise ValueError(
-            "WebRTC config is required. Copy the template and add your values:\n"
-            "  cp Boxes/flow/config/webrtc.example.yaml Boxes/flow/config/webrtc.yaml\n"
-            "Then edit config/webrtc.yaml with your STUN/TURN URLs and TURN secret. "
-            "webrtc.yaml is gitignored and is the single runtime source for WebRTC configuration."
-        )
-    with open(webrtc_path) as f:
-        configs["webrtc"] = yaml.safe_load(f) or {}
-    if not configs["webrtc"]:
-        raise ValueError(
-            "config/webrtc.yaml is empty. Use webrtc.example.yaml as a template and set mode (or webrtc_mode), stun, and turn."
-        )
-    wmode = (
-        (configs["webrtc"].get("mode") or configs["webrtc"].get("webrtc_mode") or "auto")
-    )
-    if isinstance(wmode, str) and wmode.strip().lower() == "direct":
-        logger.warning(
-            "WebRTC mode is 'direct' (no STUN/TURN). Cross-network clients often fail ICE; "
-            "set mode to auto, stun, or relay in config/webrtc.yaml."
-        )
+    if webrtc_path.exists():
+        with open(webrtc_path) as f:
+            configs["webrtc"] = yaml.safe_load(f) or {}
+    else:
+        configs["webrtc"] = {}
 
     # Service configs (now co-located in config/ alongside environment configs)
     with open(cfg / "box_detector.yaml") as f:
@@ -327,11 +289,8 @@ async def startup_event() -> None:
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
-    """Clean up WebRTC connections and pipeline manager workers."""
+    """Clean up pipeline manager workers."""
     PipelineManager.get_instance().shutdown()
-    coros = [pc.close() for pc in pcs]
-    await asyncio.gather(*coros)
-    pcs.clear()
     logger.info("[Service] shutdown")
 
 
@@ -433,243 +392,42 @@ async def health_check() -> HealthResponse:
 
 
 # -----------------------------------------------------------------------------
-# WebRTC config pipeline (config/webrtc.yaml is the single source of truth)
-# 1. _load_configs() loads webrtc.yaml into configs["webrtc"] (required at startup).
-# 2. Mode is read as (mode or webrtc_mode) -> one of auto | direct | stun | relay.
-# 3. _ice_servers_for_mode(mode) builds ICE server list: direct=empty, stun=STUN only,
-#    relay=TURN only, auto=STUN+TURN. TURN credentials are short-lived (e.g. 5 min).
-# 4. GET /api/config returns { webrtc: { iceServers, mode, webrtc_mode, iceTransportPolicy? } }.
-# 5. Frontend creates RTCPeerConnection(iceServers, iceTransportPolicy) and sets
-#    iceTransportPolicy: "relay" when mode=relay so the browser uses TURN only.
+# MJPEG Streaming
 # -----------------------------------------------------------------------------
 
-
-def _generate_turn_credentials(secret: str) -> tuple[str, str]:
-    """Generate temporary TURN credentials using REST API authentication (valid for 5 mins)."""
-    expiry = int(time.time()) + 300
-    username = f"{expiry}:stream"
-
-    digest = hmac.new(
-        secret.encode(),
-        username.encode(),
-        hashlib.sha1
-    ).digest()
-
-    credential = base64.b64encode(digest).decode()
-    return username, credential
-
-
-def _get_webrtc_mode() -> str:
-    """
-    Resolve connection mode from config/webrtc.yaml.
-    Accepts either 'mode' or 'webrtc_mode' (same meaning). Returns one of auto, direct, stun, relay.
-    """
-    w = configs.get("webrtc") or {}
-    raw = (w.get("mode") or w.get("webrtc_mode") or "auto")
-    mode = (raw if isinstance(raw, str) else str(raw)).strip().lower() or "auto"
-    if mode not in ("auto", "direct", "stun", "relay"):
-        mode = "auto"
-    return mode
+async def generate_mjpeg_stream(report_id: str):
+    """Generator for MJPEG stream."""
+    manager = PipelineManager.get_instance()
+    while True:
+        frame = manager.get_latest_frame(report_id)
+        if frame is not None:
+            ret, buffer = cv2.imencode('.jpg', frame)
+            if ret:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        
+        # Limit frame rate to ~30 FPS to save bandwidth/CPU
+        await asyncio.sleep(0.033)
 
 
-def _ice_servers_for_mode(mode: str, for_aiortc: bool = False) -> list:
-    """
-    Build ICE server list from config/webrtc.yaml for the given mode.
-    - auto:   STUN + TURN (browser may use host/srflx/relay)
-    - direct: empty list (host candidates only)
-    - stun:   STUN only (host + srflx, no TURN)
-    - relay:  TURN only (client must set iceTransportPolicy: "relay" to enforce)
-    When for_aiortc=False (client config), includes temporary TURN username/credential.
-    """
-    w = configs.get("webrtc") or {}
-    stun = w.get("stun") or {}
-    turn = w.get("turn") or {}
-    ice_servers: list = []
-    if mode == "direct":
-        return ice_servers
-    if mode in ("auto", "stun") and stun.get("urls"):
-        urls = stun["urls"] if isinstance(stun["urls"], str) else stun["urls"]
-        ice_servers.append(RTCIceServer(urls=urls) if for_aiortc else {"urls": urls})
-    if mode in ("auto", "relay") and turn.get("urls") and turn.get("secret"):
-        username, credential = _generate_turn_credentials(turn["secret"])
-        urls = turn["urls"] if isinstance(turn["urls"], str) else turn["urls"]
-        if for_aiortc:
-            ice_servers.append(RTCIceServer(urls=urls, username=username, credential=credential))
-        else:
-            ice_servers.append({"urls": urls, "username": username, "credential": credential})
-    return ice_servers
-
-
-def _client_webrtc_config() -> Dict[str, Any]:
-    """
-    Build client WebRTC config from config/webrtc.yaml (single source of truth).
-    Returns iceServers (and optional iceTransportPolicy hint) so the frontend
-    can create RTCPeerConnection. For mode=relay the frontend must set
-    iceTransportPolicy: "relay" to force TURN-only; other modes use iceServers
-    only (direct=empty, stun=STUN only, auto=STUN+TURN).
-    """
-    mode = _get_webrtc_mode()
-    ice_servers = _ice_servers_for_mode(mode, for_aiortc=False)
-    logger.debug("WebRTC config: mode=%s, ice_servers=%d", mode, len(ice_servers))
-    out: Dict[str, Any] = {
-        "iceServers": ice_servers,
-        "mode": mode,
-        "webrtc_mode": mode,
-    }
-    if mode == "relay":
-        out["iceTransportPolicy"] = "relay"
-    return {"webrtc": out}
+@app.get("/video_feed")
+async def video_feed(report_id: str):
+    """Serve the annotated canvas through MJPEG."""
+    # Verify session exists
+    if not session_manager.get_session(report_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    return StreamingResponse(
+        generate_mjpeg_stream(report_id),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 @app.get("/api/config")
 async def get_client_config() -> Dict[str, Any]:
     """
-    Client configuration for WebRTC: STUN servers, TURN servers, and temporary
-    TURN credentials (time-limited, e.g. 5 minutes). The frontend retrieves this
-    to configure RTCPeerConnection and establish WebRTC connections.
+    Returns empty WebRTC config as it's no longer used, 
+    maintained for frontend compatibility if needed.
     """
-    return _client_webrtc_config()
+    return {"webrtc": {"mode": "mjpeg"}}
 
-
-@app.post("/webrtc/offer", response_model=OfferResponse)
-async def webrtc_offer(params: OfferRequest) -> OfferResponse:
-    """
-    Handle WebRTC SDP offer and establish connection.
-    Attach the detection stream as a video track. report_id must match an open report.
-    """
-    worker = session_manager.get_session(params.report_id)
-    if worker is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
-
-    mode = _get_webrtc_mode()
-    ice_servers = _ice_servers_for_mode(mode, for_aiortc=True)
-    config = RTCConfiguration(iceServers=ice_servers)
-    pc = RTCPeerConnection(configuration=config)
-    pcs.add(pc)
-
-    def _log_ice_candidates() -> None:
-        """Log gathered ICE candidates with type (host, srflx, relay) for debugging."""
-        try:
-            ice_transport = None
-            if getattr(pc, "sctp", None) and getattr(pc.sctp, "transport", None):
-                dtls = pc.sctp.transport
-                ice_transport = getattr(dtls, "transport", None)
-            if ice_transport is None:
-                for transceiver in pc.getTransceivers():
-                    sender = getattr(transceiver, "sender", None)
-                    dtls = getattr(sender, "transport", None) if sender else None
-                    if dtls and getattr(dtls, "transport", None):
-                        ice_transport = dtls.transport
-                        break
-            if ice_transport and hasattr(ice_transport, "iceGatherer"):
-                gatherer = ice_transport.iceGatherer
-                if hasattr(gatherer, "getLocalCandidates"):
-                    for c in gatherer.getLocalCandidates():
-                        ctype = getattr(c, "type", "unknown")
-                        logger.debug("ICE candidate gathered: type=%s", ctype)
-        except Exception as e:
-            logger.debug("ICE candidate logging skipped: %s", e)
-
-    @pc.on("icegatheringstatechange")
-    async def on_icegatheringstatechange():
-        if pc.iceGatheringState == "complete":
-            _log_ice_candidates()
-
-    async def _log_selected_transport() -> None:
-        """
-        Log a single clean line indicating how WebRTC connected:
-        - direct (host/srflx)
-        - turn-relay (relay)
-
-        Primary method uses aiortc's selected ICE candidate pair from the
-        underlying iceTransport. Falls back to 'unknown' on error.
-        """
-        transport = "unknown"
-        try:
-            ice_transport = None
-
-            # Prefer SCTP transport (if datachannel present)
-            if getattr(pc, "sctp", None) and getattr(pc.sctp, "transport", None):
-                dtls = pc.sctp.transport
-                ice_transport = getattr(dtls, "transport", None)
-
-            # Fallback: inspect sender transports if SCTP is not available
-            if ice_transport is None:
-                for transceiver in pc.getTransceivers():
-                    sender = getattr(transceiver, "sender", None)
-                    dtls = getattr(sender, "transport", None) if sender else None
-                    if dtls and getattr(dtls, "transport", None):
-                        ice_transport = dtls.transport
-                        break
-
-            if ice_transport and hasattr(ice_transport, "getSelectedCandidatePair"):
-                pair = ice_transport.getSelectedCandidatePair()
-                if pair:
-                    local_type = getattr(pair.local, "type", None)
-                    remote_type = getattr(pair.remote, "type", None)
-                    if local_type == "relay" or remote_type == "relay":
-                        transport = "relay"
-                    elif local_type == "srflx" or remote_type == "srflx":
-                        transport = "stun"
-                    else:
-                        transport = "direct"
-
-        except Exception as e:
-            logger.debug("WebRTC transport detection failed: %s", e)
-
-        logger.info("[WebRTC] connected (%s)", transport)
-
-    logger.info("[WebRTC] connecting")
-
-    @pc.on("connectionstatechange")
-    async def on_connectionstatechange():
-        state = pc.connectionState
-        if state == "connected":
-            await _log_selected_transport()
-        elif state in {"failed", "disconnected", "closed"}:
-            logger.info("[WebRTC] %s", state)
-        if state == "failed":
-            await pc.close()
-            pcs.discard(pc)
-        elif state == "closed":
-            pcs.discard(pc)
-
-    video_track = VideoTransformTrack()
-    worker.add_track(video_track)
-
-    @pc.on("track")
-    def on_track(track):
-        # We don't handle incoming tracks (audio/video from client)
-        pass
-
-    # We add track to PC to send video to client
-    pc.addTrack(video_track)
-
-    # Handle cleanup when PC closes
-    # We can't easily hook into pc.close() here, but connectionstatechange helps.
-    # More robustly, we should remove the track from worker when PC is closed.
-    # But for now, we rely on connectionstatechange.
-    orig_close = pc.close
-    async def new_close():
-        worker.remove_track(video_track)
-        await orig_close()
-    pc.close = new_close
-
-    try:
-        await pc.setRemoteDescription(offer)
-        answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-
-        return OfferResponse(
-            sdp=pc.localDescription.sdp,
-            type=pc.localDescription.type
-        )
-    except Exception as e:
-        logger.error("[Error] WebRTC offer failed: %s", e)
-        # Cleanup
-        worker.remove_track(video_track)
-        await pc.close()
-        pcs.discard(pc)
-        raise HTTPException(status_code=500, detail=str(e))

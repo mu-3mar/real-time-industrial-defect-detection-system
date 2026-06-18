@@ -5,10 +5,10 @@ Architecture:
   Camera feeder(s)  -> frame_queue (bounded) -> Inference thread (single GPU)
                                                       -> result_queue (bounded)
                                                       -> Result consumer thread
-                                                             -> WebRTC updates
+                                                             -> MJPEG frame updates
                                                              -> firebase_queue -> Firebase worker thread
 
-Inference never waits for Firebase or WebRTC. All heavy I/O and publishing
+Inference never waits for Firebase or MJPEG consumers. All heavy I/O and publishing
 run in separate daemon threads.
 """
 
@@ -50,7 +50,7 @@ class PipelineManager:
         self._firebase_queue: queue.Queue = queue.Queue(maxsize=FIREBASE_QUEUE_MAXSIZE)
 
         self._pipelines: Dict[str, Any] = {}  # session_id -> Pipeline
-        self._tracks_registry: Dict[str, Tuple[Set[Any], threading.Lock]] = {}  # session_id -> (tracks, lock)
+        self._latest_frames: Dict[str, np.ndarray] = {}  # session_id -> latest annotated frame
         self._firebase_meta: Dict[str, dict] = {}  # session_id -> meta for publish_detection
 
         self._lock_registry = threading.Lock()
@@ -123,13 +123,11 @@ class PipelineManager:
         self,
         session_id: str,
         pipeline: Any,
-        tracks_ref: Tuple[Set[Any], threading.Lock],
         firebase_meta: dict,
     ) -> None:
-        """Register a session's pipeline, tracks, and Firebase metadata."""
+        """Register a session's pipeline and Firebase metadata."""
         with self._lock_registry:
             self._pipelines[session_id] = pipeline
-            self._tracks_registry[session_id] = tracks_ref
             self._firebase_meta[session_id] = firebase_meta
         self.start_workers()
         logger.debug("Registered session %s with PipelineManager", session_id)
@@ -138,7 +136,7 @@ class PipelineManager:
         """Unregister and cleanup pipeline (e.g. call pipeline.cleanup())."""
         with self._lock_registry:
             pipeline = self._pipelines.pop(session_id, None)
-            self._tracks_registry.pop(session_id, None)
+            self._latest_frames.pop(session_id, None)
             self._firebase_meta.pop(session_id, None)
         if pipeline is not None:
             try:
@@ -146,6 +144,11 @@ class PipelineManager:
             except Exception as e:
                 logger.warning("Pipeline cleanup error for session %s: %s", session_id, e)
         logger.debug("Unregistered session %s from PipelineManager", session_id)
+
+    def get_latest_frame(self, session_id: str) -> Optional[np.ndarray]:
+        """Get the latest annotated frame for a session."""
+        with self._lock_registry:
+            return self._latest_frames.get(session_id)
 
     def _inference_worker(self) -> None:
         """Single thread that runs all GPU inference (one frame at a time from frame_queue)."""
@@ -188,7 +191,7 @@ class PipelineManager:
         logger.debug("Inference worker stopped")
 
     def _result_consumer_worker(self) -> None:
-        """Consumes result_queue: update WebRTC tracks; forward exit events to Firebase queue."""
+        """Consumes result_queue: store latest frame; forward exit events to Firebase queue."""
         logger.debug("Result consumer worker started")
         while not self._stop_event.is_set():
             try:
@@ -196,20 +199,15 @@ class PipelineManager:
                 if item is _SHUTDOWN:
                     break
                 session_id, canvas, exit_event = item
-                # Update WebRTC tracks (non-blocking for inference)
+                
+                # Store the latest annotated frame for MJPEG streaming
                 with self._lock_registry:
-                    tracks_ref = self._tracks_registry.get(session_id)
-                    firebase_meta = self._firebase_meta.get(session_id)
-                if tracks_ref is not None:
-                    tracks_set, tracks_lock = tracks_ref
-                    with tracks_lock:
-                        for track in list(tracks_set):
-                            try:
-                                t0 = time.perf_counter()
-                                track.update_frame(canvas)
-                                get_diagnostics().record_webrtc_update(time.perf_counter() - t0)
-                            except Exception as e:
-                                logger.error("[Error] track update session=%s: %s", session_id, e)
+                    if session_id in self._pipelines:
+                        self._latest_frames[session_id] = canvas
+                        firebase_meta = self._firebase_meta.get(session_id)
+                    else:
+                        firebase_meta = None
+
                 if exit_event is not None and firebase_meta is not None:
                     try:
                         self._firebase_queue.put_nowait((session_id, exit_event, firebase_meta))
@@ -220,7 +218,7 @@ class PipelineManager:
         logger.debug("Result consumer worker stopped")
 
     def _firebase_worker(self) -> None:
-        """Dedicated thread for Firebase writes; never blocks inference or WebRTC."""
+        """Dedicated thread for Firebase writes; never blocks inference or MJPEG."""
         logger.debug("Firebase worker started")
         while not self._stop_event.is_set():
             try:

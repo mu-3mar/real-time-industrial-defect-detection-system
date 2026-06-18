@@ -278,8 +278,8 @@
     display:flex; align-items:center; justify-content:center;
     overflow:hidden;
   }
-  .v-video video { width:100%; height:100%; object-fit:contain; display:none; }
-  .v-video video.on { display:block; }
+  .v-video img { width:100%; height:100%; object-fit:contain; display:none; }
+  .v-video img.on { display:block; }
 
   .v-video::before,.v-video::after,.v-video .cb,.v-video .cc {
     content:''; position:absolute;
@@ -530,10 +530,9 @@ function getSelectedCameraSource() {
 }
 
 let API_BASE = localStorage.getItem('qcscm_api') || '';
-let ice_servers = [], webrtc_mode = 'auto';
 
-// Map: report_id -> { report_id, line_key?, pc, state, ice_type, started_at, fullscreen?, viewers_count? }
-// Sessions are synced from the server (GET /api/reports); local state is only for WebRTC and UI.
+// Map: report_id -> { report_id, line_key?, state, started_at, fullscreen?, viewers_count? }
+// Sessions are synced from the server (GET /api/reports); local state is only for UI.
 const sessions = new Map();
 
 const $ = id => document.getElementById(id);
@@ -541,7 +540,7 @@ $('apiBase').value = API_BASE;
 populateCameraSelect();
 
 // ── LOG ─────────────────────────────────────
-const LOG_TAG_MAP = { Service:'service', Session:'session', WebRTC:'webrtc', Error:'error' };
+const LOG_TAG_MAP = { Service:'service', Session:'session', Error:'error' };
 
 function log(msg) {
   const body = $('logBody');
@@ -580,16 +579,6 @@ async function apiFetch(path, method='GET', body=null) {
   return res.json();
 }
 
-async function loadWebRTCConfig() {
-  try{
-    const c=await apiFetch('/api/config'), w=c.webrtc||c;
-    ice_servers=w.ice_servers||w.iceServers||[];
-    // Config supports both 'mode' and 'webrtc_mode' (backend accepts both in webrtc.yaml)
-    webrtc_mode=(w.mode||w.webrtc_mode||'auto').toLowerCase();
-    if(!['auto','direct','stun','relay'].includes(webrtc_mode)) webrtc_mode='auto';
-  }catch{}
-}
-
 // ── SESSION ──────────────────────────────────
 async function openSession() {
   const report_id = $('reportId').value.trim();
@@ -611,7 +600,7 @@ async function openSession() {
     return;
   }
 
-  const sess = { report_id, line_key: null, pc:null, state:'opening', ice_type:null, started_at:new Date(), fullscreen:false };
+  const sess = { report_id, line_key: null, state:'opening', started_at:new Date(), fullscreen:false };
   sessions.set(report_id, sess);
 
   renderCard(sess);
@@ -645,7 +634,6 @@ async function closeSession(report_id) {
   log('[Session] closing: '+report_id);
   try{ await apiFetch('/api/reports/close','POST',{report_id:report_id}); log('[Session] closed: '+report_id); }
   catch(e){ log('[Error] close failed ('+report_id+'): '+e.message); }
-  stopWebRTC(sess);
   removeCard(report_id);
   removeSideItem(report_id);
   sessions.delete(report_id);
@@ -666,9 +654,7 @@ async function syncSessionsFromServer() {
       const sess = {
         report_id: r.report_id,
         line_key: null,
-        pc: null,
         state: 'ready',
-        ice_type: null,
         started_at: new Date(),
         fullscreen: false,
         viewers_count: r.viewers_count
@@ -683,7 +669,6 @@ async function syncSessionsFromServer() {
     for (const report_id of Array.from(sessions.keys())) {
       if (server_ids.has(report_id)) continue;
       const sess = sessions.get(report_id);
-      if(sess) stopWebRTC(sess);
       removeCard(report_id);
       removeSideItem(report_id);
       sessions.delete(report_id);
@@ -701,90 +686,6 @@ async function syncSessionsFromServer() {
 async function refreshReports() {
   await syncSessionsFromServer();
   log('[Service] active reports: '+sessions.size);
-}
-
-// ── WEBRTC ───────────────────────────────────
-async function startWebRTC(sess) {
-  await loadWebRTCConfig();
-  const cfg={iceServers:ice_servers.length?ice_servers:[]};
-  // Enforce mode from config/webrtc.yaml: relay => TURN only (must set iceTransportPolicy)
-  if(webrtc_mode==='relay') cfg.iceTransportPolicy='relay';
-  const pc=new RTCPeerConnection(cfg);
-  sess.pc=pc;
-  log('[WebRTC] connecting: '+sess.report_id);
-
-  pc.onconnectionstatechange=async()=>{
-    const st=pc.connectionState;
-    if(st==='connected'){
-      sess.ice_type=await detectIceType(pc);
-      sess.state='live';
-      log('[WebRTC] live ('+sess.ice_type+') '+sess.report_id);
-      syncCard(sess); syncSideItem(sess);
-    } else if(st==='failed'){
-      sess.state='failed';
-      log('[WebRTC] failed: '+sess.report_id);
-      syncCard(sess); syncSideItem(sess);
-    } else if(st==='disconnected'||st==='closed'){
-      if(sess.state!=='closing') sess.state='disconnected';
-      log('[WebRTC] '+st+': '+sess.report_id);
-      syncCard(sess); syncSideItem(sess);
-    }
-  };
-
-  pc.ontrack=e=>{
-    const vid=document.querySelector('#'+cardId(sess.report_id)+' video');
-    if(!vid) return;
-    vid.srcObject=e.streams[0]||new MediaStream([e.track]);
-    vid.classList.add('on');
-    const ns=document.querySelector('#'+cardId(sess.report_id)+' .no-sig');
-    if(ns) ns.style.display='none';
-  };
-
-  pc.addTransceiver('video',{direction:'recvonly'});
-  const offer=await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  await new Promise(resolve=>{
-    if(pc.iceGatheringState==='complete'){resolve();return;}
-    const t=setTimeout(resolve,5000);
-    const chk=()=>{ if(pc.iceGatheringState==='complete'){clearTimeout(t);pc.removeEventListener('icegatheringstatechange',chk);resolve();} };
-    pc.addEventListener('icegatheringstatechange',chk);
-  });
-
-  try{
-    const ans=await apiFetch('/webrtc/offer','POST',{sdp:pc.localDescription.sdp,type:pc.localDescription.type,report_id:sess.report_id});
-    await pc.setRemoteDescription(new RTCSessionDescription({type:ans.type,sdp:ans.sdp}));
-  } catch(e){
-    log('[Error] offer failed ('+sess.report_id+'): '+e.message);
-    sess.state='failed'; syncCard(sess); syncSideItem(sess);
-  }
-}
-
-function stopWebRTC(sess){
-  if(sess.pc){
-    try{sess.pc.close();}catch{}
-    sess.pc=null;
-  }
-  const cardEl=document.getElementById(cardId(sess.report_id));
-  if(cardEl){
-    const vid=cardEl.querySelector('video');
-    const ns=cardEl.querySelector('.no-sig');
-    if(vid){
-      if(vid.srcObject){ vid.srcObject=null; }
-      vid.classList.remove('on');
-    }
-    if(ns){ ns.style.display='flex'; }
-  }
-}
-
-async function detectIceType(pc){
-  try{
-    const stats=await pc.getStats(); let pid=null;
-    stats.forEach(r=>{if(r.type==='transport'&&r.selectedCandidatePairId)pid=r.selectedCandidatePairId;});
-    if(!pid) stats.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded')pid=r.id;});
-    if(pid){const pair=stats.get(pid);if(pair){const l=stats.get(pair.localCandidateId),r=stats.get(pair.remoteCandidateId);const lt=l?.candidateType||'?',rt=r?.candidateType||'?';if(lt==='relay'||rt==='relay')return'relay';if(lt==='srflx'||rt==='srflx')return'stun';return'direct';}}
-  }catch{}
-  return'unknown';
 }
 
 // ── CARD ─────────────────────────────────────
@@ -809,12 +710,11 @@ function renderCard(sess){
       </div>
     </div>
     <div class="v-video">
-      <video autoplay playsinline></video>
+      <img class="mjpeg-feed">
       <div class="cb"></div><div class="cc"></div>
       <div class="no-sig"><div class="ns-icon">⬡</div><p>No Signal</p></div>
       <div class="v-status-bar">
         <span id="${id}-st">Opening…</span>
-        <span class="v-ice" id="${id}-ice"></span>
       </div>
     </div>`;
   $('videoGrid').appendChild(el);
@@ -827,23 +727,21 @@ function renderCard(sess){
 function syncCard(sess){
   const id=cardId(sess.report_id);
   const st=document.getElementById(id+'-st');
-  const ic=document.getElementById(id+'-ice');
   const ld=document.getElementById(id+'-ld');
   const sb=document.getElementById(id+'-sb');
   const cb=document.getElementById(id+'-cb');
   const card=document.getElementById(id);
   if(!st) return;
-  const labels={opening:'Opening…',ready:'Ready',connecting:'Connecting…',live:'● Live',failed:'✕ Failed',closing:'Closing…',disconnected:'Disconnected'};
+  const labels={opening:'Opening…',ready:'Ready',live:'● Live',failed:'✕ Failed',closing:'Closing…',disconnected:'Disconnected'};
   st.textContent=labels[sess.state]||sess.state;
   st.style.color=sess.state==='live'?'var(--accent)':sess.state==='failed'||sess.state==='disconnected'?'var(--danger)':'var(--text-muted)';
-  if(ic) ic.textContent=sess.ice_type?'ICE: '+sess.ice_type:'';
   if(ld) ld.classList.toggle('on', sess.state==='live');
   if(sb){
-    const canOpen = !sess.pc && (sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected');
+    const canOpen = (sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected');
     sb.disabled = !canOpen;
   }
   if(cb){
-    cb.disabled = !sess.pc;
+    cb.disabled = sess.state !== 'live';
   }
   if(card){
     card.classList.toggle('is-live', sess.state==='live');
@@ -885,8 +783,8 @@ function syncSideItem(sess){
   const b=document.getElementById(id+'-b');
   const item=document.getElementById(id);
   if(!b) return;
-  const lbl={opening:'OPENING',ready:'READY',connecting:'RTC…',live:'LIVE',failed:'FAILED',closing:'…',disconnected:'DISCON'};
-  const cls={opening:'opening',ready:'idle',connecting:'opening',live:'live',failed:'failed',closing:'idle',disconnected:'failed'};
+  const lbl={opening:'OPENING',ready:'READY',live:'LIVE',failed:'FAILED',closing:'…',disconnected:'DISCON'};
+  const cls={opening:'opening',ready:'idle',live:'live',failed:'failed',closing:'idle',disconnected:'failed'};
   b.textContent=lbl[sess.state]||sess.state.toUpperCase();
   b.className='s-badge '+(cls[sess.state]||'idle');
   if(item) item.classList.toggle('is-live', sess.state==='live');
@@ -902,30 +800,39 @@ function toggleFullscreen(report_id){
   }
 }
 
-async function openStream(report_id){
-  const sess=sessions.get(report_id);
-  if(!sess){ log('[Error] Unknown session: '+report_id); return; }
-  if(sess.pc){ log('[Session] stream already active for '+report_id); return; }
-  if(!(sess.state==='ready' || sess.state==='failed' || sess.state==='disconnected')){
-    log('[Session] stream not ready for '+report_id);
-    return;
-  }
-  sess.state='connecting';
+// ── STREAMING ───────────────────────────────────
+function openStream(report_id) {
+  const sess = sessions.get(report_id);
+  if (!sess) { log('[Error] Unknown session: ' + report_id); return; }
+  
+  const cardEl = document.getElementById(cardId(report_id));
+  const img = cardEl.querySelector('img');
+  const ns = cardEl.querySelector('.no-sig');
+  
+  img.src = `${API_BASE}/video_feed?report_id=${encodeURIComponent(report_id)}`;
+  img.classList.add('on');
+  if (ns) ns.style.display = 'none';
+  
+  sess.state = 'live';
   syncCard(sess); syncSideItem(sess);
-  await startWebRTC(sess);
+  log('[Session] stream started: ' + report_id);
 }
 
-function closeStream(report_id){
-  const sess=sessions.get(report_id);
-  if(!sess){ log('[Error] Unknown session: '+report_id); return; }
-  if(!sess.pc){
-    log('[Session] no active stream for '+report_id);
-    return;
-  }
-  log('[Session] stopping stream: '+report_id);
-  stopWebRTC(sess);
-  sess.state='ready';
+function closeStream(report_id) {
+  const sess = sessions.get(report_id);
+  if (!sess) { log('[Error] Unknown session: ' + report_id); return; }
+  
+  const cardEl = document.getElementById(cardId(report_id));
+  const img = cardEl.querySelector('img');
+  const ns = cardEl.querySelector('.no-sig');
+  
+  img.src = '';
+  img.classList.remove('on');
+  if (ns) ns.style.display = 'flex';
+  
+  sess.state = 'ready';
   syncCard(sess); syncSideItem(sess);
+  log('[Session] stream stopped: ' + report_id);
 }
 
 function removeSideItem(rid){

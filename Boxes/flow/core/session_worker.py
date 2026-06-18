@@ -72,8 +72,6 @@ class SessionWorker(threading.Thread):
         self._stop_event = threading.Event()
         self._started_at: Optional[datetime] = None
         self._pipeline_ref: Optional[Pipeline] = None
-        self._tracks: Set[Any] = set()
-        self._tracks_lock = threading.Lock()
         self._feeder_thread: Optional[threading.Thread] = None
         self._manager = PipelineManager.get_instance()
 
@@ -122,7 +120,6 @@ class SessionWorker(threading.Thread):
             self._manager.register_session(
                 self.report_id,
                 self._pipeline_ref,
-                (self._tracks, self._tracks_lock),
                 firebase_meta,
             )
 
@@ -146,20 +143,9 @@ class SessionWorker(threading.Thread):
         self._stop_event.set()
 
     def get_info(self) -> dict:
-        """Return report summary for GET /api/reports: report_id, viewers_count."""
-        with self._tracks_lock:
-            viewers_count = len(self._tracks)
+        """Return report summary for GET /api/reports: report_id."""
         return {
             "report_id": self.report_id,
-            "viewers_count": viewers_count,
+            "viewers_count": 0, # WebRTC viewers no longer tracked
         }
 
-    def add_track(self, track: Any) -> None:
-        """Add a WebRTC video track to receive frames."""
-        with self._tracks_lock:
-            self._tracks.add(track)
-
-    def remove_track(self, track: Any) -> None:
-        """Remove a WebRTC video track."""
-        with self._tracks_lock:
-            self._tracks.discard(track)
