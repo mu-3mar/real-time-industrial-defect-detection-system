@@ -21,8 +21,6 @@ def _apply_library_logging(api_cfg: dict) -> None:
 
 def _suppress_noisy_loggers() -> None:
     for name in (
-        "aioice",
-        "aiortc",
         "ultralytics",
         "uvicorn.access",
         "uvicorn.error",

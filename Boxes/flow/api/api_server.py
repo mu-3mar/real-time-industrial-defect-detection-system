@@ -3,13 +3,11 @@
 import asyncio
 import base64
 import hashlib
-import hmac
 import json
 import logging
 import re
-import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Set
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 import cv2
@@ -156,7 +154,7 @@ def _load_configs(base: Path) -> None:
     """Load all YAML configs from the single config/ directory."""
     cfg = base / "config"
 
-    # app.yaml is optional (CORS); webrtc.yaml is required (runtime config, not committed)
+    # app.yaml is optional (CORS)
     app_path = cfg / "app.yaml"
     if app_path.exists():
         with open(app_path) as f:
@@ -164,14 +162,7 @@ def _load_configs(base: Path) -> None:
     else:
         configs["app"] = {}
 
-    webrtc_path = cfg / "webrtc.yaml"
-    if webrtc_path.exists():
-        with open(webrtc_path) as f:
-            configs["webrtc"] = yaml.safe_load(f) or {}
-    else:
-        configs["webrtc"] = {}
-
-    # Service configs (now co-located in config/ alongside environment configs)
+    # Service configs
     with open(cfg / "box_detector.yaml") as f:
         configs["box"] = yaml.safe_load(f)
     with open(cfg / "defect_detector.yaml") as f:
@@ -421,13 +412,3 @@ async def video_feed(report_id: str):
         generate_mjpeg_stream(report_id),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
-
-
-@app.get("/api/config")
-async def get_client_config() -> Dict[str, Any]:
-    """
-    Returns empty WebRTC config as it's no longer used, 
-    maintained for frontend compatibility if needed.
-    """
-    return {"webrtc": {"mode": "mjpeg"}}
-

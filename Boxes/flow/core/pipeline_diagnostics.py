@@ -34,9 +34,6 @@ class PipelineDiagnostics:
         self.inference_fps: float = 0.0
         # Result queue
         self.result_queue_drops: int = 0
-        # WebRTC
-        self.webrtc_time_sum: float = 0.0
-        self.webrtc_frame_count: int = 0
         # Last full log time
         self._last_log_time: float = time.time()
 
@@ -64,20 +61,11 @@ class PipelineDiagnostics:
         with self._lock:
             self.result_queue_drops += 1
 
-    def record_webrtc_update(self, elapsed_sec: float) -> None:
-        with self._lock:
-            self.webrtc_time_sum += elapsed_sec
-            self.webrtc_frame_count += 1
-
     def get_snapshot(self) -> dict:
         with self._lock:
             avg_latency = (
                 self.inference_latency_sum / self.inference_count
                 if self.inference_count > 0 else 0.0
-            )
-            webrtc_avg_ms = (
-                (self.webrtc_time_sum / self.webrtc_frame_count) * 1000.0
-                if self.webrtc_frame_count > 0 else 0.0
             )
             return {
                 "camera_capture_fps": self.camera_capture_fps,
@@ -88,8 +76,6 @@ class PipelineDiagnostics:
                 "inference_latency_avg_ms": avg_latency * 1000.0,
                 "inference_latency_max_ms": self.inference_latency_max * 1000.0,
                 "result_queue_drops": self.result_queue_drops,
-                "webrtc_avg_ms": webrtc_avg_ms,
-                "webrtc_frame_count": self.webrtc_frame_count,
             }
 
     def maybe_log(self, frame_queue_size: int, result_queue_size: int, firebase_queue_size: int) -> bool:
@@ -112,10 +98,6 @@ class PipelineDiagnostics:
             avg_latency = (
                 self.inference_latency_sum / self.inference_count
                 if self.inference_count > 0 else 0.0
-            )
-            webrtc_avg_ms = (
-                (self.webrtc_time_sum / self.webrtc_frame_count) * 1000.0
-                if self.webrtc_frame_count > 0 else 0.0
             )
             log_camera_fps = self.camera_capture_fps
             log_drops = self.frame_enqueue_drops

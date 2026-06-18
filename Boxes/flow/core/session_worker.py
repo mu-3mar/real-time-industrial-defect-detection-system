@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Any, Optional, Union, Set
+from typing import Any, Optional, Union
 
 import numpy as np
 
@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 class SessionWorker(threading.Thread):
     """
     Runs a detection session: starts camera, feeds frames to the single
-    inference thread via PipelineManager, and registers pipeline/tracks/Firebase meta.
-    Firebase and WebRTC updates are handled by manager workers; inference never waits on them.
+    inference thread via PipelineManager.
     """
 
     def __init__(
@@ -76,7 +75,7 @@ class SessionWorker(threading.Thread):
         self._manager = PipelineManager.get_instance()
 
     def _camera_feeder_loop(self) -> None:
-        """Feed frames from this session's stream into the shared frame queue (non-blocking for inference)."""
+        """Feed frames from this session's stream into the shared frame queue."""
         stream = self._pipeline_ref.stream if self._pipeline_ref else None
         if stream is None:
             return
@@ -99,8 +98,7 @@ class SessionWorker(threading.Thread):
         """Start camera, register with PipelineManager, run camera feeder until stop."""
         self._started_at = datetime.utcnow()
         try:
-            # Publish session_info immediately on startup so the client sees it in Firebase
-            # before the potentially slow Pipeline/Camera initialization blocks the thread.
+            # Publish session_info immediately on startup
             publish_session_info(self.report_id, self.session_info)
 
             self._pipeline_ref = Pipeline(
@@ -146,6 +144,5 @@ class SessionWorker(threading.Thread):
         """Return report summary for GET /api/reports: report_id."""
         return {
             "report_id": self.report_id,
-            "viewers_count": 0, # WebRTC viewers no longer tracked
+            "viewers_count": 0,
         }
-
