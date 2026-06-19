@@ -1,6 +1,6 @@
 model_path: Boxes/training V2.0/defect/models/exported/best.engine
 model_version: "1.0"
-conf_thres: 0.4
+conf_thres: 0.2
 iou_thres: 0.6
 device: auto
 
