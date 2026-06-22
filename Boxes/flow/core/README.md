@@ -1,14 +1,16 @@
-# `Boxes/flow/core`
+# QC-SCM Core: The Detection Engine
 
-Core runtime for reports (internally still named “sessions”), inference, WebRTC frame fan-out, and Firebase publishing.
+The `core` directory contains the foundational logic for the QC-SCM detection pipeline.
 
-## Main pieces
+## 🔑 Key Components
 
-- `session_manager.py`: in-memory report lifecycle (`report_id`), camera locks, line→report mapping.
-- `session_worker.py`: per-report worker thread that feeds frames into the shared pipeline, and calls `publish_session_info` on session start.
-- `pipeline_manager.py`: shared queues + workers (inference, result consumer, Firebase worker).
-- `pipeline.py`: per-report pipeline (OpenCV stream, detectors, tracking/state, visualizer).
-- `firebase_client.py`: Firebase Admin init + `publish_detection(report_id, detection_id, timestamp, defect)` + `publish_session_info(report_id, session_info)`.
-- `webrtc_track.py`: aiortc `VideoStreamTrack` that receives latest annotated frames.
-- `model_loader.py`: singleton model loader (Ultralytics YOLO).
-- `device_manager.py`: resolves CPU/CUDA device selection.
+- **[pipeline.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/pipeline.py)**: Orchestrates the dual-stage detection (Box -> Defect) and coordinates between tracking and visualization.
+- **[state.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/state.py)**: Manages the **Temporal Voting Window**, **Defect Lock**, and **Track Recovery** logic.
+- **[pipeline_manager.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/pipeline_manager.py)**: Implements the **Producer-Consumer** threading model to manage multi-session frame processing.
+- **[model_loader.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/model_loader.py)**: A singleton class that handles efficient YOLO model loading and VRAM management.
+- **[firebase_client.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/firebase_client.py)**: Handles asynchronous communication with Firebase Realtime Database.
+- **[session_manager.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/session_manager.py)**: Manages the lifecycle and metadata of active detection sessions.
+- **[stream.py](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/stream.py)**: Handles high-speed camera I/O and frame buffering.
+
+## 🧵 Threading Model
+The core logic is designed to be thread-safe, allowing multiple `SessionWorker` instances to push frames to a single `InferenceThread`.
