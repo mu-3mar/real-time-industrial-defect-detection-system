@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 INFO_WIDTH = 300
 ROI_WIDTH = 400
 ROI_CENTER_OFFSET = 420
+ROI_TOP_Y = 100
 
 
 class Pipeline:
@@ -92,6 +93,7 @@ class Pipeline:
         # Allow tuning gate width/position from `stream.yaml`.
         self.roi_width = int(stream_cfg.get("roi_width", ROI_WIDTH))
         self.roi_center_offset = int(stream_cfg.get("roi_center_offset", ROI_CENTER_OFFSET))
+        self.roi_top_y = int(stream_cfg.get("roi_top_y", ROI_TOP_Y))
 
         self.LEFT_X = INFO_WIDTH + self.roi_center_offset - self.roi_width // 2
         self.RIGHT_X = INFO_WIDTH + self.roi_center_offset + self.roi_width // 2
@@ -102,6 +104,7 @@ class Pipeline:
             INFO_WIDTH,
             self.roi_width,
             roi_center_offset=self.roi_center_offset,
+            roi_top_y=self.roi_top_y,
         )
 
         # ── Task 3: Adaptive Detection Throttle ──────────────────────────────
@@ -205,9 +208,13 @@ class Pipeline:
         self.visualizer.draw_stats(canvas, self.state, self.fps)
         roi_x1 = max(0, self.LEFT_X - info_width)
         roi_x2 = min(w, self.RIGHT_X - info_width)
+        roi_y1 = max(0, self.roi_top_y)
+        roi_y2 = h
         if roi_x2 <= roi_x1:
             roi_x1, roi_x2 = 0, w
-        box_input = frame[:, roi_x1:roi_x2]
+        if roi_y2 <= roi_y1:
+            roi_y1, roi_y2 = 0, h
+        box_input = frame[roi_y1:roi_y2, roi_x1:roi_x2]
 
         current_boxes = np.zeros((0, 4))
         if self.frame_count % self.box_detect_every_n == 0:
@@ -220,6 +227,7 @@ class Pipeline:
             if current_boxes.size > 0:
                 current_boxes = current_boxes.copy()
                 current_boxes[:, [0, 2]] += float(roi_x1)
+                current_boxes[:, [1, 3]] += float(roi_y1)
             self._last_boxes_roi = current_boxes
         boxes_roi = current_boxes if self.strict_current_frame_mode else self._last_boxes_roi
 
@@ -386,9 +394,13 @@ class Pipeline:
                 # Between runs, reuse the cached result so tracking stays continuous.
                 roi_x1 = max(0, self.LEFT_X - self.visualizer.info_width)
                 roi_x2 = min(w, self.RIGHT_X - self.visualizer.info_width)
+                roi_y1 = max(0, self.roi_top_y)
+                roi_y2 = h
                 if roi_x2 <= roi_x1:
                     roi_x1, roi_x2 = 0, w
-                box_input = frame[:, roi_x1:roi_x2]
+                if roi_y2 <= roi_y1:
+                    roi_y1, roi_y2 = 0, h
+                box_input = frame[roi_y1:roi_y2, roi_x1:roi_x2]
                 if self.frame_count % self.box_detect_every_n == 0:
                     box_result = self.box_detector.detect(box_input)
                     self._last_boxes_roi = (
@@ -399,6 +411,7 @@ class Pipeline:
                     if self._last_boxes_roi.size > 0:
                         self._last_boxes_roi = self._last_boxes_roi.copy()
                         self._last_boxes_roi[:, [0, 2]] += float(roi_x1)
+                        self._last_boxes_roi[:, [1, 3]] += float(roi_y1)
 
                 boxes_roi = self._last_boxes_roi
 

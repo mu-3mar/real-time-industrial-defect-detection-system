@@ -14,29 +14,43 @@ def _rect_intersection_area(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2):
 
 
 class Visualizer:
-    def __init__(self, width, height, info_width, roi_width, roi_center_offset: int = 420):
+    def __init__(self, width, height, info_width, roi_width, roi_center_offset: int = 420, roi_top_y: int = 100):
         self.width = width
         self.height = height
         self.info_width = info_width
         self.roi_left = info_width + roi_center_offset - roi_width // 2
         self.roi_right = info_width + roi_center_offset + roi_width // 2
+        self.roi_top_y = roi_top_y
         
     def draw_layout(self, canvas):
         """Draws static UI elements (background only)."""
+        overlay = canvas.copy()
+        
         cv2.line(
-            canvas,
+            overlay,
             (self.roi_left, 0),
             (self.roi_left, self.height),
-            (0, 165, 255),
+            (220, 220, 220),
             2,
         )
         cv2.line(
-            canvas,
+            overlay,
             (self.roi_right, 0),
             (self.roi_right, self.height),
-            (0, 165, 255),
+            (220, 220, 220),
             2,
         )
+        # Horizontal top line
+        cv2.line(
+            overlay,
+            (self.info_width, self.roi_top_y),
+            (self.info_width + self.width, self.roi_top_y),
+            (220, 220, 220),
+            2,
+        )
+        
+        # Apply semi-transparency (0.3 = 30% opacity)
+        cv2.addWeighted(overlay, 0.3, canvas, 0.7, 0, canvas)
 
     def draw_box(self, canvas, box, label, color):
         """Draws a bounding box (corners only) and label."""

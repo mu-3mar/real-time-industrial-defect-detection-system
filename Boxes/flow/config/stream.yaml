@@ -7,11 +7,13 @@ height: 1080
 box_detect_every_n_frames: 1
 defect_detect_every_n_frames: 1
 
-# ROI gate (the two vertical lines)
-# Increasing `roi_width` moves the lines further apart (wider gate).
-# Changing `roi_center_offset` shifts the gate left/right (relative to the info panel).
-roi_width: 1500
-roi_center_offset: 1000
+# ROI gate (two vertical lines + one horizontal line)
+# Increasing `roi_width` moves the vertical lines further apart (wider gate).
+# Changing `roi_center_offset` shifts the vertical gate left/right (relative to the info panel).
+# `roi_top_y` sets the horizontal line position (y-coordinate, top of ROI)
+roi_width: 1000
+roi_center_offset: 950
+roi_top_y: 200
 
 # Strict per-frame debug processing.
 # Forces both detectors to run every frame and consumes queued frames in order.
