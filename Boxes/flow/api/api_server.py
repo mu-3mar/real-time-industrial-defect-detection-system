@@ -87,9 +87,11 @@ class OpenReportRequest(BaseModel):
     report_id: str
     camera_source: Union[str, int]
     production_line_id: Optional[str] = None
-    target_speed: int
-    max_temp: int
-    max_amps: int
+    target_speed: Optional[int] = None
+    max_temp: Optional[int] = None
+    max_amps: Optional[int] = None
+    command_state: Optional[str] = None
+    emergency_state: Optional[str] = None
 
 
 class CloseReportRequest(BaseModel):
@@ -306,6 +308,8 @@ async def open_report(body: OpenReportRequest) -> ReportResponse:
     logger.info("  - target_speed:       %s", body.target_speed)
     logger.info("  - max_temp:           %s", body.max_temp)
     logger.info("  - max_amps:           %s", body.max_amps)
+    logger.info("  - command_state:      %s", body.command_state)
+    logger.info("  - emergency_state:    %s", body.emergency_state)
     logger.info("=" * 60)
     
     try:
@@ -315,14 +319,16 @@ async def open_report(body: OpenReportRequest) -> ReportResponse:
             report_id=body.report_id,
             camera_source=body.camera_source,
             production_line_id=resolved_production_line_id,
-            target_speed=body.target_speed,
-            max_temp=body.max_temp,
-            max_amps=body.max_amps,
             box_cfg=configs["box"],
             defect_cfg=configs["defect"],
             stream_cfg=configs["stream"],
             app_cfg=configs["app"],
             loop=loop,
+            target_speed=body.target_speed,
+            max_temp=body.max_temp,
+            max_amps=body.max_amps,
+            command_state=body.command_state,
+            emergency_state=body.emergency_state,
         )
         return ReportResponse(
             status="success",

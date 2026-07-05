@@ -28,14 +28,16 @@ class SessionWorker(threading.Thread):
         report_id: str,
         camera_source: Union[str, int],
         production_line_id: str,
-        target_speed: int,
-        max_temp: int,
-        max_amps: int,
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
         app_cfg: dict,
         loop: asyncio.AbstractEventLoop,
+        target_speed: Optional[int] = None,
+        max_temp: Optional[int] = None,
+        max_amps: Optional[int] = None,
+        command_state: Optional[str] = None,
+        emergency_state: Optional[str] = None,
     ):
         super().__init__(daemon=True)
         self.report_id = report_id
@@ -51,6 +53,7 @@ class SessionWorker(threading.Thread):
         defaults = self._app_cfg.get("session_defaults", {})
         tel_def = defaults.get("telemetry", {})
         ctrl_def = defaults.get("control", {})
+        config_def = defaults.get("config", {})
 
         self.session_info = {
             "telemetry": {
@@ -59,12 +62,14 @@ class SessionWorker(threading.Thread):
                 "torque": tel_def.get("torque", 0),
             },
             "control": {
-                "target_speed": target_speed,
+                "target_speed": target_speed if target_speed is not None else ctrl_def.get("target_speed", 100),
                 "machine_status": ctrl_def.get("machine_status", "idle"),
+                "command_state": command_state if command_state is not None else ctrl_def.get("command_state", "off"),
+                "emergency_state": emergency_state if emergency_state is not None else ctrl_def.get("emergency_state", "normal"),
             },
             "config": {
-                "max_temp": max_temp,
-                "max_amps": max_amps,
+                "max_temp": max_temp if max_temp is not None else config_def.get("max_temp", 80),
+                "max_amps": max_amps if max_amps is not None else config_def.get("max_amps", 10),
             },
         }
 

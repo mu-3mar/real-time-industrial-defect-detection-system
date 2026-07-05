@@ -14,3 +14,9 @@ session_defaults:
     torque: 0
   control:
     machine_status: "idle"
+    command_state: "on"
+    emergency_state: "normal"
+    target_speed: 160
+  config:
+    max_temp: 80
+    max_amps: 10

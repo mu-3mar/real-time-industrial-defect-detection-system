@@ -36,14 +36,16 @@ class SessionManager:
         report_id: str,
         camera_source: Union[str, int],
         production_line_id: str,
-        target_speed: int,
-        max_temp: int,
-        max_amps: int,
         box_cfg: dict,
         defect_cfg: dict,
         stream_cfg: dict,
         app_cfg: dict,
         loop: asyncio.AbstractEventLoop,
+        target_speed: Optional[int] = None,
+        max_temp: Optional[int] = None,
+        max_amps: Optional[int] = None,
+        command_state: Optional[str] = None,
+        emergency_state: Optional[str] = None,
     ) -> SessionWorker:
         """
         Create and start a new headless detection session.
@@ -81,6 +83,8 @@ class SessionManager:
                 stream_cfg=stream_cfg,
                 app_cfg=app_cfg,
                 loop=loop,
+                command_state=command_state,
+                emergency_state=emergency_state,
             )
             self.sessions[report_id] = worker
             self.camera_locks[camera_key] = report_id
