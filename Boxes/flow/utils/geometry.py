@@ -1,11 +1,14 @@
+"""Bounding-box geometry helpers: IoU and exponential smoothing."""
+
 import numpy as np
+from typing import Optional, Sequence
 
 
-def _box_area(box):
-    """Area of box [x1, y1, x2, y2]; 0 if invalid."""
+def _box_area(box: Sequence[float]) -> float:
+    """Return the area of a box [x1, y1, x2, y2]; returns 0 for degenerate boxes."""
     x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
-    w = max(0, float(x2) - float(x1))
-    h = max(0, float(y2) - float(y1))
+    w = max(0.0, float(x2) - float(x1))
+    h = max(0.0, float(y2) - float(y1))
     return w * h
 
 
@@ -31,11 +34,17 @@ def box_iou(box_a, box_b):
     return inter / union
 
 
-def smooth_bbox(prev_box, curr_box, alpha=0.6):
+def smooth_bbox(
+    prev_box: Optional[Sequence[float]],
+    curr_box: Sequence[float],
+    alpha: float = 0.6,
+) -> np.ndarray:
     """
-    Exponential smoothing of bbox: result = alpha * curr + (1 - alpha) * prev.
-    prev_box can be None (then returns curr_box).
-    Boxes are [x1, y1, x2, y2].
+    Exponential moving average of a bounding box.
+
+    Formula: result = alpha * curr + (1 - alpha) * prev.
+    When ``prev_box`` is None, returns ``curr_box`` directly (first frame).
+    Boxes are expected in [x1, y1, x2, y2] format.
     """
     if prev_box is None:
         return np.array(curr_box, dtype=np.float64)

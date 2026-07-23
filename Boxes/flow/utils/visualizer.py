@@ -1,3 +1,5 @@
+"""Frame annotation helpers: ROI layout, bounding-box drawing, and stats panel."""
+
 import cv2
 from datetime import datetime
 
@@ -14,14 +16,24 @@ def _rect_intersection_area(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2):
 
 
 class Visualizer:
-    def __init__(self, width, height, info_width, roi_width, roi_center_offset: int = 420, roi_top_y: int = 100):
+    """Renders the annotated canvas: ROI lines, bounding boxes, defect overlays, and stats."""
+
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        info_width: int,
+        roi_width: int,
+        roi_center_offset: int = 420,
+        roi_top_y: int = 100,
+    ):
         self.width = width
         self.height = height
         self.info_width = info_width
         self.roi_left = info_width + roi_center_offset - roi_width // 2
         self.roi_right = info_width + roi_center_offset + roi_width // 2
         self.roi_top_y = roi_top_y
-        
+
     def draw_layout(self, canvas):
         """Draws static UI elements (background only)."""
         overlay = canvas.copy()

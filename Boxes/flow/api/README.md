@@ -1,19 +1,38 @@
 # `Boxes/flow/api`
 
-FastAPI layer for the flow (detection) service.
+FastAPI layer for the QC-SCM detection service.
 
-## Endpoints (surface)
+## Endpoints
 
-- `POST /api/reports/open`: open a report (idempotent per `production_line_id`)
-  - Body: `{ "report_id": "...", "camera_source": "...|0", "production_line_id": "...", "target_speed": 1500, "max_temp": 90, "max_amps": 40 }`
-- `POST /api/reports/close`: close a report (idempotent)
-  - Body: `{ "report_id": "..." }`
-- `GET /api/reports`: list active (open) reports
-  - Response: `[ { "report_id": "...", "viewers_count": 0 } ]`
-- `GET /api/health`: health + active report count
-- `GET /api/config`: client WebRTC config (`webrtc.iceServers` with **temporary** TURN creds)
-- `POST /webrtc/offer`: WebRTC offer/answer for a specific `report_id`
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `POST` | `/api/reports/open` | Start a new detection session. |
+| `POST` | `/api/reports/close` | End an active session. |
+| `GET`  | `/api/reports` | List active (open) sessions. |
+| `GET`  | `/api/health` | Service health + active report count. |
+| `GET`  | `/video_feed?report_id=<id>` | MJPEG annotated live stream for a session. |
+
+### `POST /api/reports/open` body
+
+```json
+{
+  "report_id": "my-report",
+  "camera_source": "/dev/video0",
+  "production_line_id": "line-1",
+  "target_speed": 160,
+  "max_temp": 80,
+  "max_amps": 10,
+  "command_state": "on",
+  "emergency_state": "normal"
+}
+```
+
+### `POST /api/reports/close` body
+
+```json
+{ "report_id": "my-report" }
+```
 
 ## Key files
 
-- `api_server.py`: FastAPI app, config loading, WebRTC offer handling.
+- `api_server.py`: FastAPI application, config loading, and all endpoint handlers.

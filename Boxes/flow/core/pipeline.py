@@ -1,10 +1,17 @@
+"""
+Detection pipeline: per-frame inference, single-box tracking, and canvas rendering.
+
+The pipeline operates in headless (service) mode. Frames are fed one at a time
+through ``run_step()``, which is dispatched by ``PipelineManager`` from its
+dedicated inference thread.
+"""
+
 import time
 import logging
-from typing import Optional, Callable, Dict, Any, List, Tuple, Union
+from typing import Optional, Callable, List, Tuple
 
 import cv2
 import numpy as np
-import threading
 
 from core.state import AppState
 from core.stream import CamStream
@@ -47,8 +54,9 @@ class Pipeline:
         self.on_result_callback = on_result_callback
         self.on_frame_callback = on_frame_callback
 
-        # 1. Setup Stream (producer thread, decouple camera IO from inference)
-        #    Camera runs independently at hardware FPS; pipeline reads latest frame only.
+        # --- Stream (decoupled camera I/O) ---
+        # Camera runs in its own background thread at hardware FPS;
+        # the pipeline reads only the latest frame via a single-slot deque.
         self.strict_debug_mode = bool(stream_cfg.get("strict_debug_mode", False))
         self.strict_current_frame_mode = bool(stream_cfg.get("strict_current_frame_mode", False))
         self.strict_crop_padding_ratio = float(stream_cfg.get("strict_crop_padding_ratio", 0.08))
@@ -61,7 +69,7 @@ class Pipeline:
             frame_queue_size=self.strict_frame_queue_size,
         )
 
-        # 2. Setup Detectors with pre-loaded models
+        # --- Detectors (pre-loaded singleton models) ---
         model_loader = ModelLoader.get_instance()
         self.box_detector = Detector(
             model_loader.get_box_model(),
@@ -76,7 +84,7 @@ class Pipeline:
             defect_cfg["device"],
         )
 
-        # 3. Setup State (single-track, smooth voting)
+        # --- State (single-track, temporal voting) ---
         self.state = AppState(defect_cfg.get("stability", {}))
 
         # Tracking: IoU match threshold and bbox smoothing
@@ -89,8 +97,8 @@ class Pipeline:
         rendering = defect_cfg.get("rendering", {})
         self.defect_visibility_threshold = float(rendering.get("visibility_threshold", 0.2))
 
-        # 4. Visualizer + ROI gate layout (lines on UI + crop region)
-        # Allow tuning gate width/position from `stream.yaml`.
+        # --- Visualizer + ROI gate layout ---
+        # roi_width, roi_center_offset, roi_top_y are tunable via stream.yaml.
         self.roi_width = int(stream_cfg.get("roi_width", ROI_WIDTH))
         self.roi_center_offset = int(stream_cfg.get("roi_center_offset", ROI_CENTER_OFFSET))
         self.roi_top_y = int(stream_cfg.get("roi_top_y", ROI_TOP_Y))
@@ -107,11 +115,10 @@ class Pipeline:
             roi_top_y=self.roi_top_y,
         )
 
-        # ── Task 3: Adaptive Detection Throttle ──────────────────────────────
-        # Read throttle values from stream_cfg (set via stream.yaml).
-        # box_detect_every_n_frames=1  → detect on every frame (no skip)
+        # --- Adaptive detection throttle ---
+        # box_detect_every_n_frames=1   → detect every frame (no skip)
         # defect_detect_every_n_frames=3 → detect every 3rd frame (2 skipped)
-        # Both values default to safe settings if not present in config.
+        # Both default to safe values if not present in config.
         self.box_detect_every_n: int = int(
             stream_cfg.get("box_detect_every_n_frames", 1)
         )
@@ -135,7 +142,7 @@ class Pipeline:
         # Cached box detection result (reused between throttled frames)
         self._last_boxes_roi: np.ndarray = np.zeros((0, 4))
 
-        # Reusable canvas double-buffer to avoid per-frame allocation (same thread, no copy on return)
+        # Reusable canvas double-buffer: avoids per-frame heap allocation
         self._canvas_bufs: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self._canvas_buf_index: int = 0
 
@@ -143,7 +150,7 @@ class Pipeline:
         self.last_time = time.time()
         self.fps = 0.0
 
-        # ── Task 6: Runtime metrics (read by api_server /api/metrics) ──
+        # Runtime metrics (pipeline FPS, camera FPS, queue latency)
         self.pipeline_fps: float = 0.0
         self.camera_fps_estimate: float = 0.0
         self.queue_latency_ms: float = 0.0
@@ -318,166 +325,6 @@ class Pipeline:
             exit_event = is_defect
 
         return canvas, exit_event
-
-    def run(self, stop_event: Optional[threading.Event] = None):
-        """
-        Run detection pipeline.
-
-        Architecture (Tasks 1, 2):
-        --------------------------
-        The camera capture thread is started first and fills a deque(maxlen=1).
-        The main pipeline loop reads the latest frame non-blocking from that
-        queue, so inference latency never blocks camera capture.
-
-              CamStream._capture_loop()  [background thread]
-                        ↓
-              deque(maxlen=1)            [newest frame only]
-                        ↓
-              Pipeline.run() loop        [this method, consumer]
-
-        Args:
-            stop_event: Optional threading event to signal stop
-        """
-        logger.debug("Pipeline started (headless=%s)", self.headless)
-
-        # Start the camera capture thread (producer)
-        self.stream.start()
-
-        try:
-            while True:
-                if stop_event and stop_event.is_set():
-                    logger.debug("Pipeline stopped")
-                    break
-
-                # ── Non-blocking frame read from camera queue (Task 1+2) ──
-                ret, frame = self.stream.get_latest_frame()
-                if not ret or frame is None:
-                    # Queue empty: camera thread hasn't produced a frame yet.
-                    # Tiny sleep avoids a busy-spin and keeps CPU usage negligible
-                    # during the startup transition until the first frame arrives.
-                    time.sleep(0.001)
-                    continue
-
-                # ── Queue latency: time since producer enqueued this frame (Task 6) ──
-                enqueue_ts = self.stream.last_enqueue_time
-                if enqueue_ts > 0:
-                    self.queue_latency_ms = (time.time() - enqueue_ts) * 1000.0
-
-                # Advance recent lost track age to ensure recovery window expires
-                try:
-                    self.state.tick_recent_lost_track()
-                except Exception:
-                    logger.debug("tick_recent_lost_track() encountered an error", exc_info=False)
-
-                self.frame_count += 1
-                self.update_fps()
-                now = time.time()
-                if now - self._last_diag_log_time >= self._diag_log_interval:
-                    logger.debug(
-                        "pipeline fps=%.1f camera_fps=%.1f latency=%.1fms",
-                        self.pipeline_fps, self.camera_fps_estimate, self.queue_latency_ms,
-                    )
-                    self._last_diag_log_time = now
-                h, w = frame.shape[:2]
-
-                # Prepare Canvas
-                canvas = cv2.copyMakeBorder(
-                    frame, 0, 0, self.visualizer.info_width, 0,
-                    cv2.BORDER_CONSTANT, value=(235, 235, 235),
-                )
-                self.visualizer.draw_layout(canvas)
-                self.visualizer.draw_stats(canvas, self.state, self.fps)
-                roi_offset = self.visualizer.info_width
-
-                # ── STAGE 1: Box Detection (with throttle, Task 3) ──
-                # Run the box detector every box_detect_every_n frames.
-                # Between runs, reuse the cached result so tracking stays continuous.
-                roi_x1 = max(0, self.LEFT_X - self.visualizer.info_width)
-                roi_x2 = min(w, self.RIGHT_X - self.visualizer.info_width)
-                roi_y1 = max(0, self.roi_top_y)
-                roi_y2 = h
-                if roi_x2 <= roi_x1:
-                    roi_x1, roi_x2 = 0, w
-                if roi_y2 <= roi_y1:
-                    roi_y1, roi_y2 = 0, h
-                box_input = frame[roi_y1:roi_y2, roi_x1:roi_x2]
-                if self.frame_count % self.box_detect_every_n == 0:
-                    box_result = self.box_detector.detect(box_input)
-                    self._last_boxes_roi = (
-                        box_result.boxes.xyxy.cpu().numpy()
-                        if box_result.boxes is not None
-                        else np.zeros((0, 4))
-                    )
-                    if self._last_boxes_roi.size > 0:
-                        self._last_boxes_roi = self._last_boxes_roi.copy()
-                        self._last_boxes_roi[:, [0, 2]] += float(roi_x1)
-                        self._last_boxes_roi[:, [1, 3]] += float(roi_y1)
-
-                boxes_roi = self._last_boxes_roi
-
-                # ── Track single box by IoU (smooth, stable identity) ──
-                matched_box, detected = self._match_track(boxes_roi)
-                label, color, final_code = "—", (128, 128, 128), "OK"
-                defect_boxes: List[np.ndarray] = []
-
-                if detected and matched_box is not None:
-                    x1, y1, x2, y2 = matched_box[0], matched_box[1], matched_box[2], matched_box[3]
-                    crop = frame[int(y1):int(y2), int(x1):int(x2)]
-                    is_defect, defect_boxes = self._check_defect_track(crop)
-                    self.state.update_history(is_defect)
-                    # Store defects in box-relative coords (crop = box); IoU dedup in that space
-                    if defect_boxes:
-                        boxes_relative = [
-                            (float(d[0]), float(d[1]), float(d[2]), float(d[3]))
-                            for d in defect_boxes
-                        ]
-                        self.state.add_defect_boxes_relative(boxes_relative)
-                    label, color, final_code = self.state.get_status()
-                    box_for_draw = matched_box.astype(np.float32)
-
-                    self.visualizer.draw_box(canvas, box_for_draw, label, color)
-                    # Convert box-relative defects to frame using current box position
-                    # Only draw defects during early detection phase (first N frames after lock)
-                    accumulated = self.state.get_accumulated_defect_boxes()
-                    is_early_phase = self.state.is_early_detection_phase()
-                    if accumulated and is_early_phase:
-                        self.visualizer.draw_defects(
-                            canvas,
-                            (int(x1), int(y1)),
-                            accumulated,
-                            is_early_phase=is_early_phase,
-                            visibility_threshold=self.defect_visibility_threshold,
-                        )
-
-                # Increment frame counter for early detection phase tracking
-                self.state.increment_defect_lock_frame()
-
-                just_exited, final_decision = self.state.process_entry_exit(detected)
-                if just_exited:
-                    self._current_track = None
-                    is_defect = final_decision == "DEFECT"
-                    label_text = "DEFECT" if is_defect else "OK"
-                    logger.info("[Detection] %s (total=%d)", label_text, self.state.total_count)
-                    if self.on_result_callback:
-                        try:
-                            self.on_result_callback(is_defect)
-                        except TypeError:
-                            self.on_result_callback(is_defect)
-                    else:
-                        logger.warning("No on_result_callback registered; result not published")
-
-                # Update camera FPS estimate from stream for metrics
-                self.camera_fps_estimate = self.stream.camera_fps
-
-                # Send frame to callback if registered (for broadcasting)
-                if self.on_frame_callback:
-                    self.on_frame_callback(canvas)
-
-        except Exception as e:
-            logger.error("Pipeline error: %s", e, exc_info=True)
-        finally:
-            self.cleanup()
-            logger.debug("Pipeline ended (frames=%d)", self.frame_count)
 
     def _match_track(self, boxes_roi: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
         """

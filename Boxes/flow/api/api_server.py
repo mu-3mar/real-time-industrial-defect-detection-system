@@ -1,11 +1,11 @@
 """QC-SCM Detection Service API with multi-session support."""
 
 import asyncio
-import base64
 import hashlib
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -57,11 +57,33 @@ def _get_cors_config() -> tuple:
     return ["*"], False
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize configs, models, and Firebase on startup; clean up on shutdown."""
+    base = _base_flow
+    try:
+        _load_configs(base)
+        model_loader = ModelLoader.get_instance()
+        box_path = _resolve_existing_path(base, str(configs["box"]["model_path"]))
+        defect_path = _resolve_existing_path(base, str(configs["defect"]["model_path"]))
+        model_loader.load_models(box_path, defect_path)
+        device = str(configs.get("box", {}).get("device", "0"))
+        model_loader.warmup(device=device)
+        logger.info("[Service] QC-SCM Detection Service started")
+    except Exception as e:
+        logger.error("[Error] startup failed: %s", e, exc_info=True)
+        raise
+    yield
+    PipelineManager.get_instance().shutdown()
+    logger.info("[Service] shutdown")
+
+
 # FastAPI app
 app = FastAPI(
     title="QC-SCM Detection Service",
     description="Multi-session quality control detection with defect analysis",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 _cors_origins, _cors_credentials = _get_cors_config()
@@ -262,31 +284,6 @@ def _resolve_existing_path(base: Path, configured_path: str) -> str:
     return str(base / p)
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Initialize configs, models, and Firebase client."""
-    base = _base_flow
-    try:
-        _load_configs(base)
-        model_loader = ModelLoader.get_instance()
-        box_path = _resolve_existing_path(base, str(configs["box"]["model_path"]))
-        defect_path = _resolve_existing_path(base, str(configs["defect"]["model_path"]))
-        model_loader.load_models(box_path, defect_path)
-        device = str(configs.get("box", {}).get("device", "0"))
-        model_loader.warmup(device=device)
-        logger.info("[Service] QC-SCM Detection Service started")
-    except Exception as e:
-        logger.error("[Error] startup failed: %s", e, exc_info=True)
-        raise
-
-
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    """Clean up pipeline manager workers."""
-    PipelineManager.get_instance().shutdown()
-    logger.info("[Service] shutdown")
-
-
 # -----------------------------------------------------------------------------
 # API Endpoints
 @app.post("/api/reports/open", response_model=ReportResponse)
@@ -393,17 +390,20 @@ async def health_check() -> HealthResponse:
 # -----------------------------------------------------------------------------
 
 async def generate_mjpeg_stream(report_id: str):
-    """Generator for MJPEG stream."""
+    """Async generator for MJPEG stream frames."""
     manager = PipelineManager.get_instance()
     while True:
         frame = manager.get_latest_frame(report_id)
         if frame is not None:
             ret, buffer = cv2.imencode('.jpg', frame)
             if ret:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-        
-        # Limit frame rate to ~30 FPS to save bandwidth/CPU
+                yield (
+                    b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n'
+                    + buffer.tobytes()
+                    + b'\r\n'
+                )
+        # Limit frame rate to ~30 FPS
         await asyncio.sleep(0.033)
 
 

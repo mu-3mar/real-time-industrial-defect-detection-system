@@ -34,7 +34,7 @@ class AppState:
         self.track_grace_frames = stability_config.get("track_grace_frames", 3)
         # How long to keep recently lost track for recovery attempt
         self.recent_track_max_age = stability_config.get("recent_track_max_age", 15)
-        # IoU threshold for recovery (may be higher than matching threshold)
+        # IoU threshold for recovery (may differ from the live-matching threshold)
         self.recovery_iou_threshold = stability_config.get("recovery_iou_threshold", 0.4)
 
         self._vote_history: deque = deque(maxlen=self.vote_window)
@@ -104,7 +104,7 @@ class AppState:
     def add_defect_boxes_relative(
         self,
         boxes_relative: List[Tuple[float, float, float, float]],
-        iou_threshold: float = None,
+        iou_threshold: Optional[float] = None,
     ) -> None:
         """
         Add defect boxes in box-relative coordinates (origin = box top-left).

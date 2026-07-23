@@ -1,48 +1,89 @@
 # QC-SCM Flow: Runtime Detection Service
 
-The `flow` directory contains the high-performance inference engine and API service for the QC-SCM system. It is designed to handle multiple real-time camera streams, perform dual-stage AI detection, and synchronize results with a cloud dashboard.
+The `flow` directory contains the high-performance inference engine and REST API for the QC-SCM system. It handles multiple real-time camera streams, performs dual-stage AI detection, and synchronizes results with Firebase.
 
-## 🏗️ Architecture Overview
+## 🏗️ Architecture
 
 The runtime service is built on a **Multi-Threaded Producer-Consumer** architecture:
 
-1.  **Session Workers**: Independent threads for each camera stream.
-2.  **Pipeline Manager**: Orchestrates the frame queue and inference dispatch.
-3.  **Inference Thread**: A single, high-speed thread dedicated to GPU-bound YOLO processing.
-4.  **Reporting Workers**: Asynchronous threads for Firebase cloud publishing and MJPEG streaming.
+1. **Session Workers** — one thread per camera stream, feeds frames into the shared queue.
+2. **Pipeline Manager** — orchestrates the frame queue and dispatches to the single inference thread.
+3. **Inference Thread** — GPU-bound; runs `Pipeline.run_step()` on one frame at a time.
+4. **Result Consumer** — stores latest annotated frames for MJPEG streaming.
+5. **Firebase Worker** — publishes detection events to Realtime Database without blocking inference.
 
 ## 📂 Directory Structure
 
-- **[api/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/api/)**: FastAPI server and REST endpoints.
-- **[config/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/config/)**: YAML configuration files for detectors, stream, and Firebase.
-- **[core/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/core/)**: Core logic including the Pipeline, State Management, and Model Loading.
-- **[detectors/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/detectors/)**: Wrapper classes for YOLO models.
-- **[requirements/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/requirements/)**: Dependency files.
-- **[scripts/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/scripts/)**: Utility scripts for development and deployment.
-- **[utils/](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/Boxes/flow/utils/)**: Geometry helpers and visualization tools.
+```
+flow/
+├── main.py                  # Entry point: reads api.yaml, starts uvicorn
+├── api/
+│   ├── api_server.py        # FastAPI app, endpoints, lifespan hooks
+│   └── README.md
+├── config/
+│   ├── api.yaml             # Server host/port/log-level
+│   ├── app.yaml             # CORS origins, session defaults
+│   ├── box_detector.yaml    # Box model path and thresholds
+│   ├── defect_detector.yaml # Defect model path, stability, tracking
+│   ├── stream.yaml          # Camera resolution, ROI, throttle
+│   ├── firebase.yaml        # Firebase credentials + DB URL (gitignored)
+│   └── firebase.example.yaml
+├── core/
+│   ├── pipeline.py          # Per-frame inference, tracking, canvas rendering
+│   ├── pipeline_manager.py  # Producer-consumer threading, MJPEG frame store
+│   ├── pipeline_diagnostics.py
+│   ├── session_manager.py   # Session lifecycle management
+│   ├── session_worker.py    # Per-session camera feeder thread
+│   ├── state.py             # Temporal voting, defect lock, track recovery
+│   ├── stream.py            # OpenCV V4L2 camera reader with background thread
+│   ├── model_loader.py      # Singleton YOLO model loader + warmup
+│   ├── firebase_client.py   # Firebase Admin SDK wrapper
+│   └── device_manager.py   # CUDA/MPS/CPU device resolution
+├── detectors/
+│   └── detector.py          # Thin YOLO inference wrapper
+├── utils/
+│   ├── geometry.py          # IoU + bbox exponential smoothing
+│   └── visualizer.py        # Canvas drawing: ROI lines, boxes, stats panel
+├── requirements/
+│   └── requirements.txt
+└── scripts/
+    └── run_dev.sh
+```
 
 ## 🚀 Getting Started
 
 ### 1. Installation
+
 ```bash
 pip install -r requirements/requirements.txt
 ```
 
 ### 2. Configuration
--   Edit `config/firebase.yaml` with your database URL and credentials path.
--   Tune `config/box_detector.yaml` and `config/defect_detector.yaml` for your specific environment.
+
+```bash
+# Firebase credentials (required)
+cp config/firebase.example.yaml config/firebase.yaml
+# Edit config/firebase.yaml: set service_account_path and database_url
+
+# Tune ROI and detection thresholds for your environment
+# Edit config/stream.yaml: roi_width, roi_center_offset, roi_top_y
+# Edit config/box_detector.yaml / config/defect_detector.yaml
+```
 
 ### 3. Execution
+
 ```bash
 python main.py
 ```
 
 ## 📡 API Endpoints
 
--   `POST /api/reports/open`: Start a new detection session.
--   `POST /api/reports/close`: End an active session.
--   `GET /api/reports`: List active sessions.
--   `GET /api/session/{report_id}/stream`: Real-time MJPEG annotated stream.
+See [`api/README.md`](api/README.md) for the full endpoint reference.
 
----
-For more details, see the **[System Architecture Documentation](file:///home/mu-3mar/projects/real-time-industrial-defect-detection-system/System_Architecture_Documentation.md)**.
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `POST` | `/api/reports/open` | Start a detection session. |
+| `POST` | `/api/reports/close` | Stop a session. |
+| `GET`  | `/api/reports` | List active sessions. |
+| `GET`  | `/api/health` | Health check. |
+| `GET`  | `/video_feed?report_id=<id>` | MJPEG live stream. |
