@@ -49,8 +49,8 @@ class Visualizer:
             2,
         )
         
-        # Apply semi-transparency (0.3 = 30% opacity)
-        cv2.addWeighted(overlay, 0.3, canvas, 0.7, 0, canvas)
+        # Apply semi-transparency (0.7 = 70% opacity)
+        cv2.addWeighted(overlay, 0.7, canvas, 0.3, 0, canvas)
 
     def draw_box(self, canvas, box, label, color):
         """Draws a bounding box (corners only) and label."""

@@ -1,4 +1,4 @@
 model_path: Boxes/training V2.0/box/models/exported/best.engine
-conf_thres: 0.6
+conf_thres: 0.4
 iou_thres: 0.6
 device: auto
