@@ -23,7 +23,55 @@ def _silence_tensorrt() -> None:
         pass
 
 
+def _disable_ultralytics_autoupdate() -> None:
+    """
+    Prevent Ultralytics check_requirements() from running pip AutoUpdate.
+    When onnxruntime-gpu is installed Ultralytics incorrectly sees 'onnxruntime'
+    as missing and installs onnxruntime (CPU) over it, breaking GPU inference.
+    """
+    try:
+        from ultralytics.utils import checks  # type: ignore
+
+        _orig = checks.check_requirements
+
+        def _safe_check_requirements(requirements=None, package="ultralytics", install=True, cmds=None, exclude=None):
+            return _orig(requirements, package=package, install=False, cmds=cmds, exclude=exclude)
+
+        checks.check_requirements = _safe_check_requirements
+        logger.debug("Ultralytics check_requirements patched: AutoUpdate disabled")
+    except Exception:
+        pass
+
+
+def _configure_onnx_providers() -> None:
+    """
+    Prioritize ONNX Runtime CUDAExecutionProvider and skip TensorrtExecutionProvider.
+    Ensures ONNX models run via ORT CUDA (or CPU fallback), not via ORT's TRT EP.
+    Patches onnxruntime.get_available_providers before Ultralytics builds its sessions.
+    """
+    try:
+        import onnxruntime as ort  # type: ignore
+
+        _original = ort.get_available_providers
+
+        def _patched() -> list:
+            providers = _original()
+            preferred = []
+            if "CUDAExecutionProvider" in providers:
+                preferred.append("CUDAExecutionProvider")
+            if "CPUExecutionProvider" in providers:
+                preferred.append("CPUExecutionProvider")
+            return preferred if preferred else providers
+
+        ort.get_available_providers = _patched
+        logger.debug("ONNX Runtime providers: CUDA first, CPU fallback, TensorRT skipped")
+    except ImportError:
+        pass
+
+
 _silence_tensorrt()
+_configure_onnx_providers()
+_disable_ultralytics_autoupdate()
 
 from ultralytics import YOLO
 

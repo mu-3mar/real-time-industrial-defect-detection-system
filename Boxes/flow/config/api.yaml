@@ -1,7 +1,7 @@
 # API server binding and logging. Used by main.py (uvicorn).
 host: "0.0.0.0"
 port: 8000
-log_level: "warning"
+log_level: "info"
 
 # Optional: library log levels (applied before importing heavy libs). Omit to use defaults.
 # library_logging:

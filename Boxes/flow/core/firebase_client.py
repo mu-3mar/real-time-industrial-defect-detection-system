@@ -64,6 +64,21 @@ def get_initialized() -> bool:
     return _initialized
 
 
+def check_connection(timeout: int = 3) -> tuple[bool, str]:
+    """Verify that the initialized Admin SDK can read the Realtime Database."""
+    if not _initialized:
+        return False, "Firebase is not initialized"
+    try:
+        # The Admin SDK version in the runtime does not expose a timeout
+        # parameter on Reference.get(); the API request remains bounded by the
+        # manager's HTTP client timeout.
+        db.reference("/").get()
+        return True, "Realtime Database read succeeded"
+    except Exception as exc:
+        logger.warning("Firebase health check failed: %s", exc)
+        return False, str(exc)
+
+
 def publish_detection(report_id: str, timestamp: str, defect: bool) -> Optional[str]:
     """
     Push a detection event to Firebase Realtime Database.

@@ -1,0 +1,16 @@
+[Unit]
+Description=QC-SCM Service Manager
+After=graphical-session.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@PROJECT_ROOT@
+ExecStart=@PYTHON@ @PROJECT_ROOT@/dashboard/service_manager.py
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+@TUNNEL_ENV@
+
+[Install]
+WantedBy=default.target

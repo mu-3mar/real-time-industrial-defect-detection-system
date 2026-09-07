@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.model_loader import ModelLoader
+from core.firebase_client import check_connection as check_firebase_connection
 from core.firebase_client import initialize as init_firebase
 from core.pipeline_manager import PipelineManager
 from core.session_manager import SessionManager
@@ -386,6 +387,16 @@ async def health_check() -> HealthResponse:
     except Exception as e:
         logger.exception("[Error] health check")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/health/firebase")
+async def firebase_health_check() -> dict:
+    """Check Firebase connectivity using the initialized Admin SDK."""
+    connected, detail = check_firebase_connection()
+    return {
+        "state": "healthy" if connected else "error",
+        "detail": detail,
+    }
 
 
 # -----------------------------------------------------------------------------
