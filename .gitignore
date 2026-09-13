@@ -24,15 +24,6 @@ logs/
 outputs/
 *.log
 
-
-
-# Secrets and credentials (do not commit)
-secrets.json
-*.pem
-*.key
-*.p12
-*.pfx
-
 # Firebase: service account keys (private keys) and config with DB URL
 Boxes/flow/config/*-firebase-adminsdk*.json
 Boxes/flow/config/*credentials*
@@ -42,13 +33,3 @@ Boxes/flow/config/firebase_config.json
 !Boxes/flow/config/firebase_config.json.example
 *firebase-adminsdk*.json
 **/firebase*adminsdk*.json
-
-# WebRTC TURN secret (webrtc.yaml contains secret)
-Boxes/flow/config/webrtc.yaml
-
-
-
-
-
-
-
