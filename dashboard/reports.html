@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Active Reports Manager - Service Dashboard</title>
+    <style>
+        :root {
+            --bg: #f4f5f7;
+            --card-bg: #ffffff;
+            --green: #10a37f;
+            --green-dark: #0e8e6d;
+            --green-light: #e7f7f1;
+            --green-pale: #eefbf6;
+            --text-main: #1f2430;
+            --text-sub: #7c8696;
+            --border: #e7e9ee;
+            --red: #e0453f;
+            --red-bg: #fdeceb;
+            --track: #e9ebef;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: var(--text-sub);
+            font-weight: 600;
+            font-size: 14.5px;
+            padding: 8px 14px;
+            border-radius: 9px;
+            border: 1px solid var(--border);
+            background: #fff;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .back-link:hover {
+            color: var(--text-main);
+            background: #f3f4f6;
+            border-color: #c8ccd4;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 24px;
+        }
+
+        .icon-box {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: var(--green-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--green);
+        }
+
+        .add-session-btn {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--green) 0%, #0dbf95 100%);
+            color: #fff;
+            border: none;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 14.5px;
+            transition: all 0.18s ease;
+            box-shadow: 0 4px 12px rgba(16,163,127,0.3);
+        }
+
+        .add-session-btn:hover {
+            box-shadow: 0 6px 20px rgba(16,163,127,0.4);
+            transform: translateY(-1px);
+        }
+
+        .add-session-btn:active {
+            transform: translateY(0);
+        }
+
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            text-align: left;
+            font-size: 13px;
+            color: var(--text-sub);
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 18px 16px;
+            font-size: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--green-light);
+            color: var(--green-dark);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+
+        .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+        .actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .btn-open { color: var(--green-dark); }
+        .btn-open:hover {
+            background: var(--green-light);
+            border-color: #b2e8d6;
+            box-shadow: 0 2px 8px rgba(16,163,127,0.15);
+            transform: translateY(-1px);
+        }
+        .btn-close { color: var(--red); }
+        .btn-close:hover {
+            background: var(--red-bg);
+            border-color: #f5c6c4;
+            box-shadow: 0 2px 8px rgba(224,69,63,0.15);
+            transform: translateY(-1px);
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            display: none;
+            align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+        .modal-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            width: 100%; max-width: 500px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13.5px; font-weight: 600; color: var(--text-sub); margin-bottom: 6px; }
+        .form-input, .form-select {
+            width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 14.5px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            outline: none;
+        }
+        .form-input:focus, .form-select:focus {
+            border-color: var(--green);
+            box-shadow: 0 0 0 3px rgba(16,163,127,0.12);
+        }
+        .modal-footer { margin-top: 24px; display: flex; gap: 12px; }
+        .btn-submit {
+            background: linear-gradient(135deg, var(--green) 0%, #0dbf95 100%);
+            color: #fff;
+            border: none;
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 15px;
+            box-shadow: 0 4px 12px rgba(16,163,127,0.3);
+            transition: all 0.18s ease;
+        }
+        .btn-submit:hover {
+            box-shadow: 0 6px 18px rgba(16,163,127,0.4);
+            transform: translateY(-1px);
+        }
+        .btn-cancel {
+            background: #f3f4f6;
+            color: var(--text-main);
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            font-size: 15px;
+            transition: all 0.15s ease;
+        }
+        .btn-cancel:hover { background: #eaecf0; }
+
+        .notification {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--green); color: #fff;
+            padding: 13px 22px; border-radius: 12px;
+            font-weight: 600; display: none; z-index: 1100;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+            font-size: 14.5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <a href="index.html" class="back-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="12 19 5 12 12 5" />
+                </svg>
+                Back to Dashboard
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <div class="icon-box">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                </div>
+                Active Reports Manager
+                <div id="activeBadge" style="margin-left:12px; font-size:13px; font-weight:600; background:var(--green-light); color:var(--green-dark); padding:4px 12px; border-radius:20px;">0 Active</div>
+                <button class="add-session-btn" id="openModalBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    New Session
+                </button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Report ID</th>
+                        <th>Viewers</th>
+                        <th>Status</th>
+                        <th style="text-align:right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="reportsTable">
+                    <!-- Rows injected by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-card">
+            <h2 style="margin-top:0;">Create New Session</h2>
+            <form id="createSessionForm">
+                <div class="form-group">
+                    <label class="form-label">Report ID</label>
+                    <input type="text" id="reportId" class="form-input" placeholder="e.g. REP-001" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Camera Source</label>
+                    <select id="cameraSource" class="form-select" required>
+                        <option value="">Select a camera...</option>
+                        <option value="/dev/video0">Integrated Webcam (index 0)</option>
+                        <option value="/dev/video1">Integrated Webcam (index 1)</option>
+                        <option value="rtsp://127.0.0.1:8554/live">Local RTSP Stream</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Production Line ID (Optional)</label>
+                    <input type="text" id="lineId" class="form-input" placeholder="e.g. LINE-A">
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Target Speed</label>
+                        <input type="number" id="targetSpeed" class="form-input" value="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Temp</label>
+                        <input type="number" id="maxTemp" class="form-input" value="75" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Amps</label>
+                        <input type="number" id="maxAmps" class="form-input" value="5" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" id="cancelModalBtn">Cancel</button>
+                    <button type="submit" class="btn-submit">Create Session</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        const MANAGER_API = "http://localhost:8080";
+
+        async function checkServiceHealth() {
+            try {
+                const r = await fetch(`${MANAGER_API}/status`, { cache: "no-store" });
+                if (!r.ok) return false;
+                const d = await r.json();
+                return d.status === "running";
+            } catch (e) { return false; }
+        }
+
+        async function loadReports() {
+            const table = document.getElementById("reportsTable");
+            const badge = document.getElementById("activeBadge");
+            const isRunning = await checkServiceHealth();
+
+            if (!isRunning) {
+                table.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--red); padding:40px;">Detection Service is not running. Start it from the main Dashboard.</td></tr>';
+                if (badge) { badge.textContent = "0 Active"; badge.style.background = "var(--red-bg)"; badge.style.color = "var(--red)"; }
+                return;
+            } else {
+                if (badge) { badge.style.background = "var(--green-light)"; badge.style.color = "var(--green-dark)"; }
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/reports`);
+                const reports = await res.json();
+                table.innerHTML = "";
+                if (badge) badge.textContent = `${reports.length} Active`;
+
+                if (reports.length === 0) {
+                    table.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-sub); padding:40px;">No active sessions found. Click "New Session" to create one.</td></tr>';
+                    return;
+                }
+
+                reports.forEach(r => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td><b>${r.report_id}</b></td>
+                        <td>${r.viewers_count || 0}</td>
+                        <td><span class="status-pill"><span class="dot"></span>Active</span></td>
+                        <td class="actions">
+                            <button class="btn btn-open" onclick="location.href='session.html?report_id=${encodeURIComponent(r.report_id)}'">Open</button>
+                            <button class="btn btn-close" onclick="closeReport('${r.report_id}')">Close</button>
+                        </td>
+                    `;
+                    table.appendChild(tr);
+                });
+            } catch (err) {
+                table.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--red); padding:40px;">Error fetching sessions. Check Detection API connection.</td></tr>';
+            }
+        }
+
+        async function closeReport(id) {
+            if (!confirm(`Close session ${id}?`)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/reports/close`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ report_id: id })
+                });
+                if (res.ok) {
+                    showNotification(`Session ${id} closed`);
+                    loadReports();
+                }
+            } catch (e) { showNotification("Error closing session", "error"); }
+        }
+
+        function showNotification(msg, type="success") {
+            const n = document.getElementById("notification");
+            n.textContent = msg;
+            n.style.background = type === "success" ? "var(--green)" : "var(--red)";
+            n.style.display = "block";
+            setTimeout(() => n.style.display = "none", 3000);
+        }
+
+        async function loadCameras() {
+            const cameraSelect = document.getElementById("cameraSource");
+            try {
+                const res = await fetch(`${MANAGER_API}/cameras`);
+                const data = await res.json();
+                const firstOption = cameraSelect.options[0];
+                cameraSelect.innerHTML = "";
+                cameraSelect.appendChild(firstOption);
+
+                if (data.cameras && data.cameras.length > 0) {
+                    data.cameras.forEach(cam => {
+                        const opt = document.createElement("option");
+                        opt.value = cam.id;
+                        opt.textContent = cam.name;
+                        cameraSelect.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                showNotification("Service Manager offline - using defaults", "error");
+            }
+        }
+
+        // Modal logic
+        const modal = document.getElementById("modalOverlay");
+        document.getElementById("openModalBtn").onclick = async () => {
+            if (!(await checkServiceHealth())) {
+                showNotification("Start Detection Service first from main dashboard", "error");
+                return;
+            }
+            modal.style.display = "flex";
+            loadCameras();
+        };
+        document.getElementById("cancelModalBtn").onclick = () => modal.style.display = "none";
+
+        document.getElementById("createSessionForm").onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                report_id: document.getElementById("reportId").value,
+                camera_source: document.getElementById("cameraSource").value,
+                production_line_id: document.getElementById("lineId").value || "default-line",
+                target_speed: parseInt(document.getElementById("targetSpeed").value),
+                max_temp: parseInt(document.getElementById("maxTemp").value),
+                max_amps: parseInt(document.getElementById("maxAmps").value)
+            };
+            try {
+                const res = await fetch(`${API_BASE}/api/reports/open`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showNotification("Session created successfully");
+                    modal.style.display = "none";
+                    loadReports();
+                } else {
+                    const data = await res.json();
+                    showNotification(data.detail || "Error creating session", "error");
+                }
+            } catch (e) { showNotification("Connection error - is service running?", "error"); }
+        };
+
+        loadReports();
+        setInterval(loadReports, 5000);
+    </script>
+</body>
+</html>

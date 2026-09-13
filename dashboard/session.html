@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Monitor - Service Dashboard</title>
+    <style>
+        :root {
+            --bg: #f4f5f7;
+            --card-bg: #ffffff;
+            --green: #10a37f;
+            --green-dark: #0e8e6d;
+            --green-light: #e7f7f1;
+            --text-main: #1f2430;
+            --text-sub: #7c8696;
+            --border: #e7e9ee;
+            --red: #e0453f;
+            --red-bg: #fdeceb;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: var(--text-sub);
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 9px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 14px;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .back-link:hover {
+            color: var(--text-main);
+            background: #f3f4f6;
+            border-color: #c8ccd4;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+
+        .session-info h1 {
+            margin: 0 0 8px 0;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .badge-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .badge-active { background: var(--green-light); color: var(--green-dark); }
+        .badge-viewers { background: #eef2ff; color: #4338ca; }
+
+        .btn-close-session {
+            background: linear-gradient(135deg, var(--red) 0%, #c83d37 100%);
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(224, 69, 63, 0.35);
+            transition: all 0.18s ease;
+        }
+
+        .btn-close-session:hover {
+            box-shadow: 0 7px 20px rgba(224, 69, 63, 0.45);
+            transform: translateY(-1px);
+        }
+
+        .btn-close-session:active {
+            transform: translateY(0);
+        }
+
+        /* Stream Section */
+        .stream-container {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .stream-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .stream-overlay {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(0,0,0,0.5);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--red);
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        /* Info Grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .info-card {
+            background: #f7f8fa;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .info-card .label {
+            font-size: 12px;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .info-card .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        /* Session log section */
+        .logs-section {
+            margin-top: 24px;
+        }
+        .logs-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .logs-title {
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .log-window {
+            background: #fbfbfc;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 12.5px;
+            line-height: 1.8;
+            height: 260px;
+            overflow-y: auto;
+        }
+        .log-line { display: flex; gap: 12px; white-space: nowrap; }
+        .log-time { color: var(--text-sub); min-width: 60px; flex-shrink: 0; }
+        .log-text { color: #475065; }
+        .log-green { color: var(--green-dark); font-weight: 600; }
+
+        @media (max-width: 800px) {
+            .info-grid { grid-template-columns: 1fr; }
+        }
+
+        .notification {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--green); color: #fff;
+            padding: 13px 22px; border-radius: 12px;
+            font-weight: 600; display: none; z-index: 1100;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+            font-size: 14.5px;
+            animation: slideUp 0.25s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <a href="reports.html" class="back-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="12 19 5 12 12 5" />
+                </svg>
+                Back to Reports
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="session-header">
+                <div class="session-info">
+                    <h1 id="reportIdDisplay">Report ID: --</h1>
+                    <div class="badge-row">
+                        <span class="badge badge-active" id="statusBadge"><span class="live-dot" style="background:var(--green); animation:none;"></span> <span id="statusDisplay">Checking...</span></span>
+                        <span class="badge badge-viewers">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            <span id="viewersDisplay">0 Viewers</span>
+                        </span>
+                    </div>
+                </div>
+                <button class="btn-close-session" id="closeSessionBtn">Close Session</button>
+            </div>
+
+            <div class="stream-container">
+                <div class="stream-overlay">
+                    <span class="live-dot"></span>
+                    Live Detection Stream
+                </div>
+                <img id="videoFeed" src="" alt="Live Video Feed" class="stream-img" onerror="this.style.opacity='0.25'">
+            </div>
+
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="label">API Endpoint</div>
+                    <div class="value" id="apiEndpoint" style="font-size:14px;">http://localhost:8000</div>
+                </div>
+                <div class="info-card">
+                    <div class="label">Stream URL</div>
+                    <div class="value" id="streamUrlVal" style="font-size:13px; word-break:break-all;">Loading...</div>
+                </div>
+                <div class="info-card">
+                    <div class="label">Started</div>
+                    <div class="value" id="startedAt" style="font-size:14px;">--</div>
+                </div>
+            </div>
+
+            <div class="logs-section">
+                <div class="logs-head">
+                    <div class="logs-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 17 10 11 4 5"></polyline>
+                            <line x1="12" y1="19" x2="20" y2="19"></line>
+                        </svg>
+                        Session-Specific Logs
+                    </div>
+                    <span style="font-size:12px; color:var(--text-sub);">Updated every 2s</span>
+                </div>
+                <div class="log-window" id="sessionLogs">
+                    <div class="log-line" style="justify-content:center; color:var(--text-sub);">
+                        <span class="log-text">Loading session logs...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        const MANAGER_API = "http://localhost:8080";
+        const urlParams = new URLSearchParams(window.location.search);
+        const reportId = urlParams.get('report_id');
+
+        if (!reportId) {
+            window.location.href = "index.html";
+        }
+
+        const streamUrl = `${API_BASE}/video_feed?report_id=${encodeURIComponent(reportId)}`;
+        document.getElementById("reportIdDisplay").textContent = `Report ID: ${reportId}`;
+        document.getElementById("videoFeed").src = streamUrl;
+        document.getElementById("streamUrlVal").textContent = streamUrl;
+        document.getElementById("apiEndpoint").textContent = API_BASE;
+
+        let lastSessionLogJSON = "";
+        let startTime = null;
+
+        async function updateSessionDetails() {
+            const statusBadge = document.getElementById("statusBadge");
+            const statusDisplay = document.getElementById("statusDisplay");
+
+            try {
+                const res = await fetch(`${API_BASE}/api/reports`);
+                const reports = await res.json();
+                const current = reports.find(r => r.report_id === reportId);
+
+                if (current) {
+                    document.getElementById("viewersDisplay").textContent = `${current.viewers_count || 0} Viewers`;
+                    statusDisplay.textContent = "Active";
+                    statusBadge.style.background = "var(--green-light)";
+                    statusBadge.style.color = "var(--green-dark)";
+                    statusBadge.querySelector('.live-dot').style.background = "var(--green)";
+                    if (!startTime) {
+                        startTime = new Date();
+                        document.getElementById("startedAt").textContent = startTime.toLocaleString();
+                    }
+                } else {
+                    statusDisplay.textContent = "Closed / Not Found";
+                    statusBadge.style.background = "var(--red-bg)";
+                    statusBadge.style.color = "var(--red)";
+                    statusBadge.querySelector('.live-dot').style.background = "var(--red)";
+                    showNotification("Session is no longer active", "error");
+                }
+            } catch (err) {
+                statusDisplay.textContent = "API Unreachable";
+                statusBadge.style.background = "#fef3c7";
+                statusBadge.style.color = "#b45309";
+                statusBadge.querySelector('.live-dot').style.background = "#f59e0b";
+            }
+        }
+
+        async function pollSessionLogs() {
+            const logsEl = document.getElementById("sessionLogs");
+            try {
+                const res = await fetch(`${MANAGER_API}/logs/${encodeURIComponent(reportId)}`);
+                if (!res.ok) throw new Error("bad response");
+                const data = await res.json();
+                const cur = JSON.stringify(data.lines);
+                if (cur === lastSessionLogJSON) return;
+                lastSessionLogJSON = cur;
+
+                logsEl.innerHTML = "";
+                if (!data.lines || data.lines.length === 0) {
+                    logsEl.innerHTML = `<div class="log-line" style="justify-content:center; color:var(--text-sub);">
+                        <span class="log-text">No session-specific logs yet. Events will appear here when they happen.</span>
+                    </div>`;
+                    return;
+                }
+                data.lines.forEach(line => {
+                    const div = document.createElement("div");
+                    div.className = "log-line";
+                    const timeMatch = line.match(/^(\d{2}:\d{2}:\d{2}|\d{2}:\d{2})(?:\s+|-|\s+[A-Z]+\s+)\s*(.*)$/);
+                    let t = "", txt = line;
+                    if (timeMatch) { t = timeMatch[1]; txt = timeMatch[2]; }
+                    const isGood = /opened|initialized|healthy|started|success/i.test(txt);
+                    div.innerHTML = `<span class="log-time">${t}</span><span class="log-text ${isGood ? 'log-green':''}">${txt}</span>`;
+                    logsEl.appendChild(div);
+                });
+                logsEl.scrollTop = logsEl.scrollHeight;
+            } catch (err) {
+                // Service manager offline - keep stale data
+            }
+        }
+
+        document.getElementById("closeSessionBtn").onclick = async () => {
+            if (!confirm(`Are you sure you want to close session ${reportId}?`)) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/reports/close`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ report_id: reportId })
+                });
+
+                if (res.ok) {
+                    showNotification("Session closed successfully");
+                    setTimeout(() => window.location.href = "reports.html", 1500);
+                } else {
+                    showNotification("Failed to close session", "error");
+                }
+            } catch (err) {
+                showNotification("Error connecting to API", "error");
+            }
+        };
+
+        function showNotification(msg, type="success") {
+            const n = document.getElementById("notification");
+            n.textContent = msg;
+            n.style.background = type === "success" ? "var(--green)" : "var(--red)";
+            n.style.display = "block";
+            setTimeout(() => n.style.display = "none", 3000);
+        }
+
+        updateSessionDetails();
+        pollSessionLogs();
+        setInterval(updateSessionDetails, 5000);
+        setInterval(pollSessionLogs, 2000);
+    </script>
+</body>
+</html>

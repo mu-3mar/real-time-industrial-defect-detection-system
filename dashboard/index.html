@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Dashboard</title>
+    <script defer src="app.js"></script>
+    <style>
+        :root {
+            --bg: #f4f5f7;
+            --card-bg: #ffffff;
+            --green: #10a37f;
+            --green-dark: #0e8e6d;
+            --green-light: #e7f7f1;
+            --green-pale: #eefbf6;
+            --text-main: #1f2430;
+            --text-sub: #7c8696;
+            --border: #e7e9ee;
+            --red: #e0453f;
+            --red-bg: #fdeceb;
+            --track: #e9ebef;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            padding: 24px;
+        }
+
+        .dashboard {
+            max-width: 1560px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* ---------- shared card ---------- */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px 22px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .icon-box {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            border-radius: 10px;
+            background: var(--green-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--green);
+        }
+
+        .icon-box svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* form input focus ring */
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--green);
+            box-shadow: 0 0 0 3px rgba(16,163,127,0.12);
+        }
+
+        /* ---------- top row : logo + clock ---------- */
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-box {
+            width: 200px;
+            height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        .logo-box img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .clock-box {
+            background: transparent;
+            padding: 14px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            min-width: 230px;
+        }
+        
+        .mid-row > .card {
+            min-width: 0;
+        }
+
+        .clock-time {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .clock-time svg {
+            width: 18px;
+            height: 18px;
+            color: var(--text-sub);
+        }
+
+        .clock-date {
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+
+        /* ---------- stat row (4 cards) ---------- */
+        .stat-row {
+            display: grid;
+            grid-template-columns: 1.15fr 1.4fr 1.2fr 1fr;
+            gap: 18px;
+        }
+
+        .status-pill {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--green-light);
+            color: var(--green-dark);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 20px;
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            display: inline-block;
+        }
+
+        .card-body {
+            margin-top: 18px;
+        }
+
+        .service-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-sub);
+            margin-bottom: 6px;
+        }
+
+        .service-name svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .service-pid {
+            font-size: 14px;
+            color: var(--text-sub);
+            margin-bottom: 16px;
+        }
+
+        .service-pid b {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .hr-line {
+            border-top: 1px solid var(--border);
+            margin: 14px 0;
+        }
+
+        .two-col {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .stat-sub {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-top: 2px;
+        }
+
+        /* public access card */
+        .url-box {
+            margin-top: 18px;
+            background: #f7f8fa;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 13px 16px;
+            font-size: 14px;
+            color: var(--text-main);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .btn-row {
+            margin-top: 14px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.18s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+
+        .btn:hover {
+            background: #f7f8fa;
+            border-color: #d0d4dc;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        /* component status card */
+        .comp-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 11px 0;
+        }
+
+        .comp-row+.comp-row {
+            border-top: 1px solid var(--border);
+        }
+
+        .comp-name {
+            font-size: 14.5px;
+            color: var(--text-main);
+        }
+
+        .comp-status {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--green-dark);
+        }
+
+        /* health check card */
+        .health-box {
+            margin-top: 18px;
+            background: var(--green-pale);
+            border: 1px solid #cdeede;
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .health-check-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .health-check-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .health-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--green-dark);
+        }
+
+        .health-sub {
+            font-size: 13px;
+            color: #4d8d77;
+            margin-top: 2px;
+        }
+
+        .active-reports-line {
+            margin-top: 16px;
+            font-size: 14px;
+            color: var(--text-sub);
+        }
+
+        .active-reports-line b {
+            color: var(--text-main);
+            font-size: 15px;
+        }
+
+        /* ---------- control panel ---------- */
+        .control-title {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 18px;
+        }
+
+        .ctrl-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px;
+            border-radius: 14px;
+            font-size: 15.5px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            letter-spacing: 0.01em;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+        }
+
+        .ctrl-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.13);
+        }
+
+        .ctrl-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        .ctrl-btn svg {
+            width: 17px;
+            height: 17px;
+        }
+
+        .ctrl-start {
+            background: linear-gradient(135deg, var(--green) 0%, #0dbf95 100%);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(16,163,127,0.35);
+        }
+
+        .ctrl-start:hover {
+            box-shadow: 0 8px 24px rgba(16,163,127,0.45);
+        }
+
+        .ctrl-restart {
+            background: #f3f4f6;
+            color: var(--text-main);
+            border: 1px solid var(--border) !important;
+        }
+
+        .ctrl-restart:hover {
+            background: #eaecf0;
+        }
+
+        .ctrl-stop {
+            background: linear-gradient(135deg, #fff1f1 0%, var(--red-bg) 100%);
+            color: var(--red);
+            border: 1px solid #f5c6c4 !important;
+        }
+
+        .ctrl-stop:hover {
+            background: linear-gradient(135deg, #fde8e8 0%, #fbd5d4 100%);
+            box-shadow: 0 6px 18px rgba(224,69,63,0.18);
+        }
+
+        .ctrl-stop svg {
+            fill: var(--red);
+            color: var(--red);
+        }
+
+        /* ---------- middle two-column row ---------- */
+        .mid-row {
+            display: grid;
+            grid-template-columns: 1fr 1.55fr;
+            gap: 20px;
+        }
+
+        .mid-row > .card {
+            min-width: 0;
+        }
+
+        .table-wrap {
+            margin-top: 18px;
+            height: 230px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            font-size: 13px;
+            color: var(--text-sub);
+            font-weight: 500;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--card-bg);
+            z-index: 1;
+        }
+
+        td {
+            padding: 14px 0;
+            font-size: 14.5px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .status-active {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--green-dark);
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .view-all {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 16px 0 4px;
+            color: var(--green-dark);
+            font-weight: 600;
+            font-size: 14.5px;
+            cursor: pointer;
+        }
+
+        .view-all svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        /* ---------- modal ---------- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            cursor: pointer;
+            color: var(--text-sub);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-sub);
+            margin-bottom: 6px;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 14.5px;
+            color: var(--text-main);
+            outline: none;
+        }
+
+        .form-input:focus, .form-select:focus {
+            border-color: var(--green);
+        }
+
+        .modal-footer {
+            margin-top: 24px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn-cancel {
+            background: #f3f4f6;
+            color: var(--text-main);
+            transition: all 0.15s ease;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-cancel:hover {
+            background: #eaecf0;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, var(--green) 0%, #0dbf95 100%);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(16,163,127,0.3);
+            transition: all 0.18s ease;
+        }
+
+        .btn-submit:hover {
+            box-shadow: 0 6px 18px rgba(16,163,127,0.4);
+            transform: translateY(-1px);
+        }
+
+        /* notification */
+        .notification {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--green);
+            color: #fff;
+            padding: 13px 22px;
+            border-radius: 12px;
+            font-weight: 600;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+            display: none;
+            z-index: 1100;
+            font-size: 14.5px;
+        }
+
+        /* action buttons in table */
+        .action-btn {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: #fff;
+            cursor: pointer;
+            color: var(--text-sub);
+            transition: all 0.15s ease;
+        }
+
+        .action-btn:hover {
+            background: var(--red-bg);
+            color: var(--red);
+            border-color: var(--red);
+            transform: scale(1.1);
+        }
+
+        .action-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .clickable-title {
+            cursor: pointer;
+        }
+
+        .clickable-title:hover {
+            color: var(--green-dark);
+        }
+
+        .add-session-btn {
+            margin-left: auto;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: var(--green-light);
+            color: var(--green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.18s ease;
+            box-shadow: 0 1px 4px rgba(16,163,127,0.15);
+        }
+
+        .add-session-btn:hover {
+            background: var(--green);
+            color: #fff;
+            transform: scale(1.12);
+            box-shadow: 0 3px 10px rgba(16,163,127,0.35);
+        }
+
+        /* live log */
+        .log-card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .small-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .small-btn:hover {
+            background: #f3f4f6;
+            border-color: #c8ccd4;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+
+        .small-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .log-window {
+            margin-top: 16px;
+            background: #fbfbfc;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 13px;
+            line-height: 1.9;
+            height: 230px;
+            overflow-y: auto;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .log-line {
+            display: flex;
+            gap: 14px;
+            white-space: nowrap;
+        }
+
+        .log-time {
+            color: var(--text-sub);
+            min-width: 55px;
+        }
+
+        .log-text {
+            color: #475065;
+        }
+
+        .log-green {
+            color: var(--green-dark);
+            font-weight: 600;
+        }
+
+        .log-link {
+            color: var(--green-dark);
+            font-weight: 600;
+        }
+
+        /* ---------- bottom usage row ---------- */
+        .usage-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+        }
+
+        .usage-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .usage-left {
+            display: flex;
+            flex-direction: column;
+            gap: 36px;
+        }
+
+        .usage-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .usage-sub {
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+
+        .ring {
+            position: relative;
+            width: 96px;
+            height: 96px;
+        }
+
+        .ring svg {
+            width: 96px;
+            height: 96px;
+            transform: rotate(-90deg);
+        }
+
+        .ring-bg {
+            fill: none;
+            stroke: var(--track);
+            stroke-width: 9;
+        }
+
+        .ring-fg {
+            fill: none;
+            stroke: var(--green);
+            stroke-width: 9;
+            stroke-linecap: round;
+        }
+
+        .ring-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 21px;
+            font-weight: 700;
+        }
+
+        /* network card variant */
+        .network-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .network-status {
+            color: var(--green-dark);
+            font-weight: 700;
+            font-size: 16px;
+            margin-top: 4px;
+        }
+
+        .bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 30px;
+        }
+
+        .bar {
+            width: 6px;
+            background: var(--green);
+            border-radius: 2px;
+        }
+
+        @media (max-width:1400px) {
+            .usage-row {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+        }
+
+        @media (max-width:1100px) {
+            .stat-row {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .mid-row {
+                grid-template-columns: 1fr;
+            }
+
+            .usage-row {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .control-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width:640px) {
+            .stat-row {
+                grid-template-columns: 1fr;
+            }
+
+            .usage-row {
+                grid-template-columns: 1fr;
+            }
+
+            .top-row {
+                flex-direction: column;
+                gap: 14px;
+                align-items: stretch;
+            }
+
+            .clock-box {
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="dashboard">
+
+        <!-- TOP ROW -->
+        <div class="top-row">
+            <div class="logo-box">
+                <img src="logo.svg" alt="Chainly Logo" id="logoImg">
+            </div>
+            <div class="clock-box">
+                <div class="clock-time">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                    </svg>
+                    <span id="time">5:36:05 PM</span>
+                </div>
+                <div class="clock-date" id="date">6/21/2026</div>
+            </div>
+        </div>
+
+        <!-- STAT ROW -->
+        <div class="stat-row">
+
+            <!-- Service Status -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="6" rx="1.5" />
+                            <rect x="2" y="15" width="20" height="6" rx="1.5" />
+                            <circle cx="6" cy="6" r="0.6" fill="currentColor" />
+                            <circle cx="6" cy="18" r="0.6" fill="currentColor" />
+                        </svg>
+                    </div>
+                    Service Status
+                    <span class="status-pill" id="serviceStatusPill" style="background:var(--red-bg); color:var(--red);"><span class="dot" style="background:var(--red);"></span>Stopped</span>
+                </div>
+                <div class="card-body">
+                    <div class="service-name">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 12a9 9 0 1 0 9-9" />
+                            <path d="M3 4v5h5" />
+                        </svg>
+                        QC-SCM Detection Service
+                    </div>
+                    <div class="service-pid" id="servicePid">PID: <b>--</b></div>
+                    <div class="hr-line"></div>
+                    <div class="two-col">
+                        <div>
+                            <div class="stat-label">Uptime</div>
+                            <div class="stat-value" id="uptime">00:00:00</div>
+                        </div>
+                        <div>
+                            <div class="stat-label">Last Started</div>
+                            <div class="stat-value" id="lastStartedTime" style="font-size:16px;">--</div>
+                            <div class="stat-sub" id="lastStartedDate">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Access -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" />
+                        </svg>
+                    </div>
+                    API &amp; Dashboard Access
+                </div>
+                <div class="url-box" id="serviceUrl">https://muhammad-ammar-dell-g15-5510.tail5a5979.ts.net  (Detection API)</div>
+                <div class="btn-row">
+                    <button class="btn" id="copyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" />
+                            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                        </svg>Copy API</button>
+                    <button class="btn" id="openBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <path d="M15 3h6v6" />
+                            <path d="M10 14L21 3" />
+                        </svg>Open API</button>
+                    <button class="btn" id="docsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <path d="M14 2v6h6" />
+                        </svg>Docs</button>
+                </div>
+            </div>
+
+            <!-- Component Status -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2 2 7l10 5 10-5z" />
+                            <path d="M2 17l10 5 10-5" />
+                            <path d="M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    Component Status
+                </div>
+                <div style="margin-top:10px;">
+                    <div class="comp-row">
+                        <span class="comp-name">Firebase</span>
+                        <span class="comp-status" id="firebaseStatus" style="color:var(--red);"><span class="dot" style="background:var(--red);"></span>Disconnected</span>
+                    </div>
+                    <div class="comp-row">
+                        <span class="comp-name">Tunnel</span>
+                        <span class="comp-status" id="tunnelStatus" style="color:var(--red);"><span class="dot" style="background:var(--red);"></span>Not Configured</span>
+                    </div>
+                    <div class="comp-row">
+                        <span class="comp-name">Health API</span>
+                        <span class="comp-status" id="apiStatus" style="color:var(--red);"><span class="dot" style="background:var(--red);"></span>Offline</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Health Check -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+                        </svg>
+                    </div>
+                    Health Check
+                </div>
+                <div class="health-box" id="healthBox" style="background:var(--red-bg); border-color:#fbcfe8;">
+                    <div class="health-check-icon" id="healthIcon" style="background:var(--red);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="health-title" id="healthTitle">Offline</div>
+                        <div class="health-sub" id="healthSub">Service is not running</div>
+                    </div>
+                </div>
+                <div class="active-reports-line">Active Reports: <b id="activeReportsCount">0</b></div>
+            </div>
+        </div>
+
+        <!-- CONTROL PANEL -->
+        <div class="card">
+            <div class="control-title">Control Panel</div>
+            <div class="control-buttons">
+                <button class="ctrl-btn ctrl-start start-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Start Service
+                </button>
+                <button class="ctrl-btn ctrl-restart restart-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 1 0 2.6-6.4L3 8" />
+                        <path d="M3 3v5h5" />
+                    </svg>
+                    Restart Service
+                </button>
+                <button class="ctrl-btn ctrl-stop stop-btn">
+                    <svg viewBox="0 0 24 24">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                    Stop Service
+                </button>
+            </div>
+        </div>
+
+        <!-- MIDDLE ROW: Active Reports & Logs -->
+        <div class="mid-row">
+            <!-- Active Reports (Sessions) -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                    </div>
+                    <span class="clickable-title" onclick="location.href='reports.html'">Active Reports (Sessions)</span>
+                    <button class="add-session-btn" id="openModalBtn" style="margin-left: auto;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                    </button>
+                    <button class="small-btn" onclick="location.href='reports.html'" style="margin-left: 10px;">
+                        View All
+                    </button>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Report ID</th>
+                                <th>Status</th>
+                                <th style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportsTable">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Live Service Log -->
+            <div class="card">
+                <div class="log-card-head">
+                    <div class="card-title">
+                        <div class="icon-box">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4 17 10 11 4 5" />
+                                <line x1="12" y1="19" x2="20" y2="19" />
+                            </svg>
+                        </div>
+                        Live Service Log
+                    </div>
+                    <div class="log-actions">
+                        <button class="small-btn" id="pauseLogBtn"><svg viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="4" width="4" height="16" />
+                                <rect x="14" y="4" width="4" height="16" />
+                            </svg>Pause</button>
+                        <button class="small-btn" id="clearLogBtn"><svg viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                            </svg>Clear</button>
+                    </div>
+                </div>
+                <div class="log-window" id="events">
+                </div>
+            </div>
+
+        </div>
+
+            <!-- USAGE ROW -->
+            <div class="usage-row">
+
+                <div class="card usage-card">
+                    <div class="usage-left">
+                        <div class="usage-title">
+                            <div class="icon-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                                    <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+                                </svg>
+                            </div>
+                            CPU Usage
+                        </div>
+                        <div class="usage-sub">Processor</div>
+                    </div>
+                    <div class="ring">
+                        <svg viewBox="0 0 96 96">
+                            <circle class="ring-bg" cx="48" cy="48" r="40" />
+                            <circle class="ring-fg" id="cpuRing" cx="48" cy="48" r="40" stroke-dasharray="251.2"
+                                stroke-dashoffset="251.2" />
+                        </svg>
+                        <div class="ring-label" id="cpuValue">0%</div>
+                    </div>
+                </div>
+
+                <div class="card usage-card">
+                    <div class="usage-left">
+                        <div class="usage-title">
+                            <div class="icon-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="6" width="20" height="12" rx="2" />
+                                    <path d="M6 10v4M10 10v4M14 10v4M18 10v4" />
+                                </svg>
+                            </div>
+                            RAM Usage
+                        </div>
+                        <div class="usage-sub">Memory</div>
+                    </div>
+                    <div class="ring">
+                        <svg viewBox="0 0 96 96">
+                            <circle class="ring-bg" cx="48" cy="48" r="40" />
+                            <circle class="ring-fg" id="ramRing" cx="48" cy="48" r="40" stroke-dasharray="251.2"
+                                stroke-dashoffset="251.2" />
+                        </svg>
+                        <div class="ring-label" id="ramValue">0%</div>
+                    </div>
+                </div>
+
+                <div class="card usage-card">
+                    <div class="usage-left">
+                        <div class="usage-title">
+                            <div class="icon-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 5h16v10H4z" />
+                                    <path d="M2 19h20" />
+                                </svg>
+                            </div>
+                            Disk Usage
+                        </div>
+                        <div class="usage-sub">Storage</div>
+                    </div>
+                    <div class="ring">
+                        <svg viewBox="0 0 96 96">
+                            <circle class="ring-bg" cx="48" cy="48" r="40" />
+                            <circle class="ring-fg" id="diskRing" cx="48" cy="48" r="40" stroke-dasharray="251.2"
+                                stroke-dashoffset="251.2" />
+                        </svg>
+                        <div class="ring-label" id="diskValue">0%</div>
+                    </div>
+                </div>
+
+                <div class="card usage-card">
+                    <div class="usage-left">
+                        <div class="usage-title">
+                            <div class="icon-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="3" width="20" height="18" rx="2" />
+                                    <path d="M6 7h12M6 11h12M6 15h8" />
+                                </svg>
+                            </div>
+                            GPU Usage
+                        </div>
+                        <div class="usage-sub">CUDA / ONNX</div>
+                    </div>
+                    <div class="ring">
+                        <svg viewBox="0 0 96 96">
+                            <circle class="ring-bg" cx="48" cy="48" r="40" />
+                            <circle class="ring-fg" id="gpuRing" cx="48" cy="48" r="40" stroke-dasharray="251.2"
+                                stroke-dashoffset="251.2" />
+                        </svg>
+                        <div class="ring-label" id="gpuValue">0%</div>
+                    </div>
+                </div>
+
+                <div class="card network-card">
+                    <div>
+                        <div class="usage-title">
+                            <div class="icon-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M5 12.5a11 11 0 0 1 14 0" />
+                                    <path d="M8.5 16a6.5 6.5 0 0 1 7 0" />
+                                    <circle cx="12" cy="19" r="1" fill="currentColor" />
+                                </svg>
+                            </div>
+                            Network Status
+                        </div>
+                        <div class="network-status" id="networkStatus" style="color:var(--red);">Disconnected</div>
+                        <div class="usage-sub" id="networkSub">Checking...</div>
+                    </div>
+                    <div class="bars">
+                        <div class="bar" style="height:10%;"></div>
+                        <div class="bar" style="height:10%;"></div>
+                        <div class="bar" style="height:10%;"></div>
+                        <div class="bar" style="height:10%;"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- CREATE SESSION MODAL -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-card">
+            <div class="modal-head">
+                <div class="modal-title">Create New Session</div>
+                <div class="modal-close" id="closeModalBtn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </div>
+            </div>
+            <form id="createSessionForm">
+                <div class="form-group">
+                    <label class="form-label">Report ID</label>
+                    <input type="text" id="reportId" class="form-input" placeholder="e.g. REP-001" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Camera Source</label>
+                    <select id="cameraSource" class="form-select" required>
+                        <option value="">Select a camera...</option>
+                        <option value="/dev/video0">Integrated Webcam (index 0)</option>
+                        <option value="/dev/video1">Integrated Webcam (index 1)</option>
+                        <option value="rtsp://127.0.0.1:8554/live">Local RTSP Stream</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Production Line ID (Optional)</label>
+                    <input type="text" id="lineId" class="form-input" placeholder="e.g. LINE-A">
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Target Speed</label>
+                        <input type="number" id="targetSpeed" class="form-input" value="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Temp (°C)</label>
+                        <input type="number" id="maxTemp" class="form-input" value="75" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Amps (A)</label>
+                        <input type="number" id="maxAmps" class="form-input" value="5" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-cancel" id="cancelModalBtn">Cancel</button>
+                    <button type="submit" class="btn btn-submit">Create Session</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NOTIFICATION -->
+    <div class="notification" id="notification"></div>
+
+</body>
+
+</html>
