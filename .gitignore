@@ -1,35 +1,45 @@
-# ========================
-# GLOBAL IGNORE RULES
-# ========================
-
-# Python
+# Python cache / compiled files
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-.Python
+*$py.class
 *.so
+
+# Jupyter
 .ipynb_checkpoints/
 
+# Testing / tooling cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
 
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
 
-# Datasets and large data
-data/
-**/data/
-datasets/
-**/datasets/
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
 
-# Logs and outputs
-logs/
-outputs/
+# Logs / temporary files
 *.log
+temp.html
 
-# Firebase: service account keys (private keys) and config with DB URL
-Boxes/flow/config/*-firebase-adminsdk*.json
-Boxes/flow/config/*credentials*
-Boxes/flow/config/firebase-service-account*.json
-!Boxes/flow/config/firebase-service-account.example.json
-Boxes/flow/config/firebase_config.json
-!Boxes/flow/config/firebase_config.json.example
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+*.pem
+
+# Firebase / service-account credentials
 *firebase-adminsdk*.json
 **/firebase*adminsdk*.json
+**/*credentials*.json
