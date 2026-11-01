@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Union
 import yaml
 import cv2
 
-# Base path: Boxes/flow (parent of api/)
+# Base path: runtime service directory (parent of api/)
 _base_flow = Path(__file__).resolve().parent.parent
 
 from core.device_manager import select_device
@@ -22,8 +22,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.model_loader import ModelLoader
-from core.firebase_client import check_connection as check_firebase_connection
-from core.firebase_client import initialize as init_firebase
 from core.pipeline_manager import PipelineManager
 from core.session_manager import SessionManager
 
@@ -70,7 +68,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=_cors_credentials,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -99,6 +97,15 @@ class CloseReportRequest(BaseModel):
     """Request body for POST /api/reports/close."""
 
     report_id: str
+
+
+class RoiUpdateRequest(BaseModel):
+    """Editable camera-frame ROI rectangle."""
+
+    left_x: int
+    right_x: int
+    top_y: int
+    bottom_y: int
 
 
 class ReportResponse(BaseModel):
@@ -172,9 +179,6 @@ def _load_configs(base: Path) -> None:
         configs["defect"] = yaml.safe_load(f)
     with open(cfg / "stream.yaml") as f:
         configs["stream"] = yaml.safe_load(f)
-    with open(cfg / "firebase.yaml") as f:
-        configs["firebase"] = yaml.safe_load(f)
-
     # Ensure stability config
     if "stability" not in configs["defect"]:
         configs["defect"]["stability"] = {
@@ -208,34 +212,6 @@ def _load_configs(base: Path) -> None:
     configs["box"]["device"] = resolved_device
     configs["defect"]["device"] = resolved_device
 
-    # Initialize Firebase Realtime Database (credentials + database URL from config/env)
-    fb_cfg = configs["firebase"]
-    cred_rel = (
-        fb_cfg.get("service_account_path")
-        or fb_cfg.get("credentials_path")
-        or "firebase-service-account.json"
-    )
-    cred_path = base / "config" / cred_rel
-
-    # database_url: firebase.yaml first, then firebase_config.json (both in config/)
-    database_url = str(fb_cfg.get("database_url", "")).strip()
-    if not database_url:
-        config_json_path = base / "config" / "firebase_config.json"
-        if config_json_path.exists():
-            with open(config_json_path) as f:
-                fb_secrets = json.load(f)
-                database_url = (
-                    fb_secrets.get("FIREBASE_DATABASE_URL")
-                    or fb_secrets.get("database_url")
-                    or ""
-                ).strip()
-    if not database_url:
-        raise ValueError(
-            "Firebase Realtime Database URL must be set in config: "
-            "firebase.yaml (database_url) or firebase_config.json (see firebase_config.json.example)."
-        )
-    init_firebase(str(cred_path), database_url)
-
 
 def _resolve_existing_path(base: Path, configured_path: str) -> str:
     """
@@ -243,8 +219,8 @@ def _resolve_existing_path(base: Path, configured_path: str) -> str:
 
     Supports:
     - absolute paths
-    - paths relative to `Boxes/flow`
-    - paths relative to repo root (parent of `Boxes/`)
+    - paths relative to the runtime directory
+    - paths relative to the repository root
     """
     p = Path(configured_path)
     if p.is_absolute():
@@ -252,8 +228,9 @@ def _resolve_existing_path(base: Path, configured_path: str) -> str:
 
     candidates = [
         base / p,         # flow-relative
-        base.parent / p,  # Boxes-relative
-        base.parent.parent / p,  # repo-root-relative
+        base.parent / p,  # qc_scm-relative
+        base.parent.parent / p,  # src-relative
+        base.parent.parent.parent / p,  # repo-root-relative
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -265,7 +242,7 @@ def _resolve_existing_path(base: Path, configured_path: str) -> str:
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Initialize configs, models, and Firebase client."""
+    """Initialize configs, models, and local session storage."""
     base = _base_flow
     try:
         _load_configs(base)
@@ -378,6 +355,44 @@ async def list_reports() -> List[ReportSummary]:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/api/reports/{report_id}/roi")
+async def get_report_roi(report_id: str) -> dict:
+    """Return the current editable ROI for an active session."""
+    worker = session_manager.get_session(report_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    roi = worker.get_roi()
+    if roi is None:
+        raise HTTPException(status_code=409, detail="Session pipeline is not ready")
+    return roi
+
+
+@app.patch("/api/reports/{report_id}/roi")
+async def update_report_roi(report_id: str, body: RoiUpdateRequest) -> dict:
+    """Update ROI lines while the session is running."""
+    worker = session_manager.get_session(report_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        return worker.update_roi(body.left_x, body.right_x, body.top_y, body.bottom_y)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/reports/{report_id}/stats")
+async def get_report_stats(report_id: str) -> dict:
+    """Return live detection counters for an active session."""
+    worker = session_manager.get_session(report_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        return worker.get_stats()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """Service health and active report count."""
@@ -389,13 +404,12 @@ async def health_check() -> HealthResponse:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.get("/api/health/firebase")
-async def firebase_health_check() -> dict:
-    """Check Firebase connectivity using the initialized Admin SDK."""
-    connected, detail = check_firebase_connection()
+@app.get("/api/health/storage")
+async def local_storage_health_check() -> dict:
+    """Report the local session storage mode."""
     return {
-        "state": "healthy" if connected else "error",
-        "detail": detail,
+        "state": "healthy",
+        "detail": "Temporary per-session local storage is active",
     }
 
 

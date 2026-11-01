@@ -60,6 +60,12 @@ class Pipeline:
             strict_per_frame=self.strict_debug_mode,
             frame_queue_size=self.strict_frame_queue_size,
         )
+        actual_width = int(self.stream.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_height = int(self.stream.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        configured_width = int(stream_cfg.get("width", 0))
+        configured_height = int(stream_cfg.get("height", 0))
+        scale_x = actual_width / configured_width if configured_width > 0 else 1.0
+        scale_y = actual_height / configured_height if configured_height > 0 else 1.0
 
         # 2. Setup Detectors with pre-loaded models
         model_loader = ModelLoader.get_instance()
@@ -91,16 +97,20 @@ class Pipeline:
 
         # 4. Visualizer + ROI gate layout (lines on UI + crop region)
         # Allow tuning gate width/position from `stream.yaml`.
-        self.roi_width = int(stream_cfg.get("roi_width", ROI_WIDTH))
-        self.roi_center_offset = int(stream_cfg.get("roi_center_offset", ROI_CENTER_OFFSET))
-        self.roi_top_y = int(stream_cfg.get("roi_top_y", ROI_TOP_Y))
+        self.roi_width = max(20, int(stream_cfg.get("roi_width", ROI_WIDTH) * scale_x))
+        self.roi_center_offset = int(stream_cfg.get("roi_center_offset", ROI_CENTER_OFFSET) * scale_x)
+        self.roi_top_y = int(stream_cfg.get("roi_top_y", ROI_TOP_Y) * scale_y)
+        self.roi_bottom_y = actual_height
 
         self.LEFT_X = INFO_WIDTH + self.roi_center_offset - self.roi_width // 2
         self.RIGHT_X = INFO_WIDTH + self.roi_center_offset + self.roi_width // 2
+        self.LEFT_X = max(INFO_WIDTH, min(self.LEFT_X, INFO_WIDTH + actual_width - 20))
+        self.RIGHT_X = max(self.LEFT_X + 20, min(self.RIGHT_X, INFO_WIDTH + actual_width))
+        self._roi_lock = threading.RLock()
 
         self.visualizer = Visualizer(
-            stream_cfg["width"],
-            stream_cfg["height"],
+            actual_width,
+            actual_height,
             INFO_WIDTH,
             self.roi_width,
             roi_center_offset=self.roi_center_offset,
@@ -149,6 +159,47 @@ class Pipeline:
         self.queue_latency_ms: float = 0.0
         self._last_diag_log_time: float = time.time()
         self._diag_log_interval: float = 30.0
+
+    def get_roi(self) -> dict:
+        """Return the current ROI in camera-frame coordinates."""
+        with self._roi_lock:
+            return {
+                "left_x": int(self.LEFT_X - INFO_WIDTH),
+                "right_x": int(self.RIGHT_X - INFO_WIDTH),
+                "top_y": int(self.roi_top_y),
+                "bottom_y": int(self.roi_bottom_y),
+                "info_width": INFO_WIDTH,
+                "frame_width": int(self.stream.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                "frame_height": int(self.stream.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            }
+
+    def update_roi(self, left_x: int, right_x: int, top_y: int, bottom_y: int) -> dict:
+        """Apply a validated camera-frame ROI rectangle to detection."""
+        frame_width = int(self.stream.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(self.stream.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        canvas_width = frame_width + INFO_WIDTH
+        min_gap = 20
+        left = max(INFO_WIDTH, min(int(left_x) + INFO_WIDTH, canvas_width - min_gap))
+        right = min(canvas_width, max(int(right_x) + INFO_WIDTH, left + min_gap))
+        if right <= left:
+            raise ValueError("ROI right line must be to the right of the left line")
+        top = max(0, min(int(top_y), max(0, frame_height - 1)))
+        bottom = max(top + min_gap, min(int(bottom_y), frame_height))
+        if bottom <= top:
+            raise ValueError("ROI bottom edge must be below the top edge")
+        with self._roi_lock:
+            self.LEFT_X = left
+            self.RIGHT_X = right
+            self.roi_top_y = top
+            self.roi_bottom_y = bottom
+            self.roi_width = right - left
+            self.roi_center_offset = ((left + right) // 2) - INFO_WIDTH
+            # Discard detections from the previous area. Otherwise tracking can
+            # keep drawing an old box until the next detector cycle.
+            self._last_boxes_roi = np.zeros((0, 4))
+            self._current_track = None
+            self.visualizer.update_roi(left, right, top)
+            return self.get_roi()
 
     def run_step(
         self,
@@ -201,15 +252,18 @@ class Pipeline:
             self._canvas_buf_index = 0
         buf = self._canvas_bufs[self._canvas_buf_index]
         self._canvas_buf_index = 1 - self._canvas_buf_index
-        buf[:, :info_width, :] = 235
+        buf[:, :info_width, :] = 250
         buf[:, info_width:, :] = frame
         canvas = buf
         self.visualizer.draw_layout(canvas)
         self.visualizer.draw_stats(canvas, self.state, self.fps)
-        roi_x1 = max(0, self.LEFT_X - info_width)
-        roi_x2 = min(w, self.RIGHT_X - info_width)
-        roi_y1 = max(0, self.roi_top_y)
-        roi_y2 = h
+        with self._roi_lock:
+            left_x, right_x = self.LEFT_X, self.RIGHT_X
+            top_y, bottom_y = self.roi_top_y, self.roi_bottom_y
+        roi_x1 = max(0, left_x - info_width)
+        roi_x2 = min(w, right_x - info_width)
+        roi_y1 = max(0, top_y)
+        roi_y2 = min(h, bottom_y)
         if roi_x2 <= roi_x1:
             roi_x1, roi_x2 = 0, w
         if roi_y2 <= roi_y1:
@@ -392,10 +446,11 @@ class Pipeline:
                 # ── STAGE 1: Box Detection (with throttle, Task 3) ──
                 # Run the box detector every box_detect_every_n frames.
                 # Between runs, reuse the cached result so tracking stays continuous.
-                roi_x1 = max(0, self.LEFT_X - self.visualizer.info_width)
-                roi_x2 = min(w, self.RIGHT_X - self.visualizer.info_width)
-                roi_y1 = max(0, self.roi_top_y)
-                roi_y2 = h
+                with self._roi_lock:
+                    roi_x1 = max(0, self.LEFT_X - self.visualizer.info_width)
+                    roi_x2 = min(w, self.RIGHT_X - self.visualizer.info_width)
+                    roi_y1 = max(0, self.roi_top_y)
+                    roi_y2 = min(h, self.roi_bottom_y)
                 if roi_x2 <= roi_x1:
                     roi_x1, roi_x2 = 0, w
                 if roi_y2 <= roi_y1:

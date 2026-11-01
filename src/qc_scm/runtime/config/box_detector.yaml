@@ -1,4 +1,4 @@
-model_path: Boxes/training V2.0/box/models/exported/best.onnx
+model_path: training/versions/v2_0/box_detector/models/exported/best.onnx
 conf_thres: 0.4
 iou_thres: 0.6
 device: auto

@@ -108,6 +108,13 @@ class SessionManager:
                 return False, True
 
             worker.stop()
+            worker.join(timeout=5)
+            if worker.is_alive():
+                logger.warning(
+                    "Session %s did not stop within 5 seconds; local file will "
+                    "be removed when its worker exits",
+                    report_id,
+                )
             camera_key = str(worker.camera_source)
             production_line_id = worker.production_line_id
             if camera_key in self.camera_locks:

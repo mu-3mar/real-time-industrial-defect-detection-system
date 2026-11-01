@@ -6,9 +6,9 @@ Architecture:
                                                       -> result_queue (bounded)
                                                       -> Result consumer thread
                                                              -> MJPEG frame updates
-                                                             -> firebase_queue -> Firebase worker thread
+                                                             -> local_store_queue -> local storage worker
 
-Inference never waits for Firebase or MJPEG consumers. All heavy I/O and publishing
+Inference never waits for local storage or MJPEG consumers. All heavy I/O and publishing
 run in separate daemon threads.
 """
 
@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 import numpy as np
 
-from core.firebase_client import publish_detection
+from core.local_session_store import publish_detection
 from core.pipeline_diagnostics import get_diagnostics
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Bounded queues to prevent latency buildup
 FRAME_QUEUE_MAXSIZE = 5
 RESULT_QUEUE_MAXSIZE = 5
-FIREBASE_QUEUE_MAXSIZE = 64
+LOCAL_STORE_QUEUE_MAXSIZE = 64
 
 # Sentinel for shutdown
 _SHUTDOWN = object()
@@ -37,7 +37,7 @@ _SHUTDOWN = object()
 
 class PipelineManager:
     """
-    Singleton: one inference thread, one result-consumer thread, one Firebase worker.
+    Singleton: one inference thread, one result-consumer thread, one local storage worker.
     Sessions register/unregister; camera feeders push (session_id, frame, enqueue_time, camera_fps).
     """
 
@@ -47,17 +47,17 @@ class PipelineManager:
     def __init__(self):
         self._frame_queue: queue.Queue = queue.Queue(maxsize=FRAME_QUEUE_MAXSIZE)
         self._result_queue: queue.Queue = queue.Queue(maxsize=RESULT_QUEUE_MAXSIZE)
-        self._firebase_queue: queue.Queue = queue.Queue(maxsize=FIREBASE_QUEUE_MAXSIZE)
+        self._local_store_queue: queue.Queue = queue.Queue(maxsize=LOCAL_STORE_QUEUE_MAXSIZE)
 
         self._pipelines: Dict[str, Any] = {}  # session_id -> Pipeline
         self._latest_frames: Dict[str, np.ndarray] = {}  # session_id -> latest annotated frame
-        self._firebase_meta: Dict[str, dict] = {}  # session_id -> meta for publish_detection
+        self._local_store_meta: Dict[str, dict] = {}
 
         self._lock_registry = threading.Lock()
         self._stop_event = threading.Event()
         self._inference_thread: Optional[threading.Thread] = None
         self._result_consumer_thread: Optional[threading.Thread] = None
-        self._firebase_thread: Optional[threading.Thread] = None
+        self._local_store_thread: Optional[threading.Thread] = None
         self._started = False
         self._inference_frame_count: int = 0
 
@@ -70,7 +70,7 @@ class PipelineManager:
         return cls._instance
 
     def start_workers(self) -> None:
-        """Start inference, result-consumer, and Firebase worker threads (idempotent)."""
+        """Start inference, result-consumer, and local storage workers."""
         with self._lock_registry:
             if self._started:
                 return
@@ -85,14 +85,14 @@ class PipelineManager:
                 name="ResultConsumerThread",
                 daemon=True,
             )
-            self._firebase_thread = threading.Thread(
-                target=self._firebase_worker,
-                name="FirebaseWorkerThread",
+            self._local_store_thread = threading.Thread(
+                target=self._local_store_worker,
+                name="LocalSessionStoreThread",
                 daemon=True,
             )
             self._inference_thread.start()
             self._result_consumer_thread.start()
-            self._firebase_thread.start()
+            self._local_store_thread.start()
             self._started = True
             logger.debug("PipelineManager workers started")
 
@@ -123,12 +123,12 @@ class PipelineManager:
         self,
         session_id: str,
         pipeline: Any,
-        firebase_meta: dict,
+        session_meta: dict,
     ) -> None:
-        """Register a session's pipeline and Firebase metadata."""
+        """Register a session's pipeline and local-storage metadata."""
         with self._lock_registry:
             self._pipelines[session_id] = pipeline
-            self._firebase_meta[session_id] = firebase_meta
+            self._local_store_meta[session_id] = session_meta
         self.start_workers()
         logger.debug("Registered session %s with PipelineManager", session_id)
 
@@ -137,7 +137,7 @@ class PipelineManager:
         with self._lock_registry:
             pipeline = self._pipelines.pop(session_id, None)
             self._latest_frames.pop(session_id, None)
-            self._firebase_meta.pop(session_id, None)
+            self._local_store_meta.pop(session_id, None)
         if pipeline is not None:
             try:
                 pipeline.cleanup()
@@ -183,7 +183,7 @@ class PipelineManager:
                     get_diagnostics().maybe_log(
                         self._frame_queue.qsize(),
                         self._result_queue.qsize(),
-                        self._firebase_queue.qsize(),
+                        self._local_store_queue.qsize(),
                     )
                 self._inference_frame_count += 1
             except queue.Empty:
@@ -191,7 +191,7 @@ class PipelineManager:
         logger.debug("Inference worker stopped")
 
     def _result_consumer_worker(self) -> None:
-        """Consumes result_queue: store latest frame; forward exit events to Firebase queue."""
+        """Consumes results: store latest frame and forward exit events to local storage."""
         logger.debug("Result consumer worker started")
         while not self._stop_event.is_set():
             try:
@@ -199,56 +199,63 @@ class PipelineManager:
                 if item is _SHUTDOWN:
                     break
                 session_id, canvas, exit_event = item
-                
-                # Store the latest annotated frame for MJPEG streaming
+
+                with self._lock_registry:
+                    pipeline = self._pipelines.get(session_id)
+                if pipeline is None:
+                    continue
+
+                # The dashboard renders stats below the stream, not inside it.
+                stream_frame = canvas[:, pipeline.visualizer.info_width:].copy()
+                # Store the latest camera frame for MJPEG streaming.
                 with self._lock_registry:
                     if session_id in self._pipelines:
-                        self._latest_frames[session_id] = canvas
-                        firebase_meta = self._firebase_meta.get(session_id)
+                        self._latest_frames[session_id] = stream_frame
+                        session_meta = self._local_store_meta.get(session_id)
                     else:
-                        firebase_meta = None
+                        session_meta = None
 
-                if exit_event is not None and firebase_meta is not None:
+                if exit_event is not None and session_meta is not None:
                     try:
-                        self._firebase_queue.put_nowait((session_id, exit_event, firebase_meta))
+                        self._local_store_queue.put_nowait((session_id, exit_event, session_meta))
                     except queue.Full:
                         pass
             except queue.Empty:
                 continue
         logger.debug("Result consumer worker stopped")
 
-    def _firebase_worker(self) -> None:
-        """Dedicated thread for Firebase writes; never blocks inference or MJPEG."""
-        logger.debug("Firebase worker started")
+    def _local_store_worker(self) -> None:
+        """Dedicated thread for local result writes; never blocks inference."""
+        logger.debug("Local session store worker started")
         while not self._stop_event.is_set():
             try:
-                item = self._firebase_queue.get(timeout=0.1)
+                item = self._local_store_queue.get(timeout=0.1)
                 if item is _SHUTDOWN:
                     break
                 session_id, is_defect, meta = item
                 timestamp = datetime.utcnow().isoformat() + "Z"
                 try:
-                    push_key = publish_detection(
+                    local_key = publish_detection(
                         report_id=meta["report_id"],
                         timestamp=timestamp,
                         defect=is_defect,
                     )
-                    if push_key:
+                    if local_key:
                         logger.debug(
-                            "Firebase detection key=%s report=%s",
-                            push_key,
+                            "Local detection key=%s report=%s",
+                            local_key,
                             meta["report_id"],
                         )
                 except Exception as e:
-                    logger.error("[Error] Firebase write report=%s: %s", session_id, e)
+                    logger.error("[Error] local result write report=%s: %s", session_id, e)
             except queue.Empty:
                 continue
-        logger.debug("Firebase worker stopped")
+        logger.debug("Local session store worker stopped")
 
     def shutdown(self) -> None:
         """Signal workers to stop (e.g. on app shutdown)."""
         self._stop_event.set()
-        for q in (self._frame_queue, self._result_queue, self._firebase_queue):
+        for q in (self._frame_queue, self._result_queue, self._local_store_queue):
             try:
                 q.put_nowait(_SHUTDOWN)
             except queue.Full:

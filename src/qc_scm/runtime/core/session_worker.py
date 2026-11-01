@@ -9,7 +9,7 @@ from typing import Any, Optional, Union
 
 import numpy as np
 
-from core.firebase_client import publish_session_info
+from core.local_session_store import create_session, delete_session
 from core.pipeline import Pipeline
 from core.pipeline_diagnostics import get_diagnostics
 from core.pipeline_manager import PipelineManager
@@ -99,12 +99,38 @@ class SessionWorker(threading.Thread):
                 time.sleep(0.001)
             # Single attempt only; no retry loop
 
+    def get_roi(self) -> Optional[dict]:
+        """Return the active pipeline ROI for dashboard editing."""
+        pipeline = self._pipeline_ref
+        return pipeline.get_roi() if pipeline is not None else None
+
+    def update_roi(self, left_x: int, right_x: int, top_y: int, bottom_y: int) -> dict:
+        """Update the active pipeline ROI for this session."""
+        pipeline = self._pipeline_ref
+        if pipeline is None:
+            raise RuntimeError("Session pipeline is not ready")
+        return pipeline.update_roi(left_x, right_x, top_y, bottom_y)
+
+    def get_stats(self) -> dict:
+        """Return live counters for the dashboard below the camera stream."""
+        pipeline = self._pipeline_ref
+        if pipeline is None:
+            raise RuntimeError("Session pipeline is not ready")
+        state = pipeline.state
+        return {
+            "total": int(state.total_count),
+            "defect": int(state.defect_count),
+            "ok": int(state.ok_count),
+            "frames": int(pipeline.frame_count),
+            "fps": round(float(pipeline.pipeline_fps), 1),
+            "started_at": self._started_at.isoformat() if self._started_at else None,
+        }
+
     def run(self) -> None:
         """Start camera, register with PipelineManager, run camera feeder until stop."""
         self._started_at = datetime.utcnow()
         try:
-            # Publish session_info immediately on startup
-            publish_session_info(self.report_id, self.session_info)
+            create_session(self.report_id, self.session_info)
 
             self._pipeline_ref = Pipeline(
                 box_cfg=self._box_cfg,
@@ -116,14 +142,14 @@ class SessionWorker(threading.Thread):
             )
             self._pipeline_ref.stream.start()
 
-            firebase_meta = {
+            session_meta = {
                 "report_id": self.report_id,
                 "session_info": self.session_info,
             }
             self._manager.register_session(
                 self.report_id,
                 self._pipeline_ref,
-                firebase_meta,
+                session_meta,
             )
 
             self._feeder_thread = threading.Thread(
@@ -139,6 +165,7 @@ class SessionWorker(threading.Thread):
             logger.error("[Error] session %s: %s", self.report_id, e)
         finally:
             self._manager.unregister_session(self.report_id)
+            delete_session(self.report_id)
             logger.debug("Session %s worker ended", self.report_id)
 
     def stop(self) -> None:

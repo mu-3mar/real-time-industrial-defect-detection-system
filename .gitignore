@@ -43,3 +43,9 @@ temp.html
 *firebase-adminsdk*.json
 **/firebase*adminsdk*.json
 **/*credentials*.json
+**/firebase.yaml
+src/qc_scm/runtime/.session_data/
+
+# Local service-manager state
+dashboard/service_manager_state.json
+dashboard/service.log

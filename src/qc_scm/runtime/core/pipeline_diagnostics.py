@@ -78,7 +78,7 @@ class PipelineDiagnostics:
                 "result_queue_drops": self.result_queue_drops,
             }
 
-    def maybe_log(self, frame_queue_size: int, result_queue_size: int, firebase_queue_size: int) -> bool:
+    def maybe_log(self, frame_queue_size: int, result_queue_size: int, storage_queue_size: int) -> bool:
         """If interval elapsed, log diagnostics and return True."""
         now = time.time()
         with self._lock:
@@ -115,7 +115,7 @@ class PipelineDiagnostics:
             log_latency_max_ms,
             frame_queue_size,
             result_queue_size,
-            firebase_queue_size,
+            storage_queue_size,
         )
         return True
 

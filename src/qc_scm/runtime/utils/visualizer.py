@@ -21,36 +21,16 @@ class Visualizer:
         self.roi_left = info_width + roi_center_offset - roi_width // 2
         self.roi_right = info_width + roi_center_offset + roi_width // 2
         self.roi_top_y = roi_top_y
+
+    def update_roi(self, left_x: int, right_x: int, top_y: int) -> None:
+        """Update the displayed ROI lines without recreating the visualizer."""
+        self.roi_left = int(left_x)
+        self.roi_right = int(right_x)
+        self.roi_top_y = int(top_y)
         
     def draw_layout(self, canvas):
-        """Draws static UI elements (background only)."""
-        overlay = canvas.copy()
-        
-        cv2.line(
-            overlay,
-            (self.roi_left, 0),
-            (self.roi_left, self.height),
-            (220, 220, 220),
-            2,
-        )
-        cv2.line(
-            overlay,
-            (self.roi_right, 0),
-            (self.roi_right, self.height),
-            (220, 220, 220),
-            2,
-        )
-        # Horizontal top line
-        cv2.line(
-            overlay,
-            (self.info_width, self.roi_top_y),
-            (self.info_width + self.width, self.roi_top_y),
-            (220, 220, 220),
-            2,
-        )
-        
-        # Apply semi-transparency (0.7 = 70% opacity)
-        cv2.addWeighted(overlay, 0.7, canvas, 0.3, 0, canvas)
+        """Keep the OpenCV canvas clean; the dashboard renders the editable ROI."""
+        return
 
     def draw_box(self, canvas, box, label, color):
         """Draws a bounding box (corners only) and label."""
