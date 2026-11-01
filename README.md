@@ -28,6 +28,7 @@ The project contains:
 ## Contents
 
 - [System workflow](#system-workflow)
+- [Demo video](#demo-video)
 - [Repository structure](#repository-structure)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -43,6 +44,30 @@ The project contains:
 - [Monitoring and troubleshooting](#monitoring-and-troubleshooting)
 - [Development checks](#development-checks)
 - [Repository hygiene](#repository-hygiene)
+
+---
+
+## Demo video
+
+<!--
+  GitHub video placeholder:
+  Drag and drop the demo video into this section when creating the README
+  change, then replace the placeholder below with the generated GitHub URL.
+-->
+
+> **Demo video:** Upload the project demonstration here.
+
+<!-- Replace this line with the GitHub-generated video URL after upload. -->
+
+`<!-- VIDEO_URL_GOES_HERE -->`
+
+The demonstration should cover:
+
+- Starting the dashboard and detection service.
+- Opening an active inspection session.
+- Drawing, moving, and resizing the rectangular detection area.
+- Live box and defect detection.
+- The live `Total`, `Defect`, `OK`, and `FPS` counters.
 
 ---
 
