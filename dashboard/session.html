@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Session Monitor - Service Dashboard</title>
+    <title>QC-SCM | Session Monitor</title>
+    <link rel="stylesheet" href="theme.css">
     <style>
         :root {
             --bg: #f4f5f7;
@@ -127,7 +128,8 @@
         /* Stream Section */
         .stream-container {
             width: 100%;
-            aspect-ratio: 16 / 9;
+            aspect-ratio: auto;
+            min-height: 360px;
             background: #000;
             border-radius: 12px;
             overflow: hidden;
@@ -138,8 +140,68 @@
 
         .stream-img {
             width: 100%;
-            height: 100%;
+            height: auto;
+            min-height: 360px;
+            display: block;
             object-fit: contain;
+            opacity: 1 !important;
+            filter: none !important;
+        }
+
+        .roi-editor {
+            position: absolute;
+            inset: 0;
+            pointer-events: auto;
+            display: none;
+            z-index: 4;
+            cursor: crosshair;
+        }
+
+        .roi-mask {
+            position: absolute;
+            pointer-events: none;
+            display: none;
+        }
+
+        .roi-box {
+            position: absolute;
+            border: 3px solid var(--accent);
+            border-radius: 12px;
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,.9),
+                0 0 18px rgba(240,75,36,.75),
+                0 0 0 9999px rgba(55, 62, 72, .52);
+            background: rgba(240, 75, 36, .05);
+            cursor: move;
+            touch-action: none;
+        }
+
+        .roi-handle {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-radius: 5px;
+            background: var(--accent);
+            box-shadow: 0 2px 8px rgba(80, 35, 20, .45);
+            touch-action: none;
+        }
+
+        .roi-handle.tl { left: -9px; top: -9px; cursor: nwse-resize; }
+        .roi-handle.tr { right: -9px; top: -9px; cursor: nesw-resize; }
+        .roi-handle.bl { left: -9px; bottom: -9px; cursor: nesw-resize; }
+        .roi-handle.br { right: -9px; bottom: -9px; cursor: nwse-resize; }
+
+        .roi-help {
+            position: absolute;
+            right: 14px;
+            bottom: 14px;
+            padding: 7px 10px;
+            border-radius: 7px;
+            background: rgba(20, 20, 20, .68);
+            color: #fff;
+            font-size: 11px;
+            pointer-events: none;
         }
 
         .stream-overlay {
@@ -176,9 +238,9 @@
         /* Info Grid */
         .info-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 16px;
-            margin-top: 20px;
+            margin-top: 0;
         }
         .info-card {
             background: #f7f8fa;
@@ -234,6 +296,9 @@
         .log-green { color: var(--green-dark); font-weight: 600; }
 
         @media (max-width: 800px) {
+            .info-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 520px) {
             .info-grid { grid-template-columns: 1fr; }
         }
 
@@ -252,10 +317,18 @@
             to { transform: translateY(0); opacity: 1; }
         }
     </style>
+    <link rel="stylesheet" href="theme.css">
 </head>
 <body>
 
     <div class="container">
+        <div class="brand-bar">
+            <a class="brand" href="index.html">
+                <span class="brand-mark"><iframe class="brand-logo-frame" src="brand-logo.html?color=%23F04B24" title="QC-SCM logo" tabindex="-1"></iframe></span>
+                <span class="brand-copy"><strong>QC-SCM</strong><small>INDUSTRIAL QUALITY CONTROL</small></span>
+            </a>
+            <span class="page-kicker">LIVE INSPECTION</span>
+        </div>
         <div class="header">
             <a href="reports.html" class="back-link">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -289,22 +362,44 @@
                     <span class="live-dot"></span>
                     Live Detection Stream
                 </div>
-                <img id="videoFeed" src="" alt="Live Video Feed" class="stream-img" onerror="this.style.opacity='0.25'">
+                <img id="videoFeed" src="" alt="Live Video Feed" class="stream-img">
+                <div class="roi-editor" id="roiEditor" aria-label="Editable detection region">
+                    <div class="roi-mask" id="roiMask"></div>
+                    <div class="roi-box" id="roiBox" title="Drag to move detection area">
+                        <span class="roi-handle tl" data-handle="tl"></span>
+                        <span class="roi-handle tr" data-handle="tr"></span>
+                        <span class="roi-handle bl" data-handle="bl"></span>
+                        <span class="roi-handle br" data-handle="br"></span>
+                    </div>
+                    <div class="roi-help">Drag to draw. Move or resize the orange detection area.</div>
+                </div>
             </div>
 
             <div class="info-grid">
                 <div class="info-card">
-                    <div class="label">API Endpoint</div>
-                    <div class="value" id="apiEndpoint" style="font-size:14px;">http://localhost:8000</div>
+                    <div class="label">Total</div>
+                    <div class="value" id="totalCount">0</div>
                 </div>
                 <div class="info-card">
-                    <div class="label">Stream URL</div>
-                    <div class="value" id="streamUrlVal" style="font-size:13px; word-break:break-all;">Loading...</div>
+                    <div class="label">Defect</div>
+                    <div class="value" id="defectCount" style="color:var(--red);">0</div>
                 </div>
                 <div class="info-card">
-                    <div class="label">Started</div>
-                    <div class="value" id="startedAt" style="font-size:14px;">--</div>
+                    <div class="label">OK</div>
+                    <div class="value" id="okCount" style="color:var(--green-dark);">0</div>
                 </div>
+                <div class="info-card">
+                    <div class="label">FPS</div>
+                    <div class="value" id="fpsCardValue">0.0</div>
+                </div>
+                <div class="info-card">
+                    <div class="label">Date</div>
+                    <div class="value" id="sessionDate" style="font-size:14px;">--</div>
+                </div>
+            </div>
+            <div class="session-meta" style="display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; color:var(--text-sub); font-size:13px;">
+                <span>Started: <strong id="startedAt">--</strong></span>
+                <span>API: <strong id="apiEndpoint">http://localhost:8000</strong></span>
             </div>
 
             <div class="logs-section">
@@ -339,14 +434,211 @@
             window.location.href = "index.html";
         }
 
+        let lastSessionLogJSON = "";
+        let startTime = null;
+        let roi = null;
+        let roiUpdateTimer = null;
+        let roiRetryTimer = null;
+
         const streamUrl = `${API_BASE}/video_feed?report_id=${encodeURIComponent(reportId)}`;
         document.getElementById("reportIdDisplay").textContent = `Report ID: ${reportId}`;
         document.getElementById("videoFeed").src = streamUrl;
-        document.getElementById("streamUrlVal").textContent = streamUrl;
         document.getElementById("apiEndpoint").textContent = API_BASE;
+        installRoiDragging();
+        loadRoi();
+        roiRetryTimer = setInterval(loadRoi, 1000);
+        updateSessionStats();
+        setInterval(updateSessionStats, 1000);
 
-        let lastSessionLogJSON = "";
-        let startTime = null;
+        function positionRoiEditor() {
+            const image = document.getElementById("videoFeed");
+            const editor = document.getElementById("roiEditor");
+            if (!roi || !roi.canvas_width || !roi.canvas_height) return;
+            const bounds = image.getBoundingClientRect();
+            const frameRatio = roi.canvas_width / roi.canvas_height;
+            const boxRatio = bounds.width / bounds.height;
+            let contentWidth = bounds.width;
+            let contentHeight = bounds.height;
+            let contentLeft = 0;
+            let contentTop = 0;
+            if (boxRatio > frameRatio) {
+                contentWidth = bounds.height * frameRatio;
+                contentLeft = (bounds.width - contentWidth) / 2;
+            } else {
+                contentHeight = bounds.width / frameRatio;
+                contentTop = (bounds.height - contentHeight) / 2;
+            }
+            const style = editor.style;
+            style.setProperty("--content-left", `${contentLeft}px`);
+            style.setProperty("--content-top", `${contentTop}px`);
+            style.setProperty("--content-width", `${contentWidth}px`);
+            style.setProperty("--content-height", `${contentHeight}px`);
+            const x = value => contentLeft + (value / roi.canvas_width) * contentWidth;
+            const y = value => contentTop + (value / roi.canvas_height) * contentHeight;
+            const roiBox = document.getElementById("roiBox");
+            roiBox.style.left = `${x(roi.left_x)}px`;
+            roiBox.style.top = `${y(roi.top_y)}px`;
+            roiBox.style.width = `${x(roi.right_x) - x(roi.left_x)}px`;
+            roiBox.style.height = `${y(roi.bottom_y) - y(roi.top_y)}px`;
+        }
+
+        async function loadRoi() {
+            try {
+                const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}/roi`);
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        document.getElementById("roiEditor").style.display = "none";
+                        document.getElementById("videoFeed").removeAttribute("src");
+                        document.getElementById("statusDisplay").textContent = "Closed / Not Found";
+                        if (roiRetryTimer) {
+                            clearInterval(roiRetryTimer);
+                            roiRetryTimer = null;
+                        }
+                    }
+                    return;
+                }
+                const data = await res.json();
+                roi = {
+                    ...data,
+                    canvas_width: data.frame_width,
+                    canvas_height: data.frame_height
+                };
+                document.getElementById("roiEditor").style.display = "block";
+                positionRoiEditor();
+                if (roiRetryTimer) {
+                    clearInterval(roiRetryTimer);
+                    roiRetryTimer = null;
+                }
+            } catch (err) {
+                // The session pipeline may still be starting.
+            }
+        }
+
+        function scheduleRoiUpdate() {
+            clearTimeout(roiUpdateTimer);
+            roiUpdateTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}/roi`, {
+                        method: "PATCH",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            left_x: Math.round(roi.left_x),
+                            right_x: Math.round(roi.right_x),
+                            top_y: Math.round(roi.top_y),
+                            bottom_y: Math.round(roi.bottom_y)
+                        })
+                    });
+                    if (response.ok) {
+                        const applied = await response.json();
+                        roi = {
+                            ...roi,
+                            ...applied,
+                            canvas_width: applied.frame_width,
+                            canvas_height: applied.frame_height
+                        };
+                        positionRoiEditor();
+                        showNotification("Detection area updated", "success");
+                        return;
+                    }
+                    if (response.status === 409) {
+                            showNotification("Detection service is still preparing this session. Retrying...", "info");
+                            scheduleRoiUpdate();
+                            return;
+                    }
+                    if (response.status === 404) {
+                            document.getElementById("roiEditor").style.display = "none";
+                            showNotification("This session has been closed. Open a new session to edit the detection area.", "error");
+                            return;
+                    }
+                    throw new Error(`ROI update failed (${response.status})`);
+                } catch (err) {
+                    showNotification("Could not update the detection area. The service may be temporarily unavailable.", "error");
+                }
+            }, 80);
+        }
+
+        function installRoiDragging() {
+            const image = document.getElementById("videoFeed");
+            const editor = document.getElementById("roiEditor");
+            const boxElement = document.getElementById("roiBox");
+            const minSize = 30;
+            const begin = (event, mode) => {
+                if (!roi) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const bounds = image.getBoundingClientRect();
+                const frameRatio = roi.canvas_width / roi.canvas_height;
+                const boxRatio = bounds.width / bounds.height;
+                const contentWidth = boxRatio > frameRatio ? bounds.height * frameRatio : bounds.width;
+                const contentHeight = boxRatio > frameRatio ? bounds.height : bounds.width / frameRatio;
+                const contentLeft = (bounds.width - contentWidth) / 2;
+                const contentTop = (bounds.height - contentHeight) / 2;
+                const scaleX = roi.canvas_width / contentWidth;
+                const scaleY = roi.canvas_height / contentHeight;
+                const startX = (event.clientX - bounds.left - contentLeft) * scaleX;
+                const startY = (event.clientY - bounds.top - contentTop) * scaleY;
+                const initial = {...roi};
+                const move = moveEvent => {
+                    const dx = (moveEvent.clientX - event.clientX) * scaleX;
+                    const dy = (moveEvent.clientY - event.clientY) * scaleY;
+                    if (mode === "draw") {
+                        roi.left_x = Math.max(0, Math.min(initial.canvas_width - minSize, startX));
+                        roi.right_x = Math.max(minSize, Math.min(initial.canvas_width, startX + dx));
+                        roi.top_y = Math.max(0, Math.min(initial.canvas_height - minSize, startY));
+                        roi.bottom_y = Math.max(minSize, Math.min(initial.canvas_height, startY + dy));
+                        if (roi.right_x < roi.left_x) [roi.left_x, roi.right_x] = [roi.right_x, roi.left_x];
+                        if (roi.bottom_y < roi.top_y) [roi.top_y, roi.bottom_y] = [roi.bottom_y, roi.top_y];
+                    } else if (mode === "move") {
+                        const width = initial.right_x - initial.left_x;
+                        const height = initial.bottom_y - initial.top_y;
+                        roi.left_x = Math.max(0, Math.min(roi.canvas_width - width, initial.left_x + dx));
+                        roi.right_x = roi.left_x + width;
+                        roi.top_y = Math.max(0, Math.min(roi.canvas_height - height, initial.top_y + dy));
+                        roi.bottom_y = roi.top_y + height;
+                    } else {
+                        if (mode.includes("l")) roi.left_x = Math.max(0, Math.min(initial.right_x - minSize, initial.left_x + dx));
+                        if (mode.includes("r")) roi.right_x = Math.min(roi.canvas_width, Math.max(initial.left_x + minSize, initial.right_x + dx));
+                        if (mode.includes("t")) roi.top_y = Math.max(0, Math.min(initial.bottom_y - minSize, initial.top_y + dy));
+                        if (mode.includes("b")) roi.bottom_y = Math.min(roi.canvas_height, Math.max(initial.top_y + minSize, initial.bottom_y + dy));
+                    }
+                    positionRoiEditor();
+                    scheduleRoiUpdate();
+                };
+                const stop = () => {
+                    document.removeEventListener("pointermove", move);
+                    document.removeEventListener("pointerup", stop);
+                };
+                document.addEventListener("pointermove", move);
+                document.addEventListener("pointerup", stop);
+            };
+            boxElement.addEventListener("pointerdown", event => begin(event, event.target.dataset.handle || "move"));
+            editor.addEventListener("pointerdown", event => {
+                if (event.target === editor || event.target.id === "roiMask") begin(event, "draw");
+            });
+            image.addEventListener("load", positionRoiEditor);
+            window.addEventListener("resize", positionRoiEditor);
+        }
+
+        async function updateSessionStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}/stats`);
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById("totalCount").textContent = data.total;
+                document.getElementById("defectCount").textContent = data.defect;
+                document.getElementById("okCount").textContent = data.ok;
+                const fps = Number(data.fps || 0).toFixed(1);
+                document.getElementById("fpsCardValue").textContent = fps;
+                document.getElementById("sessionDate").textContent =
+                    new Date(data.started_at || Date.now()).toLocaleDateString();
+                if (data.started_at && !startTime) {
+                    startTime = new Date(data.started_at);
+                    document.getElementById("startedAt").textContent = startTime.toLocaleString();
+                }
+            } catch (err) {
+                // Session status polling reports service availability separately.
+            }
+        }
 
         async function updateSessionDetails() {
             const statusBadge = document.getElementById("statusBadge");

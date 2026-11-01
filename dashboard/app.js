@@ -55,10 +55,13 @@ function addEvent(message, type = "info") {
     if (type === "link") textClass += " log-link";
     if (type === "error") textClass += " log-green";
 
-    line.innerHTML = `
-        <span class="log-time">${timeStr}</span>
-        <span class="${textClass}">${message}</span>
-    `;
+    const time = document.createElement("span");
+    time.className = "log-time";
+    time.textContent = timeStr;
+    const text = document.createElement("span");
+    text.className = textClass;
+    text.textContent = message;
+    line.append(time, text);
 
     eventsContainer.prepend(line);
 
@@ -89,7 +92,7 @@ function renderComponentStatus(elementId, component) {
 function updateStatusUI(state) {
     serviceState = state;
     const statusPill = document.getElementById("serviceStatusPill");
-    const firebaseStatus = document.getElementById("firebaseStatus");
+    const storageStatus = document.getElementById("storageStatus");
     const tunnelStatus = document.getElementById("tunnelStatus");
     const apiStatus = document.getElementById("apiStatus");
     const healthBox = document.getElementById("healthBox");
@@ -126,7 +129,7 @@ function updateStatusUI(state) {
             statusPill.style.background = 'var(--red-bg)';
             statusPill.style.color = 'var(--red)';
         }
-        if (firebaseStatus) firebaseStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Disconnected';
+        if (storageStatus) storageStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Offline';
         if (tunnelStatus) tunnelStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Not Configured';
         if (apiStatus) apiStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Offline';
         if (healthBox) {
@@ -176,7 +179,7 @@ async function loadHealth() {
     const healthSub = document.getElementById("healthSub");
     const activeCount = document.getElementById("activeReportsCount");
     const apiStatus = document.getElementById("apiStatus");
-    const firebaseStatus = document.getElementById("firebaseStatus");
+    const storageStatus = document.getElementById("storageStatus");
     const tunnelStatus = document.getElementById("tunnelStatus");
 
     if (serviceState !== "running") {
@@ -216,7 +219,7 @@ async function loadHealth() {
         if (healthSub) healthSub.textContent = "Detection API not responding";
         if (activeCount) activeCount.textContent = "0";
         if (apiStatus) apiStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Offline';
-        if (firebaseStatus) firebaseStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Disconnected';
+        if (storageStatus) storageStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Offline';
         if (tunnelStatus) tunnelStatus.innerHTML = '<span class="dot" style="background:var(--red);"></span>Not Configured';
     }
 }
@@ -516,12 +519,12 @@ async function checkServiceStatus() {
         const data = await response.json();
         const detectedState = data.status;
 
-        const firebaseStatus = document.getElementById("firebaseStatus");
+        const storageStatus = document.getElementById("storageStatus");
         const tunnelStatus = document.getElementById("tunnelStatus");
         const apiStatus = document.getElementById("apiStatus");
 
-        renderComponentStatus("firebaseStatus", data.firebase || {
-            state: data.firebase_connected ? "healthy" : "error"
+        renderComponentStatus("storageStatus", data.storage || {
+            state: data.storage_healthy ? "healthy" : "offline"
         });
         renderComponentStatus("tunnelStatus", data.tunnel || {
             state: data.tunnel_online ? "healthy" : "not_configured"

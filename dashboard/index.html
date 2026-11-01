@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Service Dashboard</title>
+    <title>QC-SCM | Real-Time Industrial Defect Detection</title>
+    <link rel="stylesheet" href="theme.css">
     <script defer src="app.js"></script>
     <style>
         :root {
@@ -902,6 +903,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="theme.css">
 </head>
 
 <body>
@@ -910,8 +912,9 @@
 
         <!-- TOP ROW -->
         <div class="top-row">
-            <div class="logo-box">
-                <img src="logo.svg" alt="Chainly Logo" id="logoImg">
+            <div class="brand">
+                <span class="brand-mark"><iframe class="brand-logo-frame" src="brand-logo.html?color=%23F04B24" title="QC-SCM logo" tabindex="-1"></iframe></span>
+                <span class="brand-copy"><strong>QC-SCM</strong><small>INDUSTRIAL QUALITY CONTROL</small></span>
             </div>
             <div class="clock-box">
                 <div class="clock-time">
@@ -1012,8 +1015,8 @@
                 </div>
                 <div style="margin-top:10px;">
                     <div class="comp-row">
-                        <span class="comp-name">Firebase</span>
-                        <span class="comp-status" id="firebaseStatus" style="color:var(--red);"><span class="dot" style="background:var(--red);"></span>Disconnected</span>
+                        <span class="comp-name">Local Session Storage</span>
+                        <span class="comp-status" id="storageStatus" style="color:var(--red);"><span class="dot" style="background:var(--red);"></span>Offline</span>
                     </div>
                     <div class="comp-row">
                         <span class="comp-name">Tunnel</span>

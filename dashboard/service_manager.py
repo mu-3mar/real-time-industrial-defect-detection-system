@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Service Manager Daemon for QC-SCM Detection Dashboard.
 
-Allows local client-side Javascript to run, stop, and restart the backend flow
-on port 8080. Actually executes Boxes/flow/main.py with proper paths.
+Allows local client-side Javascript to run, stop, and restart the backend
+runtime on port 8080.
 """
 
 import http.server
@@ -23,8 +23,8 @@ from pathlib import Path
 PORT = 8080
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-FLOW_DIR = PROJECT_ROOT / "Boxes" / "flow"
-MAIN_PY = FLOW_DIR / "main.py"
+RUNTIME_DIR = PROJECT_ROOT / "src" / "qc_scm" / "runtime"
+MAIN_PY = RUNTIME_DIR / "main.py"
 LOG_FILE = Path(__file__).resolve().parent / "service.log"
 STATE_FILE = Path(__file__).resolve().parent / "service_manager_state.json"
 API_BASE = os.environ.get("QC_SCM_API_URL", "http://127.0.0.1:8000").rstrip("/")
@@ -36,16 +36,16 @@ CONDA_ENV = os.environ.get("QC_SCM_CONDA_ENV", "qc")
 def _run_python_in_flow(cmd_args):
     """Build Popen args: prefer conda run -n qc python ... else fall back to sys.executable.
 
-    Always set cwd=FLOW_DIR so relative imports (core.*, api.*, detectors.*) work.
-    Extend PYTHONPATH with FLOW_DIR as safety net.
+    Always set cwd=RUNTIME_DIR so legacy runtime imports work.
+    Extend PYTHONPATH with RUNTIME_DIR as safety net.
     """
     env = os.environ.copy()
-    flow_path = str(FLOW_DIR)
+    runtime_path = str(RUNTIME_DIR)
     existing_pp = env.get("PYTHONPATH", "")
     if existing_pp:
-        env["PYTHONPATH"] = f"{flow_path}:{existing_pp}"
+        env["PYTHONPATH"] = f"{runtime_path}:{existing_pp}"
     else:
-        env["PYTHONPATH"] = flow_path
+        env["PYTHONPATH"] = runtime_path
 
     # Try conda first
     try:
@@ -141,11 +141,11 @@ def _health_api_status():
     return {"state": "offline", "detail": "Health endpoint did not report healthy"}
 
 
-def _firebase_status(process):
+def _storage_status(process):
     if not process:
         return {"state": "unavailable", "detail": "Service is stopped"}
-    return _get_json(f"{API_BASE}/api/health/firebase") or {
-        "state": "error", "detail": "Firebase health endpoint unavailable"
+    return _get_json(f"{API_BASE}/api/health/storage") or {
+        "state": "error", "detail": "Local storage health endpoint unavailable"
     }
 
 
@@ -276,7 +276,7 @@ def _start_service():
             stdout=log_file,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
-            cwd=str(FLOW_DIR),
+            cwd=str(RUNTIME_DIR),
             env=env,
             start_new_session=True,
             close_fds=True,
@@ -336,7 +336,8 @@ class ServiceManagerHandler(http.server.BaseHTTPRequestHandler):
 
     def _write_json(self, status, payload):
         self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Cache-Control', 'no-store')
         self.end_headers()
         self.wfile.write(json.dumps(payload).encode())
 
@@ -345,7 +346,7 @@ class ServiceManagerHandler(http.server.BaseHTTPRequestHandler):
             process = _owned_process()
             started_dt = get_process_start_time(process.pid) if process else None
             api = _health_api_status() if process else {"state": "offline"}
-            firebase = _firebase_status(process)
+            storage = _storage_status(process)
             tunnel = _tunnel_status(process)
             metrics = get_system_metrics()
 
@@ -354,8 +355,8 @@ class ServiceManagerHandler(http.server.BaseHTTPRequestHandler):
                 "pid": process.pid if process else None,
                 "uptime_seconds": int((datetime.datetime.now() - started_dt).total_seconds()) if started_dt else 0,
                 "started_at": started_dt.isoformat() if started_dt else None,
-                "firebase": firebase,
-                "firebase_connected": firebase.get("state") == "healthy",
+                "storage": storage,
+                "storage_healthy": storage.get("state") == "healthy",
                 "tunnel": tunnel,
                 "tunnel_online": tunnel.get("state") == "healthy",
                 "api": api,
@@ -394,7 +395,7 @@ class ServiceManagerHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as e:
                     filtered_lines = [f"Error reading logs: {str(e)}"]
 
-            self._write_json(200, {"lines": filtered_lines})
+            self._write_json(200, {"lines": filtered_lines, "session_id": report_id})
 
         elif self.path == '/logs':
             lines = []
@@ -484,7 +485,7 @@ class ServiceManagerHandler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     print(f"[ServiceManager] Project root : {PROJECT_ROOT}")
-    print(f"[ServiceManager] Flow dir      : {FLOW_DIR}")
+    print(f"[ServiceManager] Runtime dir   : {RUNTIME_DIR}")
     print(f"[ServiceManager] Main script   : {MAIN_PY}")
     print(f"[ServiceManager] Log file      : {LOG_FILE}")
     print(f"[ServiceManager] API base      : {API_BASE}")
