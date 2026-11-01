@@ -49,17 +49,7 @@ The project contains:
 
 ## Demo video
 
-<!--
-  GitHub video placeholder:
-  Drag and drop the demo video into this section when creating the README
-  change, then replace the placeholder below with the generated GitHub URL.
--->
-
-> **Demo video:** Upload the project demonstration here.
-
-<!-- Replace this line with the GitHub-generated video URL after upload. -->
-
-`<!-- VIDEO_URL_GOES_HERE -->`
+[Watch the QC-SCM demonstration](https://github.com/user-attachments/assets/9e6635e5-916f-4411-912f-d5b6521c4100)
 
 The demonstration should cover:
 
