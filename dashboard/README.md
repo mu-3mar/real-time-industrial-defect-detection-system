@@ -29,11 +29,14 @@ systemctl --user restart qc-scm-service-manager.service
 
 ## Edit the detection region during inference
 
-Open an active report from the dashboard and use the orange handles over the
-full-width live camera stream. Drag the two vertical lines to change the left
-and right limits, or drag the horizontal line to change the top limit. Changes
-are applied to that same session immediately through the runtime ROI API and
-are not written to the shared YAML configuration. Updating a boundary clears
-the previous tracking result so the next detector pass uses the new crop.
-Detection totals, defect/OK counts, and processing FPS appear directly below
-the stream.
+Open an active report from the dashboard. Press and drag on the live camera
+stream to draw a rectangular detection area. The orange rectangle can be moved
+from its interior and resized from its four rounded corner handles. The area
+inside the rectangle remains clear and is passed to the detector; the area
+outside it is dimmed to show that it is disabled.
+
+Changes are applied immediately to that same session through the runtime ROI
+API and are not written to the shared YAML configuration. Updating the
+rectangle clears the previous tracking result so the next detector pass uses
+the new crop. Detection totals, defect/OK counts, and processing FPS appear
+directly below the stream.

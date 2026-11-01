@@ -48,7 +48,11 @@ python main.py
 -   `POST /api/reports/open`: Start a new detection session.
 -   `POST /api/reports/close`: End an active session.
 -   `GET /api/reports`: List active sessions.
--   `GET /api/session/{report_id}/stream`: Real-time MJPEG annotated stream.
+-   `GET /api/reports/{report_id}/roi`: Read the active session rectangle.
+-   `PATCH /api/reports/{report_id}/roi`: Update the rectangle during inference.
+-   `GET /api/reports/{report_id}/stats`: Read counters and processing FPS.
+-   `GET /video_feed?report_id=<id>`: Real-time MJPEG camera stream.
+-   `GET /api/health`: Runtime health.
 
 ---
 For project-wide usage, see the repository [README](../../../README.md).
