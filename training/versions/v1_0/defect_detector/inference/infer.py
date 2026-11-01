@@ -12,8 +12,21 @@ if str(project_root) not in sys.path:
 from configs.config import PROJECT_DIR, PROJECT_NAME
 
 # ============ CONFIG ============
-# Note: Update this path to the correct location of your box detection model
-BOX_MODEL_PATH = "/home/muhammad-ammar/GraduationProject/QC-SCM/Boxes/fine-tuning/combine-fine-tuning/box-YOLO/runs/train/boxs/weights/best.pt"
+# Use the matching V1.0 box detector from this repository rather than a
+# machine-specific absolute path.
+REPO_ROOT = current_file.parents[5]
+BOX_MODEL_PATH = (
+    REPO_ROOT
+    / "training"
+    / "versions"
+    / "v1_0"
+    / "box_detector"
+    / "runs"
+    / "train"
+    / "detect_box"
+    / "weights"
+    / "best.pt"
+)
 
 # Defect model path (from current project training)
 DEFECT_MODEL_PATH = PROJECT_DIR / PROJECT_NAME / "weights" / "best.pt"

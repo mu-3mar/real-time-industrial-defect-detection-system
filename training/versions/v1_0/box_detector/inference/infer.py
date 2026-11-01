@@ -9,7 +9,7 @@ from ultralytics import YOLO
 DEVICE = "cpu"     # "cpu" او "cuda"
 MODE   = "camera"  # "camera" او "folder"
 
-FOLDER_PATH = "/home/muhammad-ammar/GraduationProject/tamp train/test"  
+FOLDER_PATH = Path(__file__).resolve().parents[5] / "data"
 CAM_INDEX = 4
 
 MODEL_PATH = "models/exported/best.pt"

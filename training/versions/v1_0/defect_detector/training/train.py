@@ -9,7 +9,7 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
-# Boxes/flow for device_manager
+# Runtime directory for shared device selection
 _boxes = current_file.parent.parent.parent.parent
 _flow = _boxes / "flow"
 if str(_flow) not in sys.path:
