@@ -1,9 +1,0 @@
-# Firebase Realtime Database for detection events.
-# Detections are stored under report_id only; each entry has defect and timestamp. No factory/line hierarchy.
-#
-# This file selects which Firebase project to use. Do NOT commit the actual
-# service account JSON; it is gitignored. Use the europe-west1 URL provided
-# by Firebase as database_url.
-
-service_account_path: "chainly-f4afa-firebase-adminsdk-fbsvc-42caaffab8.json"
-database_url: "https://chainly-f4afa-default-rtdb.europe-west1.firebasedatabase.app"
