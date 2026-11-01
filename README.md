@@ -38,6 +38,7 @@ The project contains:
 - [Temporary session storage](#temporary-session-storage)
 - [Configuration](#configuration)
 - [Training and model versions](#training-and-model-versions)
+- [Model evaluation metrics](#model-evaluation-metrics)
 - [Architecture](#architecture)
 - [Monitoring and troubleshooting](#monitoring-and-troubleshooting)
 - [Development checks](#development-checks)
@@ -392,6 +393,43 @@ training/versions/v2_1/defect_detector
 Do not copy checkpoints between version directories. When a model is promoted
 to runtime, update the relevant runtime YAML deliberately and record the
 promotion in the commit that changes the configuration.
+
+---
+
+## Model evaluation metrics
+
+The training runs do not report one universal `accuracy` percentage. QC-SCM
+uses object-detection metrics because both stages must locate objects, not only
+choose a class:
+
+- **Precision:** how many predicted detections are correct.
+- **Recall:** how many ground-truth objects are found.
+- **mAP50:** mean average precision at IoU 0.50.
+- **mAP50-95:** mean average precision averaged across IoU thresholds 0.50
+  through 0.95; this is stricter and is the preferred headline metric.
+
+Metrics are written by Ultralytics to `results.csv` under each version and
+detector. The latest recorded V2.1 validation rows currently are:
+
+| Model | Epoch | Precision | Recall | mAP50 | mAP50-95 |
+|---|---:|---:|---:|---:|---:|
+| V2.1 Box Detector | 45 | 94.81% | 91.43% | 96.83% | 83.59% |
+| V2.1 Defect Detector | 93 | 93.02% | 86.28% | 93.41% | 68.71% |
+
+Source files:
+
+- [`v2_1/box_detector/results.csv`](training/versions/v2_1/box_detector/runs/metrics/results.csv)
+- [`v2_1/defect_detector/results.csv`](training/versions/v2_1/defect_detector/runs/metrics/results.csv)
+
+These are validation metrics from the recorded training runs, not a guarantee
+of production accuracy. Production performance depends on camera position,
+lighting, product variation, ROI selection, model thresholds, and data
+quality. The dashboard's `Total`, `Defect`, and `OK` counters are live
+session outcomes; they are not model-accuracy measurements.
+
+To evaluate a newly trained checkpoint, run validation on a held-out test set
+and record the resulting metrics before promoting the model to runtime. Do not
+label `mAP50` or `mAP50-95` as plain accuracy.
 
 ---
 
